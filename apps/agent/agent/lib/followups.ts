@@ -1,4 +1,9 @@
-import { db } from "@crm/db";
+import {
+	DEFAULT_FOLLOWUP_PREFS,
+	db,
+	type FollowupPrefs,
+	lookbackDays,
+} from "@crm/db";
 
 /**
  * The rep's own recent mail and open pipeline — what the daily sweep reads
@@ -8,6 +13,9 @@ import { db } from "@crm/db";
  * agent (see `crm.ts`). Message bodies are included for the same reason they
  * are in `readCrmHistory`: this is a single-tenant internal tool reading its
  * own mailbox, and the boundary is egress, not access.
+ *
+ * Priority prefs (lookback / scope) trim the window so the sweep matches what
+ * the Follow-ups page will surface — still filters, not a free-form agent.
  */
 
 export type MailboxMessage = {
@@ -47,10 +55,41 @@ export type OpenSuggestion = {
 
 export type RepFollowupContext = {
 	rep: { id: string; name: string | null };
+	prefs: FollowupPrefs;
 	messages: MailboxMessage[];
 	openDeals: OpenDeal[];
 	alreadyProposed: OpenSuggestion[];
 };
+
+export async function loadFollowupPrefs(
+	userId: string,
+): Promise<FollowupPrefs> {
+	const row = await db.followUpPreference.findUnique({
+		where: { userId },
+		select: { floatFirst: true, lookback: true, scope: true },
+	});
+
+	if (!row) return { ...DEFAULT_FOLLOWUP_PREFS };
+
+	return {
+		floatFirst: asEnum(row.floatFirst, DEFAULT_FOLLOWUP_PREFS.floatFirst, [
+			"balanced",
+			"commitments",
+			"replies",
+			"deal-risk",
+		] as const),
+		lookback: asEnum(row.lookback, DEFAULT_FOLLOWUP_PREFS.lookback, [
+			"7d",
+			"30d",
+			"90d",
+		] as const),
+		scope: asEnum(row.scope, DEFAULT_FOLLOWUP_PREFS.scope, [
+			"owned",
+			"shared",
+			"mail",
+		] as const),
+	};
+}
 
 /**
  * Everything the daily sweep needs about one rep, in one call.
@@ -71,9 +110,29 @@ export async function repFollowupContext(
 
 	if (!rep) return null;
 
+	const prefs = await loadFollowupPrefs(userId);
+	const cutoff = new Date(
+		Date.now() - lookbackDays(prefs.lookback) * 86_400_000,
+	);
+
+	const dealWhere =
+		prefs.scope === "shared"
+			? {
+					closedAt: null,
+					OR: [
+						{ ownerId: userId },
+						{ activities: { some: { createdById: userId } } },
+					],
+				}
+			: prefs.scope === "mail"
+				? // Mail-first: still return owned deals so next-step context exists,
+					// but the preamble tells the model to deprioritise deal-risk.
+					{ closedAt: null, ownerId: userId }
+				: { closedAt: null, ownerId: userId };
+
 	const [messages, deals, proposed] = await Promise.all([
 		db.emailMessage.findMany({
-			where: { syncedByUserId: userId },
+			where: { syncedByUserId: userId, sentAt: { gte: cutoff } },
 			orderBy: { sentAt: "desc" },
 			take: options.messages ?? 40,
 			select: {
@@ -90,7 +149,7 @@ export async function repFollowupContext(
 			},
 		}),
 		db.deal.findMany({
-			where: { ownerId: userId, closedAt: null },
+			where: dealWhere,
 			orderBy: [{ lastActivityAt: { sort: "asc", nulls: "first" } }],
 			select: {
 				id: true,
@@ -116,6 +175,7 @@ export async function repFollowupContext(
 
 	return {
 		rep,
+		prefs,
 		messages: messages.map((message) => ({
 			id: message.id,
 			threadId: message.threadId,
@@ -183,6 +243,15 @@ export async function proposeFollowUp(
 		};
 	}
 
+	const prefs = await loadFollowupPrefs(input.userId);
+	if (prefs.scope === "mail" && input.kind === "deal-risk") {
+		return {
+			written: false,
+			reason:
+				"This rep's Follow-ups scope is mail-driven — skip deal-risk suggestions.",
+		};
+	}
+
 	const messageIds = [...new Set(input.evidence.map((item) => item.messageId))];
 	const found = await db.emailMessage.findMany({
 		where: { id: { in: messageIds } },
@@ -241,4 +310,14 @@ export async function proposeFollowUp(
 	});
 
 	return { written: true, id: created.id };
+}
+
+function asEnum<T extends string>(
+	value: string,
+	fallback: T,
+	allowed: readonly T[],
+): T {
+	return (allowed as readonly string[]).includes(value)
+		? (value as T)
+		: fallback;
 }

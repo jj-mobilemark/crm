@@ -45,11 +45,11 @@ const DEAL_COLUMNS: SimpleTableColumn[] = [
  * already open — so a rep does not have to leave this page to see the whole
  * picture before deciding what to accept.
  */
-export function MyWorkPanels({ userId }: { userId: string }) {
+export function MyWorkPanels() {
 	return (
 		<div className="grid gap-6 @3xl/page-content:grid-cols-2">
 			<MyTasksPanel />
-			<MyDealsPanel userId={userId} />
+			<MyDealsPanel />
 		</div>
 	);
 }
@@ -144,27 +144,25 @@ function MyTasksPanel() {
 	);
 }
 
-function MyDealsPanel({ userId }: { userId: string }) {
+function MyDealsPanel() {
 	const trpc = useTRPC();
 	const openRecord = useOpenRecord();
 
-	const deals = useQuery(
-		trpc.deals.list.queryOptions({
-			owner: userId,
-			status: "open",
-			pageSize: 8,
-			sort: "lastActivity",
-			dir: "asc",
-		}),
-	);
-
-	const rows = deals.data?.rows ?? [];
+	const pipeline = useQuery(trpc.followups.pipeline.queryOptions());
+	const rows = pipeline.data?.rows ?? [];
+	const scope = pipeline.data?.prefs.scope;
 
 	return (
 		<Card className="min-w-0">
 			<CardHeader>
 				<CardTitle>My active deals</CardTitle>
-				<CardDescription>The quietest ones first.</CardDescription>
+				<CardDescription>
+					{scope === "mail"
+						? "Secondary — your priorities are mail-driven."
+						: scope === "shared"
+							? "Deals you own or have worked."
+							: "The quietest ones first."}
+				</CardDescription>
 			</CardHeader>
 			<CardPanel>
 				{rows.length === 0 ? (

@@ -33,6 +33,7 @@ model User {
   mailboxSyncs   MailboxSync[]
   factDecisions  ContactFact[] @relation("FactDecider")
   conversations  AgentConversation[] @relation("ConversationOwner")
+  followUpPreference FollowUpPreference?
 
   @@unique([email])
   @@map("user")
@@ -864,4 +865,22 @@ model FollowUpSuggestion {
 
   @@index([userId, status, createdAt])
   @@map("followUpSuggestion")
+}
+
+/// Per-rep Follow-ups page priority settings. Defaults live in code when no
+/// row exists — see `packages/db/src/followup-prefs.ts`.
+model FollowUpPreference {
+  id         String   @id @default(cuid())
+  userId     String   @unique
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// balanced | commitments | replies | deal-risk
+  floatFirst String   @default("balanced")
+  /// 7d | 30d | 90d
+  lookback   String   @default("30d")
+  /// owned | shared | mail
+  scope      String   @default("owned")
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@map("followUpPreference")
 }

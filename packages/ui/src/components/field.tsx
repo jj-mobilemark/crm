@@ -38,18 +38,37 @@ function FieldLegend({
 	);
 }
 
-function FieldGroup({ className, ...props }: React.ComponentProps<"div">) {
+function FieldGroup({
+	className,
+	layout = "stack",
+	...props
+}: React.ComponentProps<"div"> & VariantProps<typeof fieldGroupVariants>) {
 	return (
 		<div
 			data-slot="field-group"
-			className={cn(
-				"group/field-group @container/field-group flex w-full flex-col gap-5 data-[slot=checkbox-group]:gap-3 *:data-[slot=field-group]:gap-4",
-				className,
-			)}
+			data-layout={layout}
+			className={cn(fieldGroupVariants({ layout }), className)}
 			{...props}
 		/>
 	);
 }
+
+const fieldGroupVariants = cva(
+	"group/field-group @container/field-group w-full data-[slot=checkbox-group]:gap-3 *:data-[slot=field-group]:gap-4",
+	{
+		variants: {
+			layout: {
+				stack: "flex flex-col gap-5",
+				/** Side-by-side fields; same container breakpoints as Field responsive. */
+				columns:
+					"grid grid-cols-1 gap-4 md:grid-cols-3 [&_[data-slot=select-trigger]]:w-full",
+			},
+		},
+		defaultVariants: {
+			layout: "stack",
+		},
+	},
+);
 
 const fieldVariants = cva(
 	"group/field flex w-full gap-2 data-[invalid=true]:text-destructive",

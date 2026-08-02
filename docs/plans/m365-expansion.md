@@ -507,6 +507,47 @@ model FollowUpSuggestion {
   dashboard already uses for two same-height side-by-side lists), not
   `DataTable` — same reasoning as the Screening Room table.
 
+### Priority prefs (Phase 5 add-on)
+
+Goal: each rep shapes what the Follow-ups page calls out first, via three
+fixed selects — not open chat. Filters first; the daily sweep can read the
+same prefs. A future on-page agent ask (mail/Graph context) is planned, not
+built here.
+
+**Three questions (select-only):**
+
+1. **What should float first?** (`floatFirst`)
+   - `commitments` — commitments I made
+   - `replies` — replies I owe
+   - `deal-risk` — at-risk / stale deals
+   - `balanced` — default mix (due date, then newest)
+2. **How far back matters?** (`lookback`)
+   - `7d` / `30d` (default) / `90d`
+3. **Whose work?** (`scope`)
+   - `owned` — my owned deals + my mail (default)
+   - `shared` — also deals I have activity on (no membership table)
+   - `mail` — mail-driven kinds only (`commitment` / `reply-owed` /
+     `next-step`); deals lane stays secondary
+
+**Storage:** `FollowUpPreference` (one row per `userId`, upserted). Defaults
+apply when no row exists. Shared constants in `packages/db` so API + agent
+agree.
+
+**How they apply (v1 — no new agent chat UI):**
+
+- `followups.list` filters + reorders suggestions by prefs.
+- Deals lane on `/follow-ups` respects `scope` (`owned` vs `shared`;
+  `mail` keeps owned deals but suggestions drop `deal-risk`).
+- Daily sweep: `followupsPreamble` and `repFollowupContext` read prefs —
+  lookback trims mail window; float/scope bias what to propose. Still
+  mechanical filters + prompt text, not a free-form agent on the page.
+
+**API:** `followups.prefs` (query) + `followups.updatePrefs` (mutation).
+**UI:** three selects above the suggestions table on `/follow-ups`.
+
+**Later (not this slice):** constrained ask on `/follow-ups` that already
+knows prefs + synced mail (and optionally Graph). Do not build until asked.
+
 ### Definition of done (Phase 5)
 
 - [ ] With synced mail present, the daily task produces suggestions with real
@@ -514,9 +555,12 @@ model FollowUpSuggestion {
 - [ ] Accept creates a TASK visible on the record timeline AND in "My open
       tasks"; dismiss/snooze behave; nothing duplicates on the next run
 - [ ] A rep sees only their own suggestions/tasks/deals
+- [ ] Priority prefs: changing the three selects reshapes list order/filter
+      without an agent round-trip; prefs persist per rep
 - [x] `check-types` / `lint` / `test` pass; `HANDOFF.md` updated
-      (code complete — human smoke still open: needs a mailbox-connected rep
-      with real synced mail and at least one daily sweep to run)
+      (code complete — human smoke still open: enqueue works; agent needs
+      `AI_GATEWAY_API_KEY` + `POST /eve/v1/dev/schedules/dispatch` under
+      `eve dev`; then accept/snooze + prefs reshape)
 
 ---
 

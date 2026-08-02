@@ -1,3 +1,8 @@
+import {
+	FOLLOWUP_FLOAT_FIRST,
+	FOLLOWUP_LOOKBACK,
+	FOLLOWUP_SCOPE,
+} from "@crm/db";
 import { z } from "zod";
 
 /** Matches `FollowUpSuggestion.kind` — see the Prisma schema doc comment. */
@@ -16,3 +21,11 @@ export const followupDecideInput = z.object({
 });
 
 export type FollowupDecideInput = z.infer<typeof followupDecideInput>;
+
+export const followupPrefsInput = z.object({
+	floatFirst: z.enum(FOLLOWUP_FLOAT_FIRST),
+	lookback: z.enum(FOLLOWUP_LOOKBACK),
+	scope: z.enum(FOLLOWUP_SCOPE),
+});
+
+export type FollowupPrefsInput = z.infer<typeof followupPrefsInput>;

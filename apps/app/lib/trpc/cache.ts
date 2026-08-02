@@ -207,7 +207,11 @@ export function useCrmCache(): CrmCache {
 
 		followup: (options) =>
 			run(
-				[trpc.followups.list.queryKey()],
+				[
+					trpc.followups.list.queryKey(),
+					trpc.followups.prefs.queryKey(),
+					trpc.followups.pipeline.queryKey(),
+				],
 				// Accepting one writes a TASK activity, which lands on both "my
 				// open tasks" and whichever record it names.
 				[

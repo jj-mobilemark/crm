@@ -64,26 +64,115 @@ it before stopping. The rules for maintaining it live in `AGENTS.md`
   meeting smoke confirmed by human). **Phase 3**: DONE. **Phase 4**: DONE
   (human confirmed the Screening Room smoke — stranger mail → row → approve
   creates a contact + backfill, reject-with-suppress holds the domain out).
-  **Phase 5**: code DONE — human smoke still open (needs a mailbox-connected
-  rep with real synced mail, then a run of the daily sweep).
-- **Next step**: Human smoke for Phase 5 Follow-ups (see the newest work-log
-  entry below for exact steps). After that, Phase 6 is optional-only
-  (`docs/plans/m365-expansion.md` Phase 6) and Phase 7 is a separate,
-  not-yet-started track. Optional visual pass on MS settings vs new comp
-  design system.
-- **Dev servers locally right now**: running as two direct background
-  processes (`bun run src/main.ts` in `apps/api`, `bun run dev` in
-  `apps/app`) rather than through root `bun run dev` / turbo — the
-  turbo-orchestrated stack has been dying silently a few seconds after
-  logging "successfully started" in this session (API log shows no error,
-  the process is just gone; `apps/api`'s `bun --watch` combined with
-  `@crm/db`'s `prisma generate --watch` is the suspect, not yet root-caused).
-  Direct `bun run` processes have been stable. If you restart normally with
-  root `bun run dev` and it dies the same way, this is why — fall back to
-  running `apps/api` and `apps/app` `dev` scripts directly in two terminals
-  until it's root-caused.
+  **Phase 5**: code DONE including priority prefs — human smoke **partially
+  started**. Enqueue works (`{"enqueued":1}`); Priority UI loads (3-col
+  selects). Agent sweep did **not** write suggestions yet: `eve dev` never
+  fires cron (must POST `/eve/v1/dev/schedules/dispatch`), and this machine
+  lacked `AI_GATEWAY_API_KEY` / OIDC (session failed with gateway auth error).
+  Accept/snooze/dismiss + prefs-reshape smoke still open once the model can
+  run.
+- **Next step**: Set `AI_GATEWAY_API_KEY` in root `.env`, restart `apps/agent`
+  (`bun run dev`), enqueue if needed, then
+  `curl -X POST http://127.0.0.1:2000/eve/v1/dev/schedules/dispatch`. Confirm
+  suggestions + prefs + accept on `/follow-ups`. Phase 6 only if asked.
+  Phase 7 needs its own plan. Optional MS settings visual pass.
+- **Dev servers**: prefer two direct processes — `bun run src/main.ts` in
+  `apps/api` and `bun run dev` in `apps/app` (+ `bun run dev` in
+  `apps/agent` for sweeps). After followups router changes, **restart the API**
+  (plain `bun run src/main.ts` does not hot-reload new tRPC procedures).
+  Root `bun run dev` / turbo can still die silently (see prior note).
+  Shell tip: `$CRON_SECRET` is in `.env`, not exported — load it for curl:
+  `Authorization: Bearer $(grep '^CRON_SECRET=' .env | cut -d= -f2- | tr -d \"\\'\")`.
 
 ## Work log (newest first)
+
+### 2026-08-02 — Phase 5 prefs smoke notes + Priority 3-col UI (agent: Grok via Cursor)
+
+**Plan / phase**: `docs/plans/m365-expansion.md` — Phase 5 priority prefs
+(follow-up polish + smoke).
+
+**What was completed**
+
+- Human smoke started: cron enqueue returns `{"enqueued":1}` once
+  `CRON_SECRET` is read from root `.env` (bare `$CRON_SECRET` in the shell is
+  empty → 403).
+- Restarted API so `followups.prefs` / `pipeline` / `updatePrefs` exist
+  (long-lived `bun run src/main.ts` does not pick up new routers). Fixed
+  Priority card so a failed prefs query shows defaults instead of an endless
+  spinner (`priority-prefs.tsx`).
+- `FieldGroup layout="columns"` in `packages/ui` — Priority selects render as
+  a 3-column row on `md+` (`md:grid-cols-3`).
+- Documented: `eve dev` does **not** fire schedules on cron; trigger with
+  `POST http://127.0.0.1:2000/eve/v1/dev/schedules/dispatch`. A triggered
+  followups session failed: AI Gateway had no credentials
+  (`AI_GATEWAY_API_KEY` / `eve link` OIDC). Synced mail exists (~8 messages);
+  suggestions table still empty until the model can run.
+- Plan already has Priority prefs + future on-page agent ask; no Phase 6 work.
+
+**How and why**
+
+- Separated UI/API wiring bugs from agent model auth so the next agent does
+  not re-debug an empty Follow-ups page as a product bug.
+
+**Deviations**
+
+- None from the prefs design. Smoke DoD still incomplete without gateway key.
+
+**What's next**
+
+1. Add `AI_GATEWAY_API_KEY` to root `.env` (see `.env.example`), restart
+   `apps/agent`, then:
+   - optional re-enqueue:
+     `curl -X POST -H "Authorization: Bearer $(grep '^CRON_SECRET=' .env | cut -d= -f2- | tr -d \"\\'\")" http://localhost:3001/internal/agent/followups`
+   - `curl -X POST http://127.0.0.1:2000/eve/v1/dev/schedules/dispatch`
+2. On `/follow-ups`: confirm suggestions with cited evidence; change Priority
+   selects; accept / snooze / dismiss.
+3. Check Phase 5 DoD boxes in `docs/plans/m365-expansion.md` when green.
+4. Phase 6 only if asked.
+
+### 2026-08-02 — Phase 5 priority prefs (filters + sweep bias) (agent: Grok via Cursor)
+
+**Plan / phase**: `docs/plans/m365-expansion.md` — Phase 5 add-on
+("Priority prefs").
+
+**What was completed**
+
+- Plan: added "Priority prefs (Phase 5 add-on)" — three selects, filter-first
+  v1, daily sweep reads the same prefs, future on-page agent ask noted as not
+  built. Phase 6 left alone.
+- Schema: `FollowUpPreference` (`floatFirst` / `lookback` / `scope`) +
+  migration
+  `packages/db/prisma/migrations/20260802180000_add_followup_preference/`.
+  Shared constants/helpers in `packages/db/src/followup-prefs.ts`.
+- API: `followups.prefs`, `followups.updatePrefs`, `followups.pipeline`;
+  `followups.list` filters/reorders by prefs. Regenerated
+  `apps/api/src/generated/server.ts` (12 routers / 54 procedures).
+- Agent: `loadFollowupPrefs` + lookback/scope in `repFollowupContext` /
+  `proposeFollowUp`; `followupsPreamble` states the three biases.
+- UI: `/follow-ups` Priority card (`priority-prefs.tsx`); deals lane uses
+  `followups.pipeline`. Cache invalidation covers prefs + pipeline.
+- `check-types` / `lint` / `test` pass. Migration applied locally.
+
+**How and why**
+
+- Prefs are mechanical filters (and light sweep prompt text), not intelligence
+  in the API — matches `docs/api.md`. One DB row per rep so list and sweep
+  stay aligned without a free-form chat UI yet.
+
+**Deviations**
+
+- `shared` means deals the rep owns **or** has logged activity on (no
+  deal-membership table).
+- On-page agent ask deferred (documented in plan only).
+
+**What's next**
+
+1. **Human smoke (Phase 5 DoD + prefs)**:
+   - Connected Outlook mailbox with synced mail.
+   - `curl -X POST -H "Authorization: Bearer $CRON_SECRET" http://localhost:3001/internal/agent/followups`
+   - Open `/follow-ups`: change Float first / Look back / Whose work; confirm
+     list and deals lane reshape; accept / snooze / dismiss still work.
+2. Phase 6 only if asked. Phase 7 needs its own plan.
 
 ### 2026-08-02 — Forked to jj-mobilemark/crm; main is now the real branch (agent: Sonnet via Cursor)
 

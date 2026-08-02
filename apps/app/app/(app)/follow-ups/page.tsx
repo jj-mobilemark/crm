@@ -11,6 +11,7 @@ import { requireSession } from "@/lib/session";
 import { HydrateClient } from "@/lib/trpc/hydrate";
 import { getServerQueryClient, getServerTrpc } from "@/lib/trpc/server";
 import { MyWorkPanels } from "./my-work-panels";
+import { PriorityPrefs } from "./priority-prefs";
 import { SuggestionsPanel } from "./suggestions-panel";
 
 export const metadata: Metadata = {
@@ -18,24 +19,17 @@ export const metadata: Metadata = {
 };
 
 export default async function FollowUpsPage() {
-	const session = await requireSession();
+	await requireSession();
 
 	const trpc = getServerTrpc();
 	const queryClient = getServerQueryClient();
 
 	await Promise.all([
+		queryClient.prefetchQuery(trpc.followups.prefs.queryOptions()),
 		queryClient.prefetchQuery(trpc.followups.list.queryOptions()),
+		queryClient.prefetchQuery(trpc.followups.pipeline.queryOptions()),
 		queryClient.prefetchQuery(
 			trpc.activities.myTasks.queryOptions({ window: "all", limit: 8 }),
-		),
-		queryClient.prefetchQuery(
-			trpc.deals.list.queryOptions({
-				owner: session.user.id,
-				status: "open",
-				pageSize: 8,
-				sort: "lastActivity",
-				dir: "asc",
-			}),
 		),
 	]);
 
@@ -45,16 +39,17 @@ export default async function FollowUpsPage() {
 				<PageShellHeading>
 					<PageShellTitle>Follow-ups</PageShellTitle>
 					<PageShellDescription>
-						What the agent noticed in your synced mail, and what is on your
-						plate.
+						What the agent noticed in your synced mail, shaped by your
+						priorities.
 					</PageShellDescription>
 				</PageShellHeading>
 			</PageShellHeader>
 
 			<PageShellContent>
 				<HydrateClient>
+					<PriorityPrefs />
 					<SuggestionsPanel />
-					<MyWorkPanels userId={session.user.id} />
+					<MyWorkPanels />
 				</HydrateClient>
 			</PageShellContent>
 		</PageShell>

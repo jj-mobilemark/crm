@@ -19,7 +19,7 @@ import { contactListInput, contactIdInput, contactCreateInput, contactUpdateArgs
 import { conversationListInput, conversationEventsInput, conversationSaveInput, conversationIdInput } from "../conversations/conversations.contracts";
 import { dashboardSummaryInput } from "../dashboard/dashboard.contracts";
 import { dealListInput, dealIdInput, dealCreateInput, dealUpdateArgs, setStageInput } from "../deals/deals.contracts";
-import { followupDecideInput } from "../followups/followups.contracts";
+import { followupPrefsInput, followupDecideInput } from "../followups/followups.contracts";
 import { setAutoCreateInput, suppressDomainInput, threadInput, calendarEventInput } from "../google/google.contracts";
 import { msSetAutoCreateInput, msSuppressDomainInput, msThreadInput, msCalendarEventInput } from "../microsoft/microsoft.contracts";
 import { screeningDecideInput } from "../screening/screening.contracts";
@@ -136,6 +136,13 @@ const appRouter = t.router({
   followups: t.router({
     list: publicProcedure
       .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<FollowupsRouter["list"]>>),
+    prefs: publicProcedure
+      .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<FollowupsRouter["prefs"]>>),
+    pipeline: publicProcedure
+      .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<FollowupsRouter["pipeline"]>>),
+    updatePrefs: publicProcedure
+      .input(followupPrefsInput)
+      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<FollowupsRouter["updatePrefs"]>>),
     decide: publicProcedure
       .input(followupDecideInput)
       .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<FollowupsRouter["decide"]>>)

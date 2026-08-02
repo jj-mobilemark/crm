@@ -1,5 +1,6 @@
 import { db } from "@crm/db";
 import { capabilitiesMarkdown } from "./capabilities";
+import { loadFollowupPrefs } from "./followups";
 
 /**
  * What a session is told before it says anything.
@@ -353,19 +354,24 @@ export async function followupsPreamble(
 	userId: string,
 	opened: Opened,
 ): Promise<Preamble> {
-	const user = await db.user.findUnique({
-		where: { id: userId },
-		select: {
-			name: true,
-			_count: {
-				select: {
-					ownedDeals: { where: { closedAt: null } },
+	const [user, prefs] = await Promise.all([
+		db.user.findUnique({
+			where: { id: userId },
+			select: {
+				name: true,
+				_count: {
+					select: {
+						ownedDeals: { where: { closedAt: null } },
+					},
 				},
 			},
-		},
-	});
+		}),
+		loadFollowupPrefs(userId),
+	]);
 
 	if (!user) return { markdown: capabilitiesMarkdown(), focus: {} };
+
+	const priorityLines = prefsBias(prefs);
 
 	const markdown = [
 		"## This session",
@@ -376,9 +382,12 @@ export async function followupsPreamble(
 		"This is not about one contact, company or deal — it is everything open",
 		`on this rep's plate. They have ${user._count.ownedDeals} open deal(s).`,
 		"",
+		"Their Follow-ups priority settings (apply these when choosing what to raise):",
+		...priorityLines.map((line) => `- ${line}`),
+		"",
 		"Start with `read_rep_followup_context` on this user id — it returns their",
-		"recent synced mail (with message ids) and their open deals in one call.",
-		"Read it before writing anything.",
+		"recent synced mail (with message ids) and their open deals in one call,",
+		"already trimmed to their lookback and scope. Read it before writing anything.",
 		"",
 		"Then call `propose_followups` once per suggestion you find worth raising:",
 		'an explicit commitment in their own sent mail ("I\'ll send X by Friday"),',
@@ -395,6 +404,32 @@ export async function followupsPreamble(
 		.join("\n");
 
 	return { markdown, focus: {} };
+}
+
+function prefsBias(prefs: {
+	floatFirst: string;
+	lookback: string;
+	scope: string;
+}): string[] {
+	const float =
+		prefs.floatFirst === "commitments"
+			? "Prefer commitments the rep made in their own sent mail."
+			: prefs.floatFirst === "replies"
+				? "Prefer inbound questions that still need a reply."
+				: prefs.floatFirst === "deal-risk"
+					? "Prefer quiet or stalled deals over mail chores."
+					: "Balance commitments, reply-owed, deal risk, and next steps.";
+
+	const lookback = `Only use mail from the last ${prefs.lookback.replace("d", " days")}.`;
+
+	const scope =
+		prefs.scope === "mail"
+			? "Mail-driven only — do not propose deal-risk."
+			: prefs.scope === "shared"
+				? "Include deals they own and deals they have logged activity on."
+				: "Stick to deals they own, plus their own mailbox.";
+
+	return [float, lookback, scope];
 }
 
 /**
