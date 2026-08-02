@@ -34,6 +34,7 @@ export default defineDynamic({
 					contactId: asString(attributes.contactId),
 					companyId: asString(attributes.companyId),
 					dealId: asString(attributes.dealId),
+					userId: asString(attributes.userId),
 				},
 				{
 					// The dispatcher names a task; the panel never does. That is the

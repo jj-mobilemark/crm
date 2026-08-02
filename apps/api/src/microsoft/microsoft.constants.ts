@@ -26,3 +26,18 @@ export const SCOPE_FOR_SOURCE: Record<SyncSource, string> = {
 
 /** Better Auth's provider id for the Microsoft social provider. */
 export const MICROSOFT_PROVIDER_ID = "microsoft";
+
+/**
+ * How far back a contact-add backfill may reach.
+ *
+ * Config constant, not an env var — changing the window is a product decision,
+ * not a self-hoster knob.
+ */
+export const BACKFILL_MAX_AGE_DAYS = 180;
+
+/** Pages × page size ceiling for one address × one mailbox. */
+export const BACKFILL_PAGE_SIZE = 50;
+export const BACKFILL_MAX_PAGES = 5;
+
+/** Addresses processed per sync tick so backfill cannot starve incremental sync. */
+export const BACKFILL_MAX_PER_TICK = 3;

@@ -35,28 +35,273 @@ it before stopping. The rules for maintaining it live in `AGENTS.md`
   resolver, and added row-hover prefetch. This is cosmetic/mechanical and did
   not touch the Microsoft module. **Visual pass still needed** on the
   Microsoft settings panel and sign-in page against the new design system.
-- **Verification after merge**: `check-types` 10/10, `lint` 7/7, `test`
-  111 pass / 0 fail (incl. `hasMsSyncScopes`). `server.ts` regenerates
-  identical (10 routers, 47 procedures) — no drift.
+- **Verification**: `check-types` 10/10, `lint` 7/7, `test` 111 pass / 0 fail
+  (api; agent 116).
 - **Runs locally**: Bun 1.3.12 monorepo; Postgres via `docker compose up -d`;
   `bun run dev` serves app on :3000 and API on :3001. Setup details in
-  `docs/local-setup.md`.
+  `docs/local-setup.md`. **API `dev` script no longer runs `nestjs-trpc watch`
+  alongside `bun --watch`** (that combo was killing `:3001`). After router
+  edits: `bun run --filter=api trpc:generate`.
 - **Auth**: email + password (fallback), allow-list
   `ALLOWED_SIGN_IN=mobilemark.com`. **Microsoft SSO works end-to-end** for
   `jjohnson@mobilemark.com`: `account` row `providerId=microsoft`,
   `refreshToken` present, scope includes `Mail.Read` + `Calendars.Read`
   (short names). Google OAuth still optional / unconfigured.
-  `MICROSOFT_*` set in root `.env` (secret never recorded here).
+  `MICROSOFT_*` + `CRON_SECRET` set in root `.env` (secrets never recorded here).
 - **Settings**: full Microsoft 365 card via `microsoft.status` (Check now,
   auto-create, purge, revoke). Google card only when Google is configured and
   Microsoft is not.
+- **Smoke-test contacts (local DB only)**: Jordan Johnson ·
+  `jordan@ten18.tech` · Ten18 Tech; also Nicole Zandier · `nicolez@dsdinc.com`
+  · DSD Inc.
 - **Active plan**: `docs/plans/m365-expansion.md` (Phases 0–7).
-- **Phase 0**: DONE. **Phase 1**: DONE. **Phase 2**: code DONE — needs human
-  smoke test (cron + real mail/meeting).
-- **Next step**: Human smoke-test Phase 2 Definition of Done, then **Phase 3**
-  (backfill on contact add). See newest work-log entry.
+- **Phase 0**: DONE. **Phase 1**: DONE. **Phase 2**: DONE (mail + calendar
+  meeting smoke confirmed by human). **Phase 3**: DONE. **Phase 4**: DONE
+  (human confirmed the Screening Room smoke — stranger mail → row → approve
+  creates a contact + backfill, reject-with-suppress holds the domain out).
+  **Phase 5**: code DONE — human smoke still open (needs a mailbox-connected
+  rep with real synced mail, then a run of the daily sweep).
+- **Next step**: Human smoke for Phase 5 Follow-ups (see the newest work-log
+  entry below for exact steps). After that, Phase 6 is optional-only
+  (`docs/plans/m365-expansion.md` Phase 6) and Phase 7 is a separate,
+  not-yet-started track. Optional visual pass on MS settings vs new comp
+  design system.
+- **Dev servers locally right now**: running as two direct background
+  processes (`bun run src/main.ts` in `apps/api`, `bun run dev` in
+  `apps/app`) rather than through root `bun run dev` / turbo — the
+  turbo-orchestrated stack has been dying silently a few seconds after
+  logging "successfully started" in this session (API log shows no error,
+  the process is just gone; `apps/api`'s `bun --watch` combined with
+  `@crm/db`'s `prisma generate --watch` is the suspect, not yet root-caused).
+  Direct `bun run` processes have been stable. If you restart normally with
+  root `bun run dev` and it dies the same way, this is why — fall back to
+  running `apps/api` and `apps/app` `dev` scripts directly in two terminals
+  until it's root-caused.
 
 ## Work log (newest first)
+
+### 2026-08-02 — Phase 5 Follow-ups / Sales Cockpit (agent: Sonnet via Cursor)
+
+**Plan / phase**: `docs/plans/m365-expansion.md` — Phase 5 implemented.
+
+**What was completed**
+
+- Schema: `FollowUpSuggestion` model (userId/contactId/companyId/dealId,
+  kind, summary, capped `quote`, `dueHint`, `evidence` Json, status,
+  `activityId`) + migration
+  `packages/db/prisma/migrations/20260802155904_add_followup_suggestion/`.
+  Additive `AgentTask.userId String?` + index in the same migration, for a
+  per-rep task alongside the existing per-record ones.
+- Agent (`apps/agent`): `agent/lib/followups.ts` (`repFollowupContext`,
+  `proposeFollowUp` — verifies every cited message id exists before writing);
+  tools `read_rep_followup_context.ts` (free read) and
+  `propose_followups.ts` (one suggestion per call); `agent/lib/preamble.ts`
+  gained `followupsPreamble` + a `userId` branch in `sessionPreamble`;
+  `agent/instructions/task.ts` passes `attributes.userId` through;
+  `agent/schedules/dispatch.ts` passes `userId` in session attributes and
+  added the `"followups"` case to `work()`; `agent/lib/tasks.ts` carries
+  `userId` through `claimDue`/`retireExhausted`/`completeTask`/`taskSubject`.
+- API: `AgentTriggerService.followupsDue(userId, reason)`
+  (`apps/api/src/agent/agent-trigger.service.ts`); new
+  `apps/api/src/followups/` module — `followups.service.ts` (`list`,
+  `decide`, `enqueueDue`), `followups.router.ts` (alias `followups`),
+  `followups.controller.ts` (`GET|POST /internal/agent/followups`,
+  `CRON_SECRET`-guarded like the sync routes), `followups.module.ts`;
+  registered in `app.module.ts`; cron entry added to
+  `apps/api/scripts/build-func.mjs` (`0 13 * * *`, once daily). Regenerated
+  `apps/api/src/generated/server.ts` (12 routers / 51 procedures).
+- UI: `apps/app/app/(app)/follow-ups/` — `page.tsx`, `suggestions-panel.tsx`
+  (accept / snooze with quick presets / dismiss), `my-work-panels.tsx` (my
+  open tasks + my active deals, reusing `activities.myTasks` and
+  `deals.list`). Added to `app-icon-rail.tsx`. `useCrmCache` gained a
+  `followup()` invalidation entry.
+- Fixed a dropped `###` section header in this file's own work log (the
+  Phase 3 entry had lost its heading during a previous edit) while I was in
+  here.
+- `check-types` (10/10), `lint` (7/7), `test` (7/7 task groups, incl. a new
+  `TOOL_VERBS` entry each for the two new tools in
+  `apps/app/lib/agent-transcript.ts`) all pass.
+
+**How and why**
+
+- See the "Done, with these deviations" note under Phase 5 in the plan doc
+  for the four deviations from the original design (userId on `AgentTask`
+  instead of a new table; API cron instead of an agent-side schedule; two
+  tools instead of one; `CardPanel`/`SimpleTable` instead of `DataTable`) —
+  each one is mechanical, not a scope change.
+- Evidence verification lives in `proposeFollowUp`, not just the tool
+  description: the project's own rule is that nothing is guessed, and a tool
+  that only *asks* the model to cite something real is not the same as a tool
+  that checks.
+
+**Deviations**
+
+- See above (plan doc has the full reasoning). Nothing outside Phase 5's
+  intended scope.
+- Also fixed, unrelated to Phase 5: local dev servers were down when this
+  session started (killed during my own earlier smoke-testing on this
+  machine). Restarted `apps/api` and `apps/app` directly rather than through
+  root `bun run dev` — see "Current state" above.
+
+**What's next**
+
+1. **Human smoke (Phase 5 DoD)**:
+   - Ensure at least one rep has a connected Outlook mailbox with real synced
+     mail (Phase 2/3 state).
+   - Trigger the sweep by hand:
+     `curl -X POST -H "Authorization: Bearer $CRON_SECRET" http://localhost:3001/internal/agent/followups`
+     — expect `{"enqueued": <n>}`. This queues one `AgentTask` (`kind:
+     "followups"`) per mailbox-connected rep; the agent's `dispatch.ts`
+     schedule (`* * * * *` in dev) picks it up within a minute.
+   - Open `/follow-ups`: suggestions should appear with cited evidence once
+     the agent session finishes. Spot-check that a suggestion's `evidence`
+     message ids are real (they are — `propose_followups` verifies this at
+     write time — but confirm the UI shows something sensible).
+   - Accept one: confirm a TASK activity appears on the named
+     contact/company/deal's timeline AND in "My open tasks" here. Try snooze
+     and dismiss too.
+   - Confirm a second sweep does not duplicate an outstanding suggestion.
+2. Root-cause the turbo/`bun --watch` dev-stack crash noted in "Current
+   state" if it recurs — capture the exact log leading up to the silent
+   exit next time (there was none to capture this session; the process was
+   simply gone).
+3. Once Phase 5 DoD is fully green: Phase 6 is optional-only work (only
+   start if asked). Phase 7 (Sage CRM) is a separate track needing its own
+   plan doc — do not start it from this plan.
+
+### 2026-08-02 — Phase 4 Screening Room smoke confirmed (agent: Sonnet via Cursor)
+
+**Plan / phase**: Phase 4 Definition of Done — human smoke test.
+
+**What was completed**
+
+- Human confirmed the three open Phase 4 DoD items: stranger mail produces a
+  metadata-only `/screening` row, Approve creates a `Contact` (source `EMAIL`)
+  and runs backfill, Reject-with-suppress holds the domain out via
+  `SuppressedDomain`.
+- Re-verified `check-types` (10/10), `lint` (7/7), `test` (api + agent + app,
+  all green) on the current tree before moving on.
+- Checked the remaining Phase 4 boxes in `docs/plans/m365-expansion.md`.
+- Fixed a dropped section header in this file's work log (the Phase 3 entry
+  had lost its `###` heading during a previous edit).
+
+**Deviations**
+
+- None.
+
+**What's next**
+
+1. Start **Phase 5 — Follow-ups / Sales Cockpit**
+   (`docs/plans/m365-expansion.md` Phase 5): `FollowUpSuggestion` model +
+   migration, `apps/agent` `propose_followups` tool on a daily per-rep task,
+   `followups.router.ts`, `/follow-ups` UI (three lanes: suggestions / my
+   open tasks / my active deals). Read the `eve` skill before touching
+   `apps/agent`.
+
+### 2026-08-02 — Phase 4 Screening Room (agent: Grok via Cursor)
+
+**Plan / phase**: Phase 2 calendar DoD confirmed by human; Phase 4 implemented.
+
+**What was completed**
+
+- Human confirmed Phase 2 calendar: Outlook meeting with Jordan as attendee
+  appeared as a MEETING activity on his timeline.
+- Schema: `PendingContact` model + migration
+  `packages/db/prisma/migrations/20260802170000_add_pending_contact/`.
+- Harvest inside unmatched Outlook drop:
+  `screening-harvest.service.ts` + hook in
+  `outlook-mail-sync.service.ts` (metadata only — no bodies).
+- API: `apps/api/src/screening/` — `list` + `decide` (`screening` tRPC alias);
+  approve → `ContactsService.createFromScreening` (source `EMAIL`, backfill,
+  `contactCreated` reason `"approved in screening room"`); reject + optional
+  `suppressDomain` → `SuppressedDomain`.
+- UI: `/screening` page + table with Approve / Reject + suppress checkbox;
+  rail item in `app-icon-rail.tsx` (UserFollow icon).
+- Regenerated `apps/api/src/generated/server.ts` (11 routers / 49 procedures).
+- `check-types` / `lint` / `test` pass.
+
+**Deviations**
+
+- Screening list uses `Table` + `Empty` rather than `DataTable`, because
+  `DataTable` requires URL query/pagination state that a short review queue
+  does not need.
+
+**What's next**
+
+1. Human smoke: mail from a stranger (work domain, not in CRM) → sync → row
+   on `/screening` (no thread/body stored). Approve → contact + backfill;
+   Reject with suppress → domain stays out.
+2. Start **Phase 5 — Follow-ups / Sales Cockpit** in
+   `docs/plans/m365-expansion.md`.
+
+### 2026-08-02 — Phase 3 EmailBackfill (agent: Grok via Cursor)
+
+**Plan / phase**: Phase 2 DoD (mail) confirmed by human; Phase 3 implemented.
+
+**What was completed**
+
+- Human confirmed Phase 2 mail path: email from Ten18 Tech → Mobile Mark
+  mailbox synced onto Jordan Johnson's timeline after sync.
+- Phase 3 schema: `EmailBackfill` model + migration
+  `packages/db/prisma/migrations/20260802160000_add_email_backfill/`.
+- Enqueue on contact create / email change:
+  `apps/api/src/contacts/contacts.service.ts` (`enqueueEmailBackfill`).
+- Graph search + worker:
+  - `outlook-mail.client.ts` `searchByParticipant` (`$search` +
+    `ConsistencyLevel: eventual`)
+  - `outlook-mail-backfill.service.ts` (≤3 addresses/tick, 5×50 pages,
+    180-day cutoff, all connected Outlook mailboxes)
+  - `OutlookMailSyncService.ingestMessage` reuses the Phase 2 store path
+  - Wired at end of `MicrosoftSyncService.runDue` / `runForUser`
+- Smoke: enqueued `jordan@ten18.tech` → sync wrote **7** messages (incl.
+  June history before delta baseline); re-run wrote **0** (idempotent).
+- `check-types` / `lint` / `test` pass.
+
+**Deviations**
+
+- Jordan was created before Phase 3 shipped, so the first smoke used a
+  manual `EmailBackfill` upsert rather than contact-create enqueue. Create /
+  email-change paths are wired for future contacts.
+
+**What's next**
+
+1. Human: open Jordan Johnson Activity — should show older Ten18 threads
+   (not only today's sync).
+2. Optional: calendar event with Jordan as attendee (Phase 2 leftover DoD).
+3. Start **Phase 4 — Screening Room** in `docs/plans/m365-expansion.md`.
+
+### 2026-08-02 — API dying / infinite contact tab spinners (agent: Grok via Cursor)
+
+**Plan / phase**: Phase 2 unblock (local ops).
+
+**What was completed**
+
+- Contact sheet infinite spinners (Overview/Deals/Email filter/Agent) were not
+  a contact-data bug: Nest on `:3001` was exiting, so React Query refetches
+  never resolved. Activity "All" could still look fine briefly from cache.
+- Cause: `apps/api` `dev` used `concurrently` with `bun --watch src/main.ts`
+  **and** `nestjs-trpc watch` rewriting `src/generated/server.ts`. That rewrite
+  SIGTERM-restarts Nest; `enableShutdownHooks()` exits cleanly, so bun --watch
+  often does not bring the API back — leaving orphaned `nestjs-trpc` (PPID 1)
+  and nothing on 3001. Mid-session `pkill` debugging made the flap worse.
+- Fix in `apps/api/package.json`: `dev` is now only
+  `bun --watch --no-clear-screen src/main.ts`. Added optional `dev:trpc` for
+  intentional codegen watch. Router type regen stays
+  `bun run --filter=api trpc:generate` (AGENTS.md).
+- Hard-restarted `bun run dev` in its own session; API pid held `:3001` through
+  a 45s health poll with no `nestjs-trpc watch` process.
+
+**Deviations**
+
+- Local `api:dev` no longer auto-watches routers for tRPC codegen (upstream
+  did). Manual generate after router edits — matches AGENTS.md.
+
+**What's next**
+
+1. Human: hard-refresh, open Jordan Johnson, flip tabs — should not spin.
+2. Finish Phase 2 smoke (mail to/from `jordan@ten18.tech` + sync).
+3. Optional visual pass on MS settings vs new comp design system (prior log).
+4. Then Phase 3.
 
 ### 2026-08-02 — Sync to upstream comp design system (288d41a) (agent: Opus via Cursor)
 

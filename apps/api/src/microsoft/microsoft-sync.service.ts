@@ -3,6 +3,10 @@ import { SyncStateService } from "../google/sync-state.service";
 import { SYNC_SOURCES, type SyncSource } from "./microsoft.constants";
 import { MicrosoftConnectionService } from "./microsoft-connection.service";
 import { OutlookCalendarSyncService } from "./outlook-calendar-sync.service";
+import {
+	type BackfillTickSummary,
+	OutlookMailBackfillService,
+} from "./outlook-mail-backfill.service";
 import { OutlookMailSyncService } from "./outlook-mail-sync.service";
 
 /**
@@ -20,6 +24,7 @@ export type TickSummary = {
 	skipped: number;
 	failed: number;
 	durationMs: number;
+	backfill?: BackfillTickSummary;
 };
 
 /**
@@ -37,6 +42,7 @@ export class MicrosoftSyncService {
 		private readonly state: SyncStateService,
 		private readonly calendar: OutlookCalendarSyncService,
 		private readonly mail: OutlookMailSyncService,
+		private readonly backfill: OutlookMailBackfillService,
 		private readonly connections: MicrosoftConnectionService,
 	) {}
 
@@ -100,6 +106,12 @@ export class MicrosoftSyncService {
 			}
 		}
 
+		// Contact-add backfills use whatever budget remains so they never starve
+		// the incremental pass.
+		summary.backfill = await this.backfill.processPending(
+			startedAt + TICK_BUDGET_MS,
+		);
+
 		summary.durationMs = Date.now() - startedAt;
 
 		this.logger.log({
@@ -108,6 +120,8 @@ export class MicrosoftSyncService {
 			synced: summary.synced,
 			skipped: summary.skipped,
 			failed: summary.failed,
+			backfillAttempted: summary.backfill.attempted,
+			backfillDone: summary.backfill.done,
 			durationMs: summary.durationMs,
 		});
 
@@ -126,8 +140,12 @@ export class MicrosoftSyncService {
 
 	/** Every source for one user, for the "Sync now" button. */
 	async runForUser(userId: string): Promise<void> {
+		const startedAt = Date.now();
 		for (const source of SYNC_SOURCES) {
 			await this.runOne(userId, source);
 		}
+		// Sync now should also drain pending contact-add backfills so a rep who
+		// just added someone does not wait for the next cron tick.
+		await this.backfill.processPending(startedAt + TICK_BUDGET_MS);
 	}
 }

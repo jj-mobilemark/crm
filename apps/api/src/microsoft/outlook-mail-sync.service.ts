@@ -11,6 +11,7 @@ import { ActivityStampService } from "../crm/activity-stamp.service";
 import { InjectDatabase } from "../database/database.constants";
 import { snippetOf } from "../google/mime";
 import { SyncStateService } from "../google/sync-state.service";
+import { ScreeningHarvestService } from "../screening/screening-harvest.service";
 import {
 	type MatchContext,
 	MicrosoftMatchService,
@@ -62,6 +63,7 @@ export class OutlookMailSyncService {
 		private readonly match: MicrosoftMatchService,
 		private readonly state: SyncStateService,
 		private readonly stamp: ActivityStampService,
+		private readonly screening: ScreeningHarvestService,
 	) {}
 
 	async sync(row: MailboxSync): Promise<OutlookMailSyncOutcome> {
@@ -246,6 +248,20 @@ export class OutlookMailSyncService {
 		};
 	}
 
+	/**
+	 * Store one Graph message through the same match/thread/activity path as
+	 * incremental sync. Used by contact-add backfill so both writers stay one.
+	 */
+	async ingestMessage(
+		row: MailboxSync,
+		mailbox: string,
+		message: GraphMessage,
+		context?: MatchContext,
+	): Promise<boolean> {
+		const ctx = context ?? (await this.loadContext());
+		return this.store(row, mailbox, message, ctx);
+	}
+
 	/** One message: match it, store it, keep its thread's projection current. */
 	private async store(
 		row: MailboxSync,
@@ -298,8 +314,16 @@ export class OutlookMailSyncService {
 			contactId = match.contactId;
 
 			if (!companyId && !contactId) {
-				// Not anybody we track and not worth creating. Dropped at ingest —
-				// never written. Phase 4 harvests unmatched mail later.
+				// Not anybody we track and not worth creating. Bodies are never
+				// written — only participant metadata goes to the Screening Room.
+				await this.screening.harvest({
+					external: match.external,
+					direction: outbound
+						? EmailDirection.OUTBOUND
+						: EmailDirection.INBOUND,
+					subject: parsed.subject,
+					seenAt: parsed.sentAt,
+				});
 				return false;
 			}
 		}

@@ -78,9 +78,27 @@ export class AgentTriggerService {
 		});
 	}
 
+	/**
+	 * The daily sweep for one rep's mailbox and pipeline.
+	 *
+	 * Per-rep rather than per-record — `userId` is what dedupes it, the same
+	 * way `contactId` dedupes an identify task. One outstanding sweep per rep
+	 * at a time; a fresh mailbox tick does not queue a second one.
+	 */
+	async followupsDue(userId: string, reason: string): Promise<void> {
+		await this.enqueue({
+			userId,
+			kind: "followups",
+			reason,
+			priority: 5,
+			budget: 6,
+		});
+	}
+
 	private async enqueue(task: {
 		contactId?: string;
 		companyId?: string;
+		userId?: string;
 		kind: string;
 		reason: string;
 		priority: number;
@@ -96,6 +114,7 @@ export class AgentTriggerService {
 					finishedAt: null,
 					...(task.contactId ? { contactId: task.contactId } : {}),
 					...(task.companyId ? { companyId: task.companyId } : {}),
+					...(task.userId ? { userId: task.userId } : {}),
 				},
 				select: { id: true },
 			});
@@ -106,6 +125,7 @@ export class AgentTriggerService {
 				data: {
 					contactId: task.contactId ?? null,
 					companyId: task.companyId ?? null,
+					userId: task.userId ?? null,
 					kind: task.kind,
 					reason: task.reason,
 					priority: task.priority,
@@ -119,6 +139,7 @@ export class AgentTriggerService {
 				kind: task.kind,
 				contactId: task.contactId,
 				companyId: task.companyId,
+				userId: task.userId,
 			});
 		} catch (error) {
 			// Never fail the request that caused it. Enrichment has never been on a

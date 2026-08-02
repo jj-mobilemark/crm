@@ -13,11 +13,13 @@ import { CrmModule } from "./crm/crm.module";
 import { DashboardModule } from "./dashboard/dashboard.module";
 import { DatabaseModule } from "./database/database.module";
 import { DealsModule } from "./deals/deals.module";
+import { FollowupsModule } from "./followups/followups.module";
 import { GoogleModule } from "./google/google.module";
 import { HealthModule } from "./health/health.module";
 import { LoggingModule } from "./logging/logging.module";
 import { logAuthRoute } from "./logging/request-logger.middleware";
 import { MicrosoftModule } from "./microsoft/microsoft.module";
+import { ScreeningModule } from "./screening/screening.module";
 import { SearchModule } from "./search/search.module";
 import { TrpcModule } from "./trpc/trpc.module";
 import { UsersModule } from "./users/users.module";
@@ -47,6 +49,8 @@ import { UsersModule } from "./users/users.module";
 		SearchModule,
 		GoogleModule,
 		MicrosoftModule,
+		ScreeningModule,
+		FollowupsModule,
 	],
 })
 export class AppModule {}

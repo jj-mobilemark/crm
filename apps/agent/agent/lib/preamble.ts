@@ -43,12 +43,14 @@ export async function sessionPreamble(
 		contactId?: string | null;
 		companyId?: string | null;
 		dealId?: string | null;
+		userId?: string | null;
 	},
 	opened: Opened,
 ): Promise<Preamble> {
 	if (record.contactId) return contactPreamble(record.contactId, opened);
 	if (record.companyId) return companyPreamble(record.companyId, opened);
 	if (record.dealId) return dealPreamble(record.dealId, opened);
+	if (record.userId) return followupsPreamble(record.userId, opened);
 	return noRecordPreamble();
 }
 
@@ -337,6 +339,62 @@ export async function dealPreamble(
 	// Focused on the company, because that is the record every fact the agent
 	// can write hangs off — a deal has no fields of its own to enrich.
 	return { markdown, focus: { companyId: deal.company?.id ?? null } };
+}
+
+/**
+ * The daily sweep over one rep's own mailbox and pipeline.
+ *
+ * Not a record at all — there is no contact, company or deal in focus, which
+ * is why `focus` comes back empty. Every suggestion this session writes names
+ * its own contact, company or deal id directly; nothing here needs filing
+ * against one record.
+ */
+export async function followupsPreamble(
+	userId: string,
+	opened: Opened,
+): Promise<Preamble> {
+	const user = await db.user.findUnique({
+		where: { id: userId },
+		select: {
+			name: true,
+			_count: {
+				select: {
+					ownedDeals: { where: { closedAt: null } },
+				},
+			},
+		},
+	});
+
+	if (!user) return { markdown: capabilitiesMarkdown(), focus: {} };
+
+	const markdown = [
+		"## This session",
+		"",
+		`You are running the daily follow-up sweep for **${user.name ?? "this rep"}** (\`${userId}\`).`,
+		opened.reason ? `Why now: ${opened.reason}` : "",
+		"",
+		"This is not about one contact, company or deal — it is everything open",
+		`on this rep's plate. They have ${user._count.ownedDeals} open deal(s).`,
+		"",
+		"Start with `read_rep_followup_context` on this user id — it returns their",
+		"recent synced mail (with message ids) and their open deals in one call.",
+		"Read it before writing anything.",
+		"",
+		"Then call `propose_followups` once per suggestion you find worth raising:",
+		'an explicit commitment in their own sent mail ("I\'ll send X by Friday"),',
+		"an inbound question that never got a reply, a deal that has sat quiet a",
+		"long time, or an agreed next step nobody has booked yet. Every suggestion",
+		"must cite the real thread and message ids behind it — never one you",
+		"cannot point to. Say nothing about a rep's mailbox that is not backed by",
+		"a message you actually read. Write as many or as few suggestions as the",
+		"evidence supports; an empty sweep is a correct sweep.",
+		"",
+		capabilitiesMarkdown(),
+	]
+		.filter(Boolean)
+		.join("\n");
+
+	return { markdown, focus: {} };
 }
 
 /**

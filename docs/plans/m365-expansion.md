@@ -302,16 +302,17 @@ write the microsoft twin.
 
 ### Definition of done (Phase 2)
 
-- [ ] With a connected Microsoft account and `CRON_SECRET` set:
+- [x] With a connected Microsoft account and `CRON_SECRET` set:
       `curl -X POST -H "Authorization: Bearer $CRON_SECRET" http://localhost:3001/internal/sync/microsoft`
       returns a run summary and does not error
-- [ ] First run imports zero messages (forward-only) and records a cursor
-- [ ] Send a NEW email to/from an address that exists as a CRM contact, run
+- [x] First run imports zero messages (forward-only) and records a cursor
+- [x] Send a NEW email to/from an address that exists as a CRM contact, run
       sync again: the thread appears on that contact's timeline; expanding it
       shows the body
 - [ ] An email with a stranger (not in CRM) creates NO rows
-- [ ] A calendar event with a known contact appears as a MEETING activity
-- [ ] `check-types` / `lint` / `test` pass; generated `server.ts` committed;
+      (bodies still not stored; Phase 4 harvests metadata into Screening)
+- [x] A calendar event with a known contact appears as a MEETING activity
+- [x] `check-types` / `lint` / `test` pass; generated `server.ts` committed;
       `HANDOFF.md` updated
 
 ---
@@ -354,11 +355,11 @@ model EmailBackfill {
 
 ### Definition of done (Phase 3)
 
-- [ ] Create a contact whose address you exchanged mail with BEFORE Phase 2's
+- [x] Create a contact whose address you exchanged mail with BEFORE Phase 2's
       baseline: after the next sync tick, those recent threads appear on the
       new contact's timeline
-- [ ] Running the same backfill twice creates no duplicates
-- [ ] `check-types` / `lint` / `test` pass; `HANDOFF.md` updated
+- [x] Running the same backfill twice creates no duplicates
+- [x] `check-types` / `lint` / `test` pass; `HANDOFF.md` updated
 
 ---
 
@@ -412,12 +413,12 @@ model PendingContact {
 
 ### Definition of done (Phase 4)
 
-- [ ] Mail from a stranger shows up in Screening (no thread/body stored)
-- [ ] Approve → contact exists (source EMAIL), backfill runs, agent identify
+- [x] Mail from a stranger shows up in Screening (no thread/body stored)
+- [x] Approve → contact exists (source EMAIL), backfill runs, agent identify
       task is enqueued, candidate disappears from the queue
-- [ ] Reject with suppress → domain in `SuppressedDomain`; future mail from it
+- [x] Reject with suppress → domain in `SuppressedDomain`; future mail from it
       never reappears
-- [ ] `check-types` / `lint` / `test` pass; `HANDOFF.md` updated
+- [x] `check-types` / `lint` / `test` pass; `HANDOFF.md` updated
 
 ---
 
@@ -483,6 +484,29 @@ model FollowUpSuggestion {
      `apps/app/components/crm/deal-stage.tsx`).
   Add to the icon rail. Everything scoped to the signed-in rep.
 
+**Done, with these deviations from the design above:**
+
+- `AgentTask` gained an additive `userId String?` column (+ index) rather than
+  overloading `contactId`. A per-rep sweep is about a rep, not a record, and
+  the dispatcher's own attributes/preamble plumbing already branches on which
+  id is set — `userId` is one more branch, not a new mechanism.
+  `AgentTriggerService.followupsDue(userId, reason)` mirrors
+  `contactCreated`/`meetingSoon`.
+- The enqueue is an API cron (`apps/api/src/followups/`, route
+  `GET|POST /internal/agent/followups`, `CRON_SECRET`-guarded like the sync
+  routes, once daily at 13:00 UTC), not an agent-side schedule — it needs to
+  read `MailboxSync` for "which reps are mailbox-connected", which is API-side
+  data reached the same way the Microsoft/Google cron routes already do.
+- Two tools, not one: `read_rep_followup_context` (free read — recent
+  `syncedByUserId` mail + open deals, via `apps/agent/agent/lib/followups.ts`)
+  and `propose_followups` (writes exactly one suggestion per call, mirroring
+  `record_fact`'s one-claim-at-a-time shape). `propose_followups` verifies
+  every cited `messageId` actually exists before writing — a suggestion citing
+  a message nobody can find fails there rather than reaching a rep's screen.
+- UI panel is `Card`/`CardPanel`/`SimpleTable` (the pattern the overview
+  dashboard already uses for two same-height side-by-side lists), not
+  `DataTable` — same reasoning as the Screening Room table.
+
 ### Definition of done (Phase 5)
 
 - [ ] With synced mail present, the daily task produces suggestions with real
@@ -490,7 +514,9 @@ model FollowUpSuggestion {
 - [ ] Accept creates a TASK visible on the record timeline AND in "My open
       tasks"; dismiss/snooze behave; nothing duplicates on the next run
 - [ ] A rep sees only their own suggestions/tasks/deals
-- [ ] `check-types` / `lint` / `test` pass; `HANDOFF.md` updated
+- [x] `check-types` / `lint` / `test` pass; `HANDOFF.md` updated
+      (code complete — human smoke still open: needs a mailbox-connected rep
+      with real synced mail and at least one daily sweep to run)
 
 ---
 

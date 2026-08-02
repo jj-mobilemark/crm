@@ -65,7 +65,7 @@ const EMPTY_STATES: Record<
 	email: {
 		title: "No email",
 		description:
-			"Threads appear here as they are synced from Gmail. Nothing from before this mailbox was connected is imported.",
+			"Threads appear here as they are synced from your mailbox. Nothing from before this mailbox was connected is imported.",
 	},
 	meetings: {
 		title: "No meetings",

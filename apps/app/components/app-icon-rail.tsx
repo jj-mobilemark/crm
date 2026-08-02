@@ -5,6 +5,8 @@ import type { CarbonIconType } from "@carbon/icons-react/es/CarbonIcon";
 import Dashboard from "@carbon/icons-react/es/Dashboard";
 import Partnership from "@carbon/icons-react/es/Partnership";
 import Settings from "@carbon/icons-react/es/Settings";
+import TaskStar from "@carbon/icons-react/es/TaskStar";
+import UserFollow from "@carbon/icons-react/es/UserFollow";
 import UserMultiple from "@carbon/icons-react/es/UserMultiple";
 import { Button } from "@crm/ui/components/button";
 import { Icon } from "@crm/ui/components/icon";
@@ -41,6 +43,18 @@ const ITEMS: RailItem[] = [
 		match: "prefix",
 	},
 	{ title: "Deals", href: "/deals", icon: Partnership, match: "prefix" },
+	{
+		title: "Follow-ups",
+		href: "/follow-ups",
+		icon: TaskStar,
+		match: "prefix",
+	},
+	{
+		title: "Screening",
+		href: "/screening",
+		icon: UserFollow,
+		match: "prefix",
+	},
 	{ title: "Settings", href: "/settings", icon: Settings, match: "prefix" },
 ];
 

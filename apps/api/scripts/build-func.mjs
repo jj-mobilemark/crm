@@ -241,6 +241,9 @@ writeFileSync(
 		crons: [
 			{ path: "/internal/sync/google", schedule: "*/5 * * * *" },
 			{ path: "/internal/sync/microsoft", schedule: "*/5 * * * *" },
+			// Once a day: queues one `followups` AgentTask per mailbox-connected
+			// rep. The dispatcher (apps/agent) runs each one on its own clock.
+			{ path: "/internal/agent/followups", schedule: "0 13 * * *" },
 		],
 	}),
 );

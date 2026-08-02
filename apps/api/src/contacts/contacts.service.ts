@@ -5,7 +5,7 @@ import {
 	FactStatus,
 	type Prisma,
 	Prisma as PrismaNamespace,
-	type RecordSource,
+	RecordSource,
 } from "@crm/db";
 import {
 	ConflictException,
@@ -279,6 +279,45 @@ export class ContactsService {
 	}
 
 	async create(input: ContactCreateInput) {
+		return this.createContact(input, {
+			source: undefined,
+			identifyReason: "Added by a rep, with nothing on the record yet",
+		});
+	}
+
+	/**
+	 * Approve path from the Screening Room: source EMAIL, agent identify task,
+	 * and email backfill for the harvested address.
+	 */
+	async createFromScreening(input: {
+		firstName: string;
+		lastName?: string;
+		email: string;
+		companyId?: string | null;
+		ownerId: string;
+	}) {
+		return this.createContact(
+			{
+				firstName: input.firstName,
+				lastName: input.lastName,
+				email: input.email,
+				companyId: input.companyId,
+				ownerId: input.ownerId,
+			},
+			{
+				source: RecordSource.EMAIL,
+				identifyReason: "approved in screening room",
+			},
+		);
+	}
+
+	private async createContact(
+		input: ContactCreateInput,
+		options: {
+			source: RecordSource | undefined;
+			identifyReason: string;
+		},
+	) {
 		const email = blankToNull(input.email ?? "");
 
 		if (email) {
@@ -315,20 +354,20 @@ export class ContactsService {
 				title: blankToNull(input.title ?? ""),
 				companyId,
 				ownerId: input.ownerId ?? null,
+				...(options.source ? { source: options.source } : {}),
 			},
 			select: { id: true, firstName: true, lastName: true },
 		});
 
 		this.logger.log({ message: "Contact created", contactId: contact.id });
 
-		// A person typed this one, so there is no placeholder name to fix — but
-		// there is usually no title, no profile and no background either, and a
-		// rep who has just added somebody is the likeliest person to open them
-		// again in the next minute.
-		await this.agent.contactCreated(
-			contact.id,
-			"Added by a rep, with nothing on the record yet",
-		);
+		await this.agent.contactCreated(contact.id, options.identifyReason);
+
+		// Mechanical: queue a targeted Graph import of recent mail with this
+		// address. The Microsoft sync tick (or Sync now) drains the queue.
+		if (email) {
+			await this.enqueueEmailBackfill(email, input.ownerId ?? null);
+		}
 
 		return contact;
 	}
@@ -362,15 +401,72 @@ export class ContactsService {
 				: { disconnect: true };
 		}
 
+		const previous =
+			input.email !== undefined
+				? await this.db.contact.findUnique({
+						where: { id },
+						select: { email: true, ownerId: true },
+					})
+				: null;
+
 		try {
-			return await this.db.contact.update({
+			const updated = await this.db.contact.update({
 				where: { id },
 				data,
-				select: { id: true, firstName: true, lastName: true },
+				select: { id: true, firstName: true, lastName: true, email: true },
 			});
+
+			const nextEmail = updated.email;
+			const previousEmail = previous?.email ?? null;
+			if (
+				nextEmail &&
+				input.email !== undefined &&
+				nextEmail !== previousEmail
+			) {
+				await this.enqueueEmailBackfill(
+					nextEmail,
+					input.ownerId ?? previous?.ownerId ?? null,
+				);
+			}
+
+			return {
+				id: updated.id,
+				firstName: updated.firstName,
+				lastName: updated.lastName,
+			};
 		} catch (error) {
 			throw this.translate(error, id);
 		}
+	}
+
+	/**
+	 * Upsert a PENDING backfill for an address.
+	 *
+	 * Re-adding the same address (or changing onto one that already ran) resets
+	 * the row to PENDING so the next sync tick re-imports. Idempotent storage
+	 * still rests on `rfcMessageId`.
+	 */
+	private async enqueueEmailBackfill(
+		address: string,
+		requestedById: string | null,
+	): Promise<void> {
+		const normalised = address.trim().toLowerCase();
+		if (!normalised) return;
+
+		await this.db.emailBackfill.upsert({
+			where: { address: normalised },
+			create: {
+				address: normalised,
+				requestedById,
+				status: "PENDING",
+			},
+			update: {
+				requestedById,
+				status: "PENDING",
+				error: null,
+				finishedAt: null,
+			},
+		});
 	}
 
 	/**

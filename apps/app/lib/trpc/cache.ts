@@ -56,6 +56,8 @@ export type CrmCache = {
 	google(options?: Options): Promise<void>;
 	/** Same invalidation shape as `google`, for the Outlook settings card. */
 	microsoft(options?: Options): Promise<void>;
+	/** Accepting, snoozing or dismissing a follow-up suggestion. */
+	followup(options?: Options): Promise<void>;
 	/** An import writes across every table, so nothing is assumed to survive. */
 	everything(): Promise<void>;
 };
@@ -199,6 +201,20 @@ export function useCrmCache(): CrmCache {
 					trpc.companies.byId.queryKey(),
 					trpc.contacts.byId.queryKey(),
 					trpc.dashboard.summary.queryKey(),
+				],
+				options,
+			),
+
+		followup: (options) =>
+			run(
+				[trpc.followups.list.queryKey()],
+				// Accepting one writes a TASK activity, which lands on both "my
+				// open tasks" and whichever record it names.
+				[
+					...activityKeys(),
+					trpc.companies.byId.queryKey(),
+					trpc.contacts.byId.queryKey(),
+					trpc.deals.byId.queryKey(),
 				],
 				options,
 			),

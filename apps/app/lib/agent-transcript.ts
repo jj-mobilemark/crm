@@ -61,6 +61,8 @@ const VERBS: Record<string, string> = {
 	schedule_recheck: "Decided when to look again",
 	record_job_change: "Raised a job change",
 	list_outstanding_work: "Looked for outstanding work",
+	read_rep_followup_context: "Read the rep's recent mail and open deals",
+	propose_followups: "Suggested a follow-up",
 
 	// eve's default harness. Named here for the same reason as the rest: a rep
 	// reading a run should not have to know which of these we wrote.

@@ -93,4 +93,42 @@ export class OutlookMailClient {
 			{ $select: MESSAGE_SELECT, $top: 50 },
 		);
 	}
+
+	/**
+	 * Messages that involve one address — used for contact-add backfill.
+	 *
+	 * Graph KQL `$search` needs `ConsistencyLevel: eventual`. Quotes around the
+	 * search string are required. Pass a full `@odata.nextLink` as `cursor` to
+	 * continue a page chain.
+	 */
+	async searchByParticipant(
+		accessToken: string,
+		address: string,
+		options: { top?: number; cursor?: string } = {},
+	): Promise<GraphResult<MailDeltaPage>> {
+		if (options.cursor) {
+			return this.api.get<MailDeltaPage>(
+				options.cursor,
+				accessToken,
+				{},
+				{
+					ConsistencyLevel: "eventual",
+				},
+			);
+		}
+
+		const trimmed = address.trim().toLowerCase();
+		return this.api.get<MailDeltaPage>(
+			`${BASE}/me/messages`,
+			accessToken,
+			{
+				$search: `"participants:${trimmed}"`,
+				$select: MESSAGE_SELECT,
+				$top: options.top ?? 50,
+			},
+			{
+				ConsistencyLevel: "eventual",
+			},
+		);
+	}
 }

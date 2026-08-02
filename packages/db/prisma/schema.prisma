@@ -404,6 +404,8 @@ model AgentTask {
   id        String  @id @default(cuid())
   contactId String?
   companyId String?
+  /// Set for a per-rep task (kind `"followups"`) rather than a per-record one.
+  userId    String?
 
   kind   String
   reason String
@@ -435,6 +437,7 @@ model AgentTask {
 
   @@index([dueAt, leasedUntil])
   @@index([contactId])
+  @@index([userId])
   @@map("agentTask")
 }
 
@@ -786,4 +789,79 @@ model SuppressedDomain {
   createdAt DateTime @default(now())
 
   @@map("suppressedDomain")
+}
+
+/// Targeted Graph import for one address — queued when a contact is added or
+/// their email changes. Mechanical only: Nest fetches and matches; the agent
+/// never sees these rows.
+model EmailBackfill {
+  id            String    @id @default(cuid())
+  /// Lowercased address. Unique so re-adding the same person reuses the row.
+  address       String
+  requestedById String?
+  /// PENDING | RUNNING | DONE | FAILED
+  status        String    @default("PENDING")
+  error         String?
+  createdAt     DateTime  @default(now())
+  finishedAt    DateTime?
+
+  @@unique([address])
+  @@index([status, createdAt])
+  @@map("emailBackfill")
+}
+
+/// External correspondents from unmatched mail — metadata only, never bodies.
+///
+/// Harvested when Outlook sync drops a thread that does not match a Contact or
+/// Company. Approving creates a Contact and enqueues backfill; rejecting can
+/// also suppress the whole domain.
+model PendingContact {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  displayName   String?
+  domain        String
+  /// INBOUND | OUTBOUND — direction of the first sighting.
+  direction     String
+  sampleSubject String?
+  messageCount  Int       @default(1)
+  firstSeenAt   DateTime  @default(now())
+  lastSeenAt    DateTime  @default(now())
+  /// PENDING | APPROVED | REJECTED
+  status        String    @default("PENDING")
+  decidedById   String?
+  decidedAt     DateTime?
+
+  @@index([status, lastSeenAt])
+  @@map("pendingContact")
+}
+
+/// A follow-up the agent noticed in a rep's own synced mail and open deals —
+/// never guessed, never written straight to a record. `evidence` cites the
+/// real messages behind it; accepting turns it into a real `Activity` TASK.
+model FollowUpSuggestion {
+  id        String  @id @default(cuid())
+  /// The rep this belongs to — the panel is per-rep, never a shared queue.
+  userId    String
+  contactId String?
+  companyId String?
+  dealId    String?
+  /// commitment | reply-owed | deal-risk | next-step
+  kind    String
+  /// One sentence, imperative — "Send Acme the revised quote".
+  summary String
+  /// A short cited excerpt, capped well under a full message. Never a body.
+  quote   String? @db.VarChar(300)
+  /// When the agent thinks this is due, if the evidence implies one.
+  dueHint DateTime?
+  /// [{ threadId, messageId, sentAt }] — every suggestion cites real messages.
+  evidence Json
+  /// PROPOSED | ACCEPTED | DISMISSED | SNOOZED
+  status     String  @default("PROPOSED")
+  /// The TASK activity created on accept.
+  activityId String?
+  createdAt  DateTime  @default(now())
+  decidedAt  DateTime?
+
+  @@index([userId, status, createdAt])
+  @@map("followUpSuggestion")
 }

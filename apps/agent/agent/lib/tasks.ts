@@ -13,6 +13,7 @@ export type LeasedTask = {
 	id: string;
 	contactId: string | null;
 	companyId: string | null;
+	userId: string | null;
 	kind: string;
 	reason: string;
 	budget: number;
@@ -24,6 +25,7 @@ export type TaskSubject = {
 	id: string;
 	contactId: string | null;
 	companyId: string | null;
+	userId: string | null;
 	kind: string;
 };
 
@@ -75,7 +77,7 @@ export async function claimDue(limit: number): Promise<LeasedTask[]> {
 			FOR UPDATE SKIP LOCKED
 		) AS due
 		WHERE t.id = due.id
-		RETURNING t.id, t."contactId", t."companyId", t.kind, t.reason, t.budget, t.attempts;
+		RETURNING t.id, t."contactId", t."companyId", t."userId", t.kind, t.reason, t.budget, t.attempts;
 	`;
 }
 
@@ -96,7 +98,7 @@ export async function retireExhausted(): Promise<TaskSubject[]> {
 		WHERE t."finishedAt" IS NULL
 			AND t."attempts" >= ${MAX_ATTEMPTS}
 			AND (t."leasedUntil" IS NULL OR t."leasedUntil" < ${now})
-		RETURNING t.id, t."contactId", t."companyId", t.kind;
+		RETURNING t.id, t."contactId", t."companyId", t."userId", t.kind;
 	`;
 }
 
@@ -127,7 +129,13 @@ export async function completeTask(
 
 	return db.agentTask.findUnique({
 		where: { id: taskId },
-		select: { id: true, contactId: true, companyId: true, kind: true },
+		select: {
+			id: true,
+			contactId: true,
+			companyId: true,
+			userId: true,
+			kind: true,
+		},
 	});
 }
 
@@ -135,7 +143,13 @@ export async function completeTask(
 export async function taskSubject(taskId: string): Promise<TaskSubject | null> {
 	return db.agentTask.findUnique({
 		where: { id: taskId },
-		select: { id: true, contactId: true, companyId: true, kind: true },
+		select: {
+			id: true,
+			contactId: true,
+			companyId: true,
+			userId: true,
+			kind: true,
+		},
 	});
 }
 

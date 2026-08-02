@@ -19,16 +19,20 @@ import { contactListInput, contactIdInput, contactCreateInput, contactUpdateArgs
 import { conversationListInput, conversationEventsInput, conversationSaveInput, conversationIdInput } from "../conversations/conversations.contracts";
 import { dashboardSummaryInput } from "../dashboard/dashboard.contracts";
 import { dealListInput, dealIdInput, dealCreateInput, dealUpdateArgs, setStageInput } from "../deals/deals.contracts";
+import { followupDecideInput } from "../followups/followups.contracts";
 import { setAutoCreateInput, suppressDomainInput, threadInput, calendarEventInput } from "../google/google.contracts";
 import { msSetAutoCreateInput, msSuppressDomainInput, msThreadInput, msCalendarEventInput } from "../microsoft/microsoft.contracts";
+import { screeningDecideInput } from "../screening/screening.contracts";
 import type { ActivitiesRouter } from "../activities/activities.router";
 import type { CompaniesRouter } from "../companies/companies.router";
 import type { ContactsRouter } from "../contacts/contacts.router";
 import type { ConversationsRouter } from "../conversations/conversations.router";
 import type { DashboardRouter } from "../dashboard/dashboard.router";
 import type { DealsRouter } from "../deals/deals.router";
+import type { FollowupsRouter } from "../followups/followups.router";
 import type { GoogleRouter } from "../google/google.router";
 import type { MicrosoftRouter } from "../microsoft/microsoft.router";
+import type { ScreeningRouter } from "../screening/screening.router";
 import type { SearchRouter } from "../search/search.router";
 import type { UsersRouter } from "../users/users.router";
 
@@ -129,6 +133,13 @@ const appRouter = t.router({
       .input(setStageInput)
       .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<DealsRouter["setStage"]>>)
     }),
+  followups: t.router({
+    list: publicProcedure
+      .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<FollowupsRouter["list"]>>),
+    decide: publicProcedure
+      .input(followupDecideInput)
+      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<FollowupsRouter["decide"]>>)
+    }),
   google: t.router({
     status: publicProcedure
       .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<GoogleRouter["status"]>>),
@@ -172,6 +183,13 @@ const appRouter = t.router({
     event: publicProcedure
       .input(msCalendarEventInput)
       .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<MicrosoftRouter["event"]>>)
+    }),
+  screening: t.router({
+    list: publicProcedure
+      .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<ScreeningRouter["list"]>>),
+    decide: publicProcedure
+      .input(screeningDecideInput)
+      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<ScreeningRouter["decide"]>>)
     }),
   search: t.router({
     quick: publicProcedure

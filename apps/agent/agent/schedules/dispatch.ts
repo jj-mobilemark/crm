@@ -70,6 +70,7 @@ export default defineSchedule({
 										budget: String(task.budget),
 										...(task.contactId ? { contactId: task.contactId } : {}),
 										...(task.companyId ? { companyId: task.companyId } : {}),
+										...(task.userId ? { userId: task.userId } : {}),
 									},
 								},
 							});
@@ -141,6 +142,8 @@ function work(kind: string, reason: string): string {
 			return "There is a meeting with this person soon. Make sure whoever is taking it opens the record knowing who they are dealing with.";
 		case "company-profile":
 			return "Fill in what we know about this company: brand, industry, location, links. Write a brief if there is something worth saying.";
+		case "followups":
+			return "Read this rep's recent synced mail and open deals, then propose follow-ups: commitments they made, questions they never answered, deals that have gone quiet, and agreed next steps. Every suggestion must cite the real messages it came from — write nothing you cannot point to.";
 		default:
 			return `Handle this: ${reason}`;
 	}
