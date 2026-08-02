@@ -5,14 +5,16 @@ import {
 } from "@crm/db";
 import { Injectable, Logger } from "@nestjs/common";
 import { InjectDatabase } from "../database/database.constants";
-import type { SyncSource } from "./google.constants";
-
 /**
  * The cursor store.
  *
  * Every mutation a sync makes to its own bookkeeping goes through here, so
  * "what state can a sync row be in" is answerable by reading one file rather
  * than by grepping two sync services for `update`.
+ *
+ * `source` is a plain string (`gmail` / `calendar` / `outlook` /
+ * `outlook-calendar`) so Google and Microsoft share this store without a
+ * shared SyncSource union that would couple the modules.
  */
 @Injectable()
 export class SyncStateService {
@@ -20,7 +22,7 @@ export class SyncStateService {
 
 	constructor(@InjectDatabase() private readonly db: Db) {}
 
-	async get(userId: string, source: SyncSource): Promise<MailboxSync | null> {
+	async get(userId: string, source: string): Promise<MailboxSync | null> {
 		return this.db.mailboxSync.findUnique({
 			where: { userId_source: { userId, source } },
 		});
@@ -34,14 +36,18 @@ export class SyncStateService {
 	 * The rows a cron tick should attempt.
 	 *
 	 * Excludes `NEEDS_RECONNECT` — that state is terminal until a human acts, and
-	 * retrying it every five minutes would be a pointless call to Google forever.
-	 * Also excludes anything inside its rate-limit backoff.
+	 * retrying it every five minutes would be a pointless call forever. Also
+	 * excludes anything inside its rate-limit backoff.
+	 *
+	 * Pass `sources` so Google and Microsoft ticks do not steal each other's
+	 * rows — `MailboxSync.source` is a plain string shared by both providers.
 	 */
-	async due(now: Date): Promise<MailboxSync[]> {
+	async due(now: Date, sources?: readonly string[]): Promise<MailboxSync[]> {
 		return this.db.mailboxSync.findMany({
 			where: {
 				status: { notIn: [GoogleSyncStatus.NEEDS_RECONNECT] },
 				OR: [{ retryAfter: null }, { retryAfter: { lte: now } }],
+				...(sources ? { source: { in: [...sources] } } : {}),
 			},
 			// Least-recently-synced first, so one busy mailbox cannot starve the
 			// rest when a tick runs out of budget. A never-synced row sorts first.
@@ -52,7 +58,7 @@ export class SyncStateService {
 	/** Creates the row when a source is first connected. Idempotent. */
 	async ensure(
 		userId: string,
-		source: SyncSource,
+		source: string,
 		options: { autoCreate: boolean },
 	): Promise<MailboxSync> {
 		return this.db.mailboxSync.upsert({
@@ -156,7 +162,7 @@ export class SyncStateService {
 
 	async setAutoCreate(
 		userId: string,
-		source: SyncSource,
+		source: string,
 		enabled: boolean,
 	): Promise<void> {
 		await this.db.mailboxSync.updateMany({
@@ -165,7 +171,7 @@ export class SyncStateService {
 		});
 	}
 
-	async remove(userId: string, source?: SyncSource): Promise<void> {
+	async remove(userId: string, source?: string): Promise<void> {
 		await this.db.mailboxSync.deleteMany({
 			where: { userId, ...(source ? { source } : {}) },
 		});

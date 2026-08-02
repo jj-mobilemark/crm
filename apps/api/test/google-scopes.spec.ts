@@ -2,12 +2,17 @@ import { describe, expect, it } from "bun:test";
 import {
 	CALENDAR_SCOPE,
 	GMAIL_SCOPE,
+	hasMsSyncScopes,
 	hasSyncScopes,
+	MS_CALENDAR_SCOPE,
+	MS_MAIL_SCOPE,
+	MS_SYNC_SCOPES,
 	parseScopes,
 	SYNC_SCOPES,
 } from "@crm/auth/scopes";
 
 const BOTH = `openid,email,profile,${GMAIL_SCOPE},${CALENDAR_SCOPE}`;
+const MS_BOTH = `openid,email,profile,User.Read,offline_access,${MS_MAIL_SCOPE},${MS_CALENDAR_SCOPE}`;
 
 describe("parseScopes", () => {
 	it("handles the comma form Better Auth stores", () => {
@@ -60,5 +65,35 @@ describe("hasSyncScopes", () => {
 		// Guards the two lists drifting: whatever sign-in asks for is what the
 		// gate insists on.
 		expect(hasSyncScopes(SYNC_SCOPES.join(","))).toBe(true);
+	});
+});
+
+describe("hasMsSyncScopes", () => {
+	it("is true when both Graph scopes are present as short names", () => {
+		expect(hasMsSyncScopes(MS_BOTH)).toBe(true);
+	});
+
+	it("accepts full Graph URIs as well as short names", () => {
+		expect(
+			hasMsSyncScopes(
+				`openid profile email User.Read offline_access https://graph.microsoft.com/${MS_MAIL_SCOPE} https://graph.microsoft.com/${MS_CALENDAR_SCOPE}`,
+			),
+		).toBe(true);
+	});
+
+	it("is false when one sync scope is missing", () => {
+		expect(
+			hasMsSyncScopes(
+				`openid,email,profile,User.Read,offline_access,${MS_MAIL_SCOPE}`,
+			),
+		).toBe(false);
+	});
+
+	it("is false when the column is empty", () => {
+		expect(hasMsSyncScopes(null)).toBe(false);
+	});
+
+	it("covers exactly the scopes the provider requests", () => {
+		expect(hasMsSyncScopes(MS_SYNC_SCOPES.join(","))).toBe(true);
 	});
 });

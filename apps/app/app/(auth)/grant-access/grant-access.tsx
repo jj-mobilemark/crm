@@ -1,14 +1,17 @@
 "use client";
 
 import { authClient, signOut } from "@crm/auth/client";
-import { SYNC_SCOPES } from "@crm/auth/scopes";
+import { MS_SYNC_SCOPES, SYNC_SCOPES } from "@crm/auth/scopes";
 import GoogleLogo from "@crm/ui/components/brand-logos/google";
+import MicrosoftLogo from "@crm/ui/components/brand-logos/microsoft";
 import { Button } from "@crm/ui/components/button";
 import { Spinner } from "@crm/ui/components/spinner";
 import { useState } from "react";
 import { toast } from "sonner";
 
-export function GrantAccess() {
+type SyncProvider = "microsoft" | "google";
+
+export function GrantAccess({ provider }: { provider: SyncProvider }) {
 	const [pending, setPending] = useState(false);
 
 	async function handleGrant() {
@@ -21,18 +24,24 @@ export function GrantAccess() {
 
 		// `linkSocial` rather than `signIn.social`: there is already a session and
 		// an account row, and this is a scope upgrade on the existing grant.
-		// Google's incremental authorisation means the resulting token covers the
-		// union, so sign-in keeps working either way.
+		const scopes =
+			provider === "microsoft" ? [...MS_SYNC_SCOPES] : [...SYNC_SCOPES];
+
 		const { error } = await authClient.linkSocial({
-			provider: "google",
-			scopes: [...SYNC_SCOPES],
+			provider,
+			scopes,
 			callbackURL: `${origin}/`,
 			errorCallbackURL: `${origin}/grant-access`,
 		});
 
-		// On success the browser has already navigated to Google.
+		// On success the browser has already navigated to the provider.
 		if (error) {
-			toast.error(error.message ?? "Could not reach Google.");
+			toast.error(
+				error.message ??
+					(provider === "microsoft"
+						? "Could not reach Microsoft."
+						: "Could not reach Google."),
+			);
 			setPending(false);
 		}
 	}
@@ -48,6 +57,8 @@ export function GrantAccess() {
 		window.location.assign("/sign-in");
 	}
 
+	const Logo = provider === "microsoft" ? MicrosoftLogo : GoogleLogo;
+
 	return (
 		<div className="flex flex-col gap-3">
 			<Button
@@ -59,7 +70,7 @@ export function GrantAccess() {
 				{pending ? (
 					<Spinner data-icon="inline-start" />
 				) : (
-					<GoogleLogo data-icon="inline-start" className="size-4" />
+					<Logo data-icon="inline-start" className="size-4" />
 				)}
 				Grant access
 			</Button>

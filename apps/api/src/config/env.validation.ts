@@ -70,20 +70,35 @@ export class EnvironmentVariables {
 	ALLOWED_SIGN_IN!: string;
 
 	/**
-	 * Google is the only sign-in method, so unlike `@crm/auth` — which stays
-	 * loadable without credentials for `better-auth generate` — the process that
-	 * serves the auth routes refuses to start without them.
+	 * Google OAuth is optional now that email/password sign-in is enabled. Set
+	 * both to turn Google sign-in on; leave both empty to run on email/password
+	 * only. `@crm/auth` enforces that they are set together.
 	 */
+	@IsOptional()
 	@IsString()
-	@MinLength(1, {
-		message:
-			"GOOGLE_CLIENT_ID is required — Google is the only sign-in method. Create an OAuth client ID (web) in the Google Cloud console.",
-	})
-	GOOGLE_CLIENT_ID!: string;
+	GOOGLE_CLIENT_ID?: string;
 
+	@IsOptional()
 	@IsString()
-	@MinLength(1, { message: "GOOGLE_CLIENT_SECRET is required." })
-	GOOGLE_CLIENT_SECRET!: string;
+	GOOGLE_CLIENT_SECRET?: string;
+
+	/**
+	 * Microsoft Entra (single-tenant) OAuth. Optional — set all three to turn
+	 * Microsoft sign-in on. `@crm/auth` enforces that they are set together.
+	 * Redirect URI in Entra: `{API_URL}/api/auth/callback/microsoft`
+	 * (locally `http://localhost:3001/api/auth/callback/microsoft`).
+	 */
+	@IsOptional()
+	@IsString()
+	MICROSOFT_CLIENT_ID?: string;
+
+	@IsOptional()
+	@IsString()
+	MICROSOFT_CLIENT_SECRET?: string;
+
+	@IsOptional()
+	@IsString()
+	MICROSOFT_TENANT_ID?: string;
 
 	// --- defaulted ----------------------------------------------------------
 

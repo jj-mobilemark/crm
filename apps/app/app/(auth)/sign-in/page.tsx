@@ -1,12 +1,25 @@
+import { FieldSeparator } from "@crm/ui/components/field";
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { AuthHeading, AuthShell } from "@/components/auth-shell";
 import { getSession } from "@/lib/session";
+import { CredentialsForm } from "./credentials-form";
 import { GoogleSignIn } from "./google-sign-in";
+import { MicrosoftSignIn } from "./microsoft-sign-in";
 
 export const metadata: Metadata = {
 	title: "Sign in",
 };
+
+// Social buttons only appear when a real OAuth client is configured.
+const microsoftEnabled = Boolean(
+	process.env.MICROSOFT_CLIENT_ID &&
+		process.env.MICROSOFT_CLIENT_SECRET &&
+		process.env.MICROSOFT_TENANT_ID,
+);
+const googleEnabled = Boolean(
+	process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET,
+);
 
 export default async function SignInPage() {
 	// The authoritative counterpart to the cookie sniff in `proxy.ts`, and the
@@ -26,18 +39,25 @@ export default async function SignInPage() {
 		redirect("/");
 	}
 
+	const hasSocial = microsoftEnabled || googleEnabled;
+
 	return (
 		<AuthShell>
 			<AuthHeading
 				title="Welcome back"
-				description="Sign in with your Comp AI Google account to continue."
+				description="Sign in with your email and password to continue."
 			/>
 
-			<GoogleSignIn />
+			<CredentialsForm />
+
+			{hasSocial && <FieldSeparator>or</FieldSeparator>}
+
+			{microsoftEnabled && <MicrosoftSignIn />}
+			{googleEnabled && <GoogleSignIn />}
 
 			<p className="text-center text-muted-foreground text-sm/5">
-				Comp AI CRM is internal. If you cannot get in, ask an admin to check
-				your Google account.
+				Comp AI CRM is internal. If you cannot get in, ask an admin to check the
+				sign-in allow-list.
 			</p>
 		</AuthShell>
 	);

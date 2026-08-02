@@ -35,6 +35,7 @@ export function MeetingEntry({
 	isAllDay,
 	attendeeCount,
 	conferenceUrl,
+	provider = "google",
 }: {
 	eventId: string;
 	startsAt: string;
@@ -42,14 +43,22 @@ export function MeetingEntry({
 	isAllDay: boolean;
 	attendeeCount: number;
 	conferenceUrl: string | null;
+	provider?: "google" | "microsoft";
 }) {
 	const trpc = useTRPC();
 
 	// Only worth a request when there is somebody to show.
-	const event = useQuery({
+	const googleEvent = useQuery({
 		...trpc.google.event.queryOptions({ eventId }),
-		enabled: attendeeCount > 0,
+		enabled: attendeeCount > 0 && provider === "google",
 	});
+
+	const microsoftEvent = useQuery({
+		...trpc.microsoft.event.queryOptions({ eventId }),
+		enabled: attendeeCount > 0 && provider === "microsoft",
+	});
+
+	const event = provider === "microsoft" ? microsoftEvent : googleEvent;
 
 	return (
 		<div className="flex flex-wrap items-center gap-x-4 gap-y-2">

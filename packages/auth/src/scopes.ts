@@ -42,6 +42,39 @@ export function hasSyncScopes(scope: string | null | undefined): boolean {
 	return SYNC_SCOPES.every((needed) => granted.has(needed));
 }
 
+/** Microsoft Graph mail (delegated, read-only). */
+export const MS_MAIL_SCOPE = "Mail.Read";
+/** Microsoft Graph calendar (delegated, read-only). */
+export const MS_CALENDAR_SCOPE = "Calendars.Read";
+
+/**
+ * Read-only Outlook mail and calendar.
+ *
+ * Better Auth's Microsoft provider already requests identity scopes
+ * (`openid`, `profile`, `email`, `User.Read`, `offline_access`). These two are
+ * the extras this CRM needs for sync.
+ */
+export const MS_SYNC_SCOPES = [MS_MAIL_SCOPE, MS_CALENDAR_SCOPE] as const;
+
+const GRAPH_SCOPE_PREFIX = "https://graph.microsoft.com/";
+
+/**
+ * Whether a Microsoft grant covers mail and calendar sync.
+ *
+ * Microsoft may store scopes as short names (`Mail.Read`) or full Graph URIs
+ * (`https://graph.microsoft.com/Mail.Read`). Both forms count.
+ */
+export function hasMsSyncScopes(scope: string | null | undefined): boolean {
+	const granted = new Set(
+		[...parseScopes(scope)].map((entry) =>
+			entry.startsWith(GRAPH_SCOPE_PREFIX)
+				? entry.slice(GRAPH_SCOPE_PREFIX.length)
+				: entry,
+		),
+	);
+	return MS_SYNC_SCOPES.every((needed) => granted.has(needed));
+}
+
 /** `Account.scope` as a set. Google returns it comma- or space-separated. */
 export function parseScopes(scope: string | null | undefined): Set<string> {
 	return new Set(

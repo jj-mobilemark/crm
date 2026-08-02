@@ -171,7 +171,10 @@ export class GoogleConnectionService {
 
 	/** The explicit hard revoke. Kills sign-in access too — see the plan §3.4. */
 	async revoke(userId: string): Promise<{ revoked: boolean }> {
-		await this.state.remove(userId);
+		// Only Google sources — Outlook rows share the same table.
+		for (const source of SYNC_SOURCES) {
+			await this.state.remove(userId, source);
+		}
 		const revoked = await this.tokens.revoke(userId);
 		return { revoked };
 	}

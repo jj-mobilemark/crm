@@ -1,0 +1,27 @@
+---
+description: Where the domain skills and docs live — review the relevant one before coding
+alwaysApply: true
+---
+
+# Skills & docs — read before you code
+
+Before starting a task, check whether a bundled skill covers the area and read
+it. Cursor auto-discovers these under `.cursor/skills/`. There is a single
+source of truth — `.agents/skills/` — and each harness just symlinks into it:
+`.cursor/skills/` (Cursor), `.claude/skills/` (Claude Code). Edit skills in
+`.agents/skills/`, never in the symlink dirs. Available skills:
+
+- `better-auth-best-practices` — auth work in `packages/auth` / `apps/api`
+- `prisma-database-setup` — schema and migrations in `packages/db`
+- `nestjs-best-practices`, `nestjs-trpc` — the API in `apps/api`
+- `eve` — the research agent in `apps/agent`
+- `shadcn`, `nuqs`, `no-use-effect`, `vercel-react-best-practices`,
+  `web-design-guidelines` — the front end in `apps/app` / `packages/ui`
+- `turborepo`, `typescript-advanced-types` — monorepo + typing
+
+The full `eve` documentation also ships in
+`apps/agent/node_modules/eve/docs` and matches the installed version — prefer it
+over memory when writing eve code.
+
+Deeper design docs: `docs/agent.md`, `docs/api.md`, `docs/design.md`,
+`docs/environment.md`. Architecture decisions: `adrs/`.

@@ -27,6 +27,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { parseAsBoolean, useQueryState } from "nuqs";
 import { useId, useState } from "react";
 import { toast } from "sonner";
+import { CompanyPicker } from "@/components/crm/company-picker";
 import { useOpenRecord } from "@/components/crm/record-sheet/record-stack";
 import { useCrmCache } from "@/lib/trpc/cache";
 import { useTRPC } from "@/lib/trpc/client";
@@ -61,7 +62,6 @@ export function CreateContactSheet({
 	const titleId = useId();
 
 	const users = useQuery(trpc.users.list.queryOptions());
-	const companies = useQuery(trpc.companies.options.queryOptions({ q: "" }));
 
 	const create = useMutation(
 		trpc.contacts.create.mutationOptions({
@@ -159,19 +159,14 @@ export function CreateContactSheet({
 
 						<Field>
 							<FieldLabel htmlFor="create-contact-company">Company</FieldLabel>
-							<Select value={company} onValueChange={setCompany}>
-								<SelectTrigger id="create-contact-company">
-									<SelectValue />
-								</SelectTrigger>
-								<SelectContent>
-									<SelectItem value={NONE}>No company</SelectItem>
-									{(companies.data ?? []).map((option) => (
-										<SelectItem key={option.id} value={option.id}>
-											{option.name}
-										</SelectItem>
-									))}
-								</SelectContent>
-							</Select>
+							<CompanyPicker
+								id="create-contact-company"
+								value={company === NONE ? null : company}
+								onChange={(id) => setCompany(id ?? NONE)}
+								includeNone
+								noneLabel="No company"
+								placeholder="No company"
+							/>
 						</Field>
 
 						<Field>

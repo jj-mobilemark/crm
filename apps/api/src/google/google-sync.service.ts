@@ -1,7 +1,7 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { CalendarSyncService } from "./calendar-sync.service";
 import { GmailSyncService } from "./gmail-sync.service";
-import type { SyncSource } from "./google.constants";
+import { SYNC_SOURCES, type SyncSource } from "./google.constants";
 import { GoogleConnectionService } from "./google-connection.service";
 import { SyncStateService } from "./sync-state.service";
 
@@ -58,7 +58,7 @@ export class GoogleSyncService {
 		// connected and closed the tab never triggers anything else.
 		await this.connections.reconcileAll();
 
-		const due = await this.state.due(new Date());
+		const due = await this.state.due(new Date(), SYNC_SOURCES);
 
 		for (const row of due) {
 			if (Date.now() - startedAt > TICK_BUDGET_MS) {

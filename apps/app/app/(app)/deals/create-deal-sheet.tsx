@@ -33,6 +33,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { parseAsBoolean, useQueryState } from "nuqs";
 import { useId, useState } from "react";
 import { toast } from "sonner";
+import { CompanyPicker } from "@/components/crm/company-picker";
 import { dealStageLabel, OPEN_STAGES } from "@/components/crm/deal-stage";
 import { useOpenRecord } from "@/components/crm/record-sheet/record-stack";
 import { useCrmCache } from "@/lib/trpc/cache";
@@ -67,7 +68,6 @@ export function CreateDealSheet({
 	const closeDateId = useId();
 
 	const users = useQuery(trpc.users.list.queryOptions());
-	const companies = useQuery(trpc.companies.options.queryOptions({ q: "" }));
 	const me = useQuery(trpc.users.me.queryOptions());
 
 	// Whoever is adding the deal is almost always the one working it.
@@ -141,18 +141,12 @@ export function CreateDealSheet({
 
 						<Field>
 							<FieldLabel htmlFor="create-deal-company">Company</FieldLabel>
-							<Select value={company} onValueChange={setCompany}>
-								<SelectTrigger id="create-deal-company">
-									<SelectValue placeholder="Choose a company" />
-								</SelectTrigger>
-								<SelectContent>
-									{(companies.data ?? []).map((option) => (
-										<SelectItem key={option.id} value={option.id}>
-											{option.name}
-										</SelectItem>
-									))}
-								</SelectContent>
-							</Select>
+							<CompanyPicker
+								id="create-deal-company"
+								value={company === UNSET ? null : company}
+								onChange={(id) => setCompany(id ?? UNSET)}
+								placeholder="Choose a company"
+							/>
 						</Field>
 
 						<Field>

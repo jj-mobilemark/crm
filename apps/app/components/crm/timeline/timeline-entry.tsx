@@ -89,6 +89,12 @@ export function TimelineEntry({
 	// A synced entry was not written by the person whose mailbox it came from,
 	// so it is attributed to the source rather than to them.
 	const synced = entry.meta?.synced === true;
+	const syncSource =
+		typeof entry.meta?.source === "string" ? entry.meta.source : null;
+	const mailboxProvider =
+		syncSource === "outlook" || syncSource === "outlook-calendar"
+			? "microsoft"
+			: "google";
 	const author = synced
 		? entry.emailThread
 			? "via Gmail"
@@ -185,6 +191,7 @@ export function TimelineEntry({
 						isAllDay={entry.calendarEvent.isAllDay}
 						attendeeCount={entry.calendarEvent.attendeeCount}
 						conferenceUrl={entry.calendarEvent.conferenceUrl}
+						provider={mailboxProvider}
 					/>
 				) : null}
 
@@ -192,6 +199,7 @@ export function TimelineEntry({
 					<EmailThreadEntry
 						threadId={entry.emailThread.id}
 						messageCount={entry.emailThread.messageCount}
+						provider={mailboxProvider}
 					/>
 				) : null}
 

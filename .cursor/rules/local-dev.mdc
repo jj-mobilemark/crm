@@ -1,0 +1,66 @@
+---
+description: How to install, run and work with the CRM locally
+alwaysApply: false
+---
+
+# Local development
+
+This repo uses **Bun** as its package manager/runtime and **Docker** for Postgres.
+
+## Prerequisites
+
+- Bun `1.3.x` (installed to `~/.bun`; ensure `~/.bun/bin` is on `PATH`)
+- Docker Desktop running (Postgres container `crm-postgres` on `:5432`)
+- Node `>=22`
+
+## First-time setup
+
+```bash
+bun install                 # root .env must exist first (db postinstall reads DATABASE_URL)
+docker compose up -d        # Postgres on :5432
+cp .env.example .env        # fill in the required values (see below)
+bun run db:deploy           # apply migrations
+bun run db:seed             # optional demo pipeline (idempotent)
+bun run dev                 # app :3000, api :3001
+```
+
+## Required `.env` values
+
+- `BETTER_AUTH_SECRET` — `openssl rand -base64 32`
+- `ALLOWED_SIGN_IN` — email domain(s)/address(es) allowed to register or sign in
+  (empty = nobody). The whole authorisation model.
+
+`DATABASE_URL` already matches the docker-compose Postgres. Everything else in
+`.env.example` is optional; a missing key removes a capability, never throws.
+
+## Auth (this install: email + password)
+
+Sign-in runs on **email + password**; Google OAuth is optional.
+
+- Register/sign in at `/sign-in` with an address on `ALLOWED_SIGN_IN`.
+- Google sign-in is hidden unless `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`
+  are set (redirect URI `http://localhost:3001/api/auth/callback/google`).
+- Differs from upstream — see `docs/local-setup.md` › "Auth changes from
+  upstream" for the exact files.
+
+## Common tasks
+
+| Command                              | What it does                          |
+| ------------------------------------ | ------------------------------------- |
+| `bun run dev`                        | Everything, watch mode                |
+| `bun run build`                      | Build all apps and packages           |
+| `bun run test`                       | Test suite                            |
+| `bun run check-types`                | `tsc --noEmit` everywhere             |
+| `bun run lint` / `bun run format`    | Biome                                 |
+| `bun run db:migrate`                 | Create + apply a migration            |
+| `bun run db:studio`                  | Prisma Studio                         |
+| `bun run --filter=api dev:session`   | Print a session cookie for a local user |
+
+Scope any task with a Turborepo filter, e.g. `bun run dev --filter=api`.
+
+## Notes
+
+- There is **one `.env`** at the repo root, read by all three processes.
+  Never add a per-package `.env`.
+- `apps/api/src/generated/server.ts` is committed; `build` must never
+  regenerate it. Regenerate locally with `bun run --filter=api trpc:generate`.

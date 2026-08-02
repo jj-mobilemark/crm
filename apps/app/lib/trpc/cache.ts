@@ -54,6 +54,8 @@ export type CrmCache = {
 	 * writes a rep triggers from the settings page.
 	 */
 	google(options?: Options): Promise<void>;
+	/** Same invalidation shape as `google`, for the Outlook settings card. */
+	microsoft(options?: Options): Promise<void>;
 	/** An import writes across every table, so nothing is assumed to survive. */
 	everything(): Promise<void>;
 };
@@ -179,6 +181,19 @@ export function useCrmCache(): CrmCache {
 					// auto-creation writes whole companies and contacts — so a
 					// disconnect-and-purge has to reach the lists too, not just the
 					// settings page it was pressed on.
+					...activityKeys(),
+					...listKeys(),
+					trpc.companies.byId.queryKey(),
+					trpc.contacts.byId.queryKey(),
+					trpc.dashboard.summary.queryKey(),
+				],
+				options,
+			),
+
+		microsoft: (options) =>
+			run(
+				[trpc.microsoft.status.queryKey()],
+				[
 					...activityKeys(),
 					...listKeys(),
 					trpc.companies.byId.queryKey(),

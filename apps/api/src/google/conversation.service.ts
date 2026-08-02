@@ -38,6 +38,7 @@ export class ConversationService {
 						snippet: true,
 						sentAt: true,
 						gmailMessageId: true,
+						outlookMessageId: true,
 					},
 				},
 			},
@@ -58,6 +59,10 @@ export class ConversationService {
 				/** Deep link back to Gmail, when we know which message it was. */
 				gmailUrl: message.gmailMessageId
 					? `https://mail.google.com/mail/u/0/#all/${message.gmailMessageId}`
+					: null,
+				/** Deep link back to Outlook, when we know which message it was. */
+				outlookUrl: message.outlookMessageId
+					? `https://outlook.office.com/mail/deeplink/read/${message.outlookMessageId}`
 					: null,
 			})),
 		};

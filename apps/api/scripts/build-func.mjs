@@ -238,7 +238,10 @@ writeFileSync(
 		 * The route fails closed without `CRON_SECRET`, so this is safe to
 		 * declare unconditionally.
 		 */
-		crons: [{ path: "/internal/sync/google", schedule: "*/5 * * * *" }],
+		crons: [
+			{ path: "/internal/sync/google", schedule: "*/5 * * * *" },
+			{ path: "/internal/sync/microsoft", schedule: "*/5 * * * *" },
+		],
 	}),
 );
 

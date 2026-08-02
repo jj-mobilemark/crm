@@ -3,7 +3,7 @@ import { type BetterAuthOptions, betterAuth } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
 import { APIError } from "better-auth/api";
 import { env } from "./env";
-import { SYNC_SCOPES } from "./scopes";
+import { MS_SYNC_SCOPES, SYNC_SCOPES } from "./scopes";
 import {
 	hasSignInAllowList,
 	isWorkspaceEmail,
@@ -11,6 +11,19 @@ import {
 } from "./workspace";
 
 const socialProviders: NonNullable<BetterAuthOptions["socialProviders"]> = {};
+
+if (env.microsoft) {
+	socialProviders.microsoft = {
+		clientId: env.microsoft.clientId,
+		clientSecret: env.microsoft.clientSecret,
+		// Single-tenant Entra app — never "common" for this CRM.
+		tenantId: env.microsoft.tenantId,
+		// Better Auth already requests openid/profile/email/User.Read/offline_access.
+		// Mail + Calendar are the CRM sync extras.
+		scope: [...MS_SYNC_SCOPES],
+		prompt: "select_account",
+	};
+}
 
 if (env.google) {
 	socialProviders.google = {
@@ -59,7 +72,10 @@ export const auth = betterAuth({
 	}),
 
 	emailAndPassword: {
-		enabled: false,
+		// Enabled so the CRM can be used without a Google OAuth client. The
+		// `databaseHooks.user.create.before` allow-list below still applies to
+		// registrations, so ALLOWED_SIGN_IN remains the whole authorisation model.
+		enabled: true,
 	},
 
 	socialProviders,
@@ -67,7 +83,13 @@ export const auth = betterAuth({
 	account: {
 		accountLinking: {
 			enabled: true,
-			trustedProviders: ["google"],
+			trustedProviders: ["microsoft", "google"],
+			// Credential sign-up does not run an email-verify loop in this CRM
+			// (ALLOWED_SIGN_IN is the door). Without this, Microsoft SSO cannot
+			// link onto an existing email/password user and returns
+			// account_not_linked. Prefer marking new users verified in the
+			// create hook below; this covers rows that already exist unverified.
+			requireLocalEmailVerified: false,
 		},
 	},
 
@@ -132,7 +154,15 @@ export const auth = betterAuth({
 						});
 					}
 
-					return { data: user };
+					// Allow-list is the only gate — there is no verification email.
+					// Mark verified so later OAuth linking (Microsoft) is not blocked
+					// by Better Auth's default requireLocalEmailVerified check.
+					return {
+						data: {
+							...user,
+							emailVerified: true,
+						},
+					};
 				},
 			},
 		},

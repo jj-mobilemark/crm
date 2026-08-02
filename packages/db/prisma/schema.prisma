@@ -698,7 +698,9 @@ model EmailMessage {
   rfcMessageId String @unique
   /// Whose mailbox produced this copy, and its id there — for deep links.
   syncedByUserId String?
-  gmailMessageId String?
+  gmailMessageId   String?
+  /// Outlook/Graph message id for deep links (mirrors gmailMessageId).
+  outlookMessageId String?
 
   direction EmailDirection
   fromEmail String
@@ -743,6 +745,8 @@ model CalendarEvent {
 
   syncedByUserId String?
   googleEventId  String?
+  /// Outlook/Graph event id for deep links (mirrors googleEventId).
+  outlookEventId String?
 
   attendees CalendarAttendee[]
   activity  Activity?

@@ -1,0 +1,44 @@
+---
+description: High-level architecture and non-negotiable rules for the CRM monorepo
+alwaysApply: true
+---
+
+# CRM — project overview
+
+An open-source, agentic-first CRM. The durable research agent is the product;
+the database is where it writes things down. Single-tenant and internal by
+design (Google sign-in + one allow-list).
+
+## Monorepo layout (Turborepo on Bun)
+
+| Path            | What it is                                              |
+| --------------- | ------------------------------------------------------ |
+| `apps/agent`    | The research agent — tools, skills, schedules, sandbox |
+| `apps/app`      | Next.js front end · http://localhost:3000              |
+| `apps/api`      | NestJS API — HTTP, auth, tRPC, Google sync · :3001     |
+| `packages/db`   | Prisma schema, migrations, shared Postgres client      |
+| `packages/auth` | Better Auth config and the sign-in allow-list          |
+| `packages/ui`   | shadcn/ui components, the Tailwind theme               |
+| `packages/env`  | Finds and loads the root `.env`                        |
+
+## Three rules the codebase holds to
+
+- **Intelligence never lives in the API** (`docs/api.md`). Nest reports that
+  something happened by writing a queue row; the agent decides what it means.
+  A Nest service that calls an enrichment API is treated as a bug.
+- **`packages/ui` is the only source of UI** (`docs/design.md`). No overriding
+  styles at the call site.
+- **There are no organizations.** Single tenant, deliberately. Do not add an
+  `organizationId`.
+
+## The agent's own rule
+
+Nothing about a person is guessed. No tool accepts a confidence score. Tools
+report what they observed; a ledger prices the evidence. Strong evidence writes
+to the record, weak evidence becomes a suggestion a human settles.
+
+## Where to read more
+
+- `AGENTS.md` — the authoritative task-entry rules (read it first)
+- `docs/agent.md`, `docs/api.md`, `docs/design.md`, `docs/environment.md`
+- `docs/local-setup.md` — how this machine was set up and what's left to do

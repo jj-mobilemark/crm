@@ -38,6 +38,25 @@ const googleCredentials = ():
 	return { clientId, clientSecret };
 };
 
+const microsoftCredentials = ():
+	| { clientId: string; clientSecret: string; tenantId: string }
+	| undefined => {
+	const clientId = optional("MICROSOFT_CLIENT_ID");
+	const clientSecret = optional("MICROSOFT_CLIENT_SECRET");
+	const tenantId = optional("MICROSOFT_TENANT_ID");
+
+	if (!clientId || !clientSecret || !tenantId) {
+		if (clientId || clientSecret || tenantId) {
+			throw new Error(
+				"MICROSOFT_CLIENT_ID, MICROSOFT_CLIENT_SECRET, and MICROSOFT_TENANT_ID must be set together.",
+			);
+		}
+		return undefined;
+	}
+
+	return { clientId, clientSecret, tenantId };
+};
+
 /**
  * Where the API is — the origin that mints session cookies and serves
  * `/api/auth/*`.
@@ -69,6 +88,7 @@ const appUrl = appUrls[0] ?? DEFAULT_APP_URL;
 export const env = {
 	appUrl: apiUrl,
 	google: googleCredentials(),
+	microsoft: microsoftCredentials(),
 	cookieDomain: optional("AUTH_COOKIE_DOMAIN"),
 	// The API's own origin is trusted too: Better Auth validates the
 	// post-sign-in `callbackURL` against this list, and the OAuth round trip

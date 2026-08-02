@@ -20,6 +20,7 @@ import { conversationListInput, conversationEventsInput, conversationSaveInput, 
 import { dashboardSummaryInput } from "../dashboard/dashboard.contracts";
 import { dealListInput, dealIdInput, dealCreateInput, dealUpdateArgs, setStageInput } from "../deals/deals.contracts";
 import { setAutoCreateInput, suppressDomainInput, threadInput, calendarEventInput } from "../google/google.contracts";
+import { msSetAutoCreateInput, msSuppressDomainInput, msThreadInput, msCalendarEventInput } from "../microsoft/microsoft.contracts";
 import type { ActivitiesRouter } from "../activities/activities.router";
 import type { CompaniesRouter } from "../companies/companies.router";
 import type { ContactsRouter } from "../contacts/contacts.router";
@@ -27,6 +28,7 @@ import type { ConversationsRouter } from "../conversations/conversations.router"
 import type { DashboardRouter } from "../dashboard/dashboard.router";
 import type { DealsRouter } from "../deals/deals.router";
 import type { GoogleRouter } from "../google/google.router";
+import type { MicrosoftRouter } from "../microsoft/microsoft.router";
 import type { SearchRouter } from "../search/search.router";
 import type { UsersRouter } from "../users/users.router";
 
@@ -148,6 +150,28 @@ const appRouter = t.router({
     event: publicProcedure
       .input(calendarEventInput)
       .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<GoogleRouter["event"]>>)
+    }),
+  microsoft: t.router({
+    status: publicProcedure
+      .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<MicrosoftRouter["status"]>>),
+    purgeSyncedData: publicProcedure
+      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<MicrosoftRouter["purgeSyncedData"]>>),
+    revokeAccess: publicProcedure
+      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<MicrosoftRouter["revokeAccess"]>>),
+    syncNow: publicProcedure
+      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<MicrosoftRouter["syncNow"]>>),
+    setAutoCreate: publicProcedure
+      .input(msSetAutoCreateInput)
+      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<MicrosoftRouter["setAutoCreate"]>>),
+    suppressDomain: publicProcedure
+      .input(msSuppressDomainInput)
+      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<MicrosoftRouter["suppressDomain"]>>),
+    thread: publicProcedure
+      .input(msThreadInput)
+      .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<MicrosoftRouter["thread"]>>),
+    event: publicProcedure
+      .input(msCalendarEventInput)
+      .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<MicrosoftRouter["event"]>>)
     }),
   search: t.router({
     quick: publicProcedure

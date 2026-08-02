@@ -20,26 +20,38 @@ const timeFormat = new Intl.DateTimeFormat(undefined, {
 });
 
 /**
- * A synced Gmail thread, collapsed to one line.
+ * A synced mail thread, collapsed to one line.
  *
  * The messages are fetched only when it is opened: the timeline payload carries
  * a snippet and a count, and email bodies are the one thing that must never
  * ride along on a list response.
+ *
+ * `provider` picks which tRPC surface to call. Both return the same shape
+ * (gmailUrl and outlookUrl); the deep-link that is set wins in the UI.
  */
 export function EmailThreadEntry({
 	threadId,
 	messageCount,
+	provider = "google",
 }: {
 	threadId: string;
 	messageCount: number;
+	provider?: "google" | "microsoft";
 }) {
 	const trpc = useTRPC();
 	const [opened, setOpened] = useState(false);
 
-	const thread = useQuery({
+	const googleThread = useQuery({
 		...trpc.google.thread.queryOptions({ threadId }),
-		enabled: opened,
+		enabled: opened && provider === "google",
 	});
+
+	const microsoftThread = useQuery({
+		...trpc.microsoft.thread.queryOptions({ threadId }),
+		enabled: opened && provider === "microsoft",
+	});
+
+	const thread = provider === "microsoft" ? microsoftThread : googleThread;
 
 	return (
 		<Accordion
@@ -67,28 +79,37 @@ export function EmailThreadEntry({
 						</p>
 					) : (
 						<div className="flex flex-col">
-							{thread.data?.messages.map((message) => (
-								<ThreadMessage
-									key={message.id}
-									from={message.fromName ?? message.fromEmail}
-									fromEmail={message.fromEmail}
-									sentAt={timeFormat.format(new Date(message.sentAt))}
-									direction={message.direction}
-									body={message.body}
-									action={
-										message.gmailUrl ? (
-											<a
-												href={message.gmailUrl}
-												target="_blank"
-												rel="noreferrer"
-												className="text-muted-foreground underline underline-offset-3 hover:text-foreground"
-											>
-												Open in Gmail
-											</a>
-										) : null
-									}
-								/>
-							))}
+							{thread.data?.messages.map((message) => {
+								const openUrl = message.outlookUrl ?? message.gmailUrl ?? null;
+								const openLabel = message.outlookUrl
+									? "Open in Outlook"
+									: message.gmailUrl
+										? "Open in Gmail"
+										: null;
+
+								return (
+									<ThreadMessage
+										key={message.id}
+										from={message.fromName ?? message.fromEmail}
+										fromEmail={message.fromEmail}
+										sentAt={timeFormat.format(new Date(message.sentAt))}
+										direction={message.direction}
+										body={message.body}
+										action={
+											openUrl && openLabel ? (
+												<a
+													href={openUrl}
+													target="_blank"
+													rel="noreferrer"
+													className="text-muted-foreground underline underline-offset-3 hover:text-foreground"
+												>
+													{openLabel}
+												</a>
+											) : null
+										}
+									/>
+								);
+							})}
 						</div>
 					)}
 				</AccordionContent>
