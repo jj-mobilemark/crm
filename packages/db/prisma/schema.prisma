@@ -145,6 +145,8 @@ enum RecordSource {
   IMPORT
   EMAIL
   CALENDAR
+  /// Pulled from Sage CRM (see `docs/plans/sage-crm-sync.md`).
+  SAGE
 }
 
 model Company {
@@ -206,6 +208,15 @@ model Company {
   /// MANUAL unless a sync created it. Filterable, so a bad auto-create rule can
   /// be undone in bulk.
   source RecordSource @default(MANUAL)
+
+  /// Sage CRM entity id (eware `companyid`, e.g. "4139"). The join key for the
+  /// Sage pull; unique so a re-pull updates rather than duplicates.
+  sageCrmCompanyId String? @unique
+  /// Sage 100 customer key, split as Sage stores it: AR division + customer
+  /// number (e.g. "00" + "0000777"). Shown to reps as "<div>-<no>" and the join
+  /// to MasHeader / MasOrderDetailHistory for a later order-history phase.
+  sage100CustomerNo   String?
+  sage100ArDivisionNo String?
 
   /// Denormalised max(activity.createdAt), written with the activity.
   ///
@@ -287,6 +298,11 @@ model Contact {
   primaryOf   Company? @relation("PrimaryContact")
 
   source RecordSource @default(MANUAL)
+
+  /// Sage CRM entity id (eware `personid`, e.g. "5"). Unique so a re-pull
+  /// updates rather than duplicates. A contact has no Sage 100 id of its own —
+  /// its Sage 100 customer key is the parent company's, shown via the relation.
+  sageCrmContactId String? @unique
 
   /// Denormalised max(activity.createdAt), written with the activity.
   ///
@@ -661,6 +677,51 @@ model MailboxSync {
   @@unique([userId, source])
   @@index([status])
   @@map("mailboxSync")
+}
+
+/// Per-entity cursor for the Sage CRM pull (see `docs/plans/sage-crm-sync.md`).
+///
+/// Mirrors `MailboxSync` but keyed by Sage entity, not by user: one Sage
+/// service account pulls everything. Postgres for the same reason — the API is
+/// serverless and keeps no memory between invocations.
+model SageSyncState {
+  id     String @id @default(cuid())
+  /// "company" | "person" | "opportunity".
+  entity String @unique
+
+  status GoogleSyncStatus @default(IDLE)
+  /// The high-water `updateddate` seen for this entity; the incremental pull
+  /// asks Sage for rows changed after it. Sage caps a query at ~100 rows, so
+  /// the pull pages by ascending id within each changed set.
+  cursor       String?
+  lastSyncedAt DateTime?
+  lastError    String?
+  /// Set by the rate-limit handler; the cron skips this entity until it passes.
+  retryAfter   DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("sageSyncState")
+}
+
+/// The raw Sage record, kept verbatim so no field is lost before it is mapped.
+///
+/// Sage exposes far more per entity than the core tables hold. This lossless
+/// replica is what the mapping reads from, and what later phases (order
+/// history, push-back) can mine without re-querying Sage.
+model SageRecordSnapshot {
+  id     String @id @default(cuid())
+  /// "company" | "person" | "opportunity".
+  entity String
+  /// The Sage CRM entity id, as a string.
+  sageId String
+  /// The parsed record exactly as the SOAP query returned it.
+  payload   Json
+  updatedAt DateTime @updatedAt
+
+  @@unique([entity, sageId])
+  @@map("sageRecordSnapshot")
 }
 
 /// One conversation, whoever's mailbox it came from.

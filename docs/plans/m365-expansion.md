@@ -550,34 +550,43 @@ knows prefs + synced mail (and optionally Graph). Do not build until asked.
 
 ### Definition of done (Phase 5)
 
-- [ ] With synced mail present, the daily task produces suggestions with real
+- [x] With synced mail present, the daily task produces suggestions with real
       cited evidence (spot-check: each cites message ids that exist)
-- [ ] Accept creates a TASK visible on the record timeline AND in "My open
+      (2026-08-02: 1 PROPOSED `reply-owed`; evidence message id present in DB)
+- [x] Accept creates a TASK visible on the record timeline AND in "My open
       tasks"; dismiss/snooze behave; nothing duplicates on the next run
-- [ ] A rep sees only their own suggestions/tasks/deals
-- [ ] Priority prefs: changing the three selects reshapes list order/filter
+      (2026-08-02 human: accept → TASK created → task cleared)
+- [x] A rep sees only their own suggestions/tasks/deals
+      (2026-08-02 human smoke on signed-in rep `/follow-ups`)
+- [x] Priority prefs: changing the three selects reshapes list order/filter
       without an agent round-trip; prefs persist per rep
+      (UI + API shipped; human marked Phase 5 smoke complete)
 - [x] `check-types` / `lint` / `test` pass; `HANDOFF.md` updated
-      (code complete — human smoke still open: enqueue works; agent needs
-      `AI_GATEWAY_API_KEY` + `POST /eve/v1/dev/schedules/dispatch` under
-      `eve dev`; then accept/snooze + prefs reshape)
 
 ---
 
 ## Phase 6 — Optional extras (only when asked)
 
+**Status (2026-08-02): deferred by human — do not start unless re-asked.**
+
 - Outlook contacts import via Graph `/me/contacts` (`Contacts.Read`), routed
   through the Screening Room rather than direct creation.
+  *(Deferred: Screening-from-mail covers most cases.)*
 - Meeting prep: on calendar sync, call `AgentTriggerService.meetingSoon()`
   for upcoming external meetings (mirror the Google calendar-sync hook).
+  *(Already done in Phase 2 —
+  `outlook-calendar-sync.service.ts` `prepareForMeeting`.)*
 - Teams: post a rep's daily follow-up digest to a channel (incoming webhook
   is the simplest start).
+  *(Deferred: not needed yet.)*
 
 ## Phase 7 — Sage CRM interface layer (separate track, own plan)
 
-Bidirectional connector (Sage REST/OData or DB-level) syncing
-companies/contacts/deals so this app acts as the agentic front-end over Sage.
-Do not start this without a dedicated plan document.
+Connector syncing companies/contacts/deals so this app acts as the agentic
+front-end over Sage. The dedicated plan is [docs/plans/sage-crm-sync.md](plans/sage-crm-sync.md).
+First cut is pull-only for the Company/Person/Opportunity triad; push is later.
+SOAP access + field mappings were confirmed against production on 2026-08-02
+(see that doc, section 1-3). Follow it, not this stub.
 
 ---
 

@@ -37,8 +37,26 @@ Nothing about a person is guessed. No tool accepts a confidence score. Tools
 report what they observed; a ledger prices the evidence. Strong evidence writes
 to the record, weak evidence becomes a suggestion a human settles.
 
+## Active track: Sage CRM interface layer (Phase 7)
+
+This fork is growing into an improvement layer OVER Sage CRM (on-prem, reached
+via the `eware.dll` SOAP web service). The team runs sales in Sage — companies,
+people, opportunities, and **forecasting** — and this app aims to be a nicer
+surface on top, syncing bidirectionally (pull first, push later).
+
+- Read `docs/plans/sage-crm-sync.md` before any Sage work. SOAP access + field
+  mappings are confirmed against production; scope/decisions live there.
+- Sage sync is MECHANICAL, so it lives in `apps/api/src/sage/` (mirrors the
+  Google/Microsoft modules) — the "intelligence never in the API" rule still
+  holds.
+- **Forecasting is opportunity-driven in Sage** (stage + certainty% + forecast
+  amount + target close), not a separate record. The local `Deal` model does
+  not yet carry probability/weighted-amount/type or a forecast view — treat
+  that as a first-class gap, not an afterthought.
+
 ## Where to read more
 
 - `AGENTS.md` — the authoritative task-entry rules (read it first)
 - `docs/agent.md`, `docs/api.md`, `docs/design.md`, `docs/environment.md`
 - `docs/local-setup.md` — how this machine was set up and what's left to do
+- `docs/plans/sage-crm-sync.md` — Phase 7 Sage sync (confirmed SOAP + mappings)

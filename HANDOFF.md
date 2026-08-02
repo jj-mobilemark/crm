@@ -64,18 +64,73 @@ it before stopping. The rules for maintaining it live in `AGENTS.md`
   meeting smoke confirmed by human). **Phase 3**: DONE. **Phase 4**: DONE
   (human confirmed the Screening Room smoke — stranger mail → row → approve
   creates a contact + backfill, reject-with-suppress holds the domain out).
-  **Phase 5**: code DONE including priority prefs — human smoke **partially
-  started**. Enqueue works (`{"enqueued":1}`); Priority UI loads (3-col
-  selects). Agent sweep did **not** write suggestions yet: `eve dev` never
-  fires cron (must POST `/eve/v1/dev/schedules/dispatch`), and this machine
-  lacked `AI_GATEWAY_API_KEY` / OIDC (session failed with gateway auth error).
-  Accept/snooze/dismiss + prefs-reshape smoke still open once the model can
-  run.
-- **Next step**: Set `AI_GATEWAY_API_KEY` in root `.env`, restart `apps/agent`
-  (`bun run dev`), enqueue if needed, then
-  `curl -X POST http://127.0.0.1:2000/eve/v1/dev/schedules/dispatch`. Confirm
-  suggestions + prefs + accept on `/follow-ups`. Phase 6 only if asked.
-  Phase 7 needs its own plan. Optional MS settings visual pass.
+  **Phase 5**: DONE (code + smoke). Agent wrote a cited suggestion; human
+  accepted it → TASK created → task cleared (happy path). Phase 5 DoD
+  checked in the plan.
+- **Phase 6**: DEFERRED by human. Outlook contacts import low value vs
+  Screening-from-mail; meeting prep already wired in
+  `outlook-calendar-sync.service.ts` (`prepareForMeeting` →
+  `meetingSoon`); Teams digest not needed yet.
+- **Phase 7 (Sage CRM)**: FOUNDATION LANDED (2026-08-02). Dedicated plan
+  `docs/plans/sage-crm-sync.md`. Done this session (green: check-types 10/10,
+  lint 7/7, test 127 pass): additive schema + migration `add_sage_sync`
+  (`Company.sageCrmCompanyId`/`sage100CustomerNo`/`sage100ArDivisionNo`,
+  `Contact.sageCrmContactId`, `RecordSource.SAGE`, models `SageSyncState` +
+  `SageRecordSnapshot`); `SAGE_SOAP_*` in `.env.example` + `env.validation.ts`;
+  the `apps/api/src/sage/` module — `SageSoapClient` (logon/session/query/logoff,
+  raw fetch, `SageResult`, `fast-xml-parser`), `sage-xml.ts`, `sage.mappings.ts`
+  (company/person maps + the static owner map from the team), `sage.config.ts`
+  capability helper; registered `SageModule` in `app.module.ts`; unit tests
+  `test/sage-xml.spec.ts` + `test/sage-mappings.spec.ts` (16 tests).
+- **Phase 7 DEFERRED on purpose**: the `DealStage` enum swap + Deal forecasting
+  fields (high blast radius on the deal board UI) and ALL deal import; the
+  test-slice import route (7.4a); the id-surfacing UI (7.4c). SOAP client is
+  built but not yet wired to any pull/route — nothing calls it in prod yet.
+  Module availability probed: `company`/`person`/`opportunity`/`communication`/
+  `lead` are Web-Service enabled; `forecast` + `campaign` are NOT;
+  `case`/`quotes`/`orders`/`user` returned "Query failed" (likely enabled, wrong
+  id column — re-probe). **Forecasting is opportunity-driven** (fields
+  `forecast`/`total`/`certainty`/`targetclose`/`type` on the opportunity); the
+  formal `forecast` entity is not syncable. Local `Deal` lacks
+  probability/weighted-amount/type and any forecast view — flagged as the
+  headline feature gap for a "Sage interface layer".
+- **Phase 7 decisions (2026-08-02)**: forecasting IS in the first cut (add
+  `Deal.probability`/weighted amount/`dealType` + a forecast view); ADOPT
+  Sage's opportunity stages as the local pipeline (replace `DealStage` enum +
+  re-key the board — values: Investigation/Prospecting, Proposal, Negotiation,
+  Purchasing, Closed Won, Lost); owner mapping is a STATIC Sage-user->email map
+  (**BLOCKING: human to supply the list**); `Deal.amount` <- `total`,
+  `forecast` -> weighted field.
+- **Phase 7 gotcha**: Sage SOAP `query` is CAPPED at ~100 records/call. The full
+  pull MUST paginate (page by ascending id, `> lastSeenId`, 100/page). Two wide
+  queries each returned exactly 100 — do not assume one call returns everything.
+- **Phase 7 Sage-ID UI (planned, section 3d)**: two id systems per company —
+  Sage CRM id (`companyid`/`personid`/`opportunityid`) and Sage 100 customer no
+  (`ardivisionno`+`customerno`, shown `00-0000777`). New Company cols
+  `sageCrmCompanyId`/`sage100CustomerNo`/`sage100ArDivisionNo`; Contact
+  `sageCrmContactId` (its Sage 100 id = parent company's, shown via relation,
+  not stored). Surface both in the companies/contacts tables (copyable,
+  default-hidden columns) and in a "Sage" section on the company + contact
+  sheets; needs a new `CopyButton` primitive in `packages/ui` (none exists).
+- **Next step (Phase 7)**: build 7.4a — the Mobile Mark test-slice import that
+  uses `SageSoapClient` to pull the 8 companies + their people (+ opportunities
+  once deals land), write `SageRecordSnapshot`, and upsert Company/Contact via
+  `sage.mappings.ts` (direct Prisma, `source = SAGE`, match by `sageCrm*Id`
+  then natural key). Expose it behind a `CRON_SECRET`-guarded internal route
+  (mirror `microsoft-sync.controller.ts`; REST, so no tRPC codegen). Then 7.4c
+  (Sage-ID UI) and, in a dedicated deals session, the `DealStage` enum swap +
+  forecasting fields + opportunity import. Remember: Sage query caps at ~100
+  rows — the full pull (7.4b) must paginate by ascending id.
+- **Phase 7 scale note (NEW)**: production Sage has ~27k companies / ~14k people
+  (+ opportunities). 7.4b is a resumable, throttled, two-phase (backfill ->
+  incremental) state machine — see `docs/plans/sage-crm-sync.md` **section 6**.
+  Key points: page 100/tick with a wall-clock budget (resume across ticks);
+  companies-before-people-before-opportunities; `updateddate >=` high-water with
+  idempotent upserts (overlap safe, gaps not); run backfill OFF-PEAK (it is the
+  live on-prem server the sales team uses); extend `SageSyncState` with
+  phase/backfillId/highWater; measure a nested-company 100-row page in 7.4a to
+  pick flat vs hierarchical paging; probe for a `deleted` column + plan a
+  monthly reconcile for drift.
 - **Dev servers**: prefer two direct processes — `bun run src/main.ts` in
   `apps/api` and `bun run dev` in `apps/app` (+ `bun run dev` in
   `apps/agent` for sweeps). After followups router changes, **restart the API**
@@ -85,6 +140,221 @@ it before stopping. The rules for maintaining it live in `AGENTS.md`
   `Authorization: Bearer $(grep '^CRON_SECRET=' .env | cut -d= -f2- | tr -d \"\\'\")`.
 
 ## Work log (newest first)
+
+### 2026-08-02 — Phase 7 foundation built: schema + SOAP client + mappings (agent: Opus via Cursor)
+
+**Plan / phase**: `docs/plans/sage-crm-sync.md` — 7.1 (schema), 7.2 (config +
+client), 7.3 (mappings). Deal work + import + UI deferred.
+
+**What was completed** (all green: check-types 10/10, lint 7/7, test 127 pass)
+
+- Schema (additive) + migration `packages/db/prisma/migrations/20260802190000_add_sage_sync`:
+  `RecordSource.SAGE`; `Company.sageCrmCompanyId @unique` +
+  `sage100CustomerNo` + `sage100ArDivisionNo`; `Contact.sageCrmContactId @unique`;
+  models `SageSyncState` (per-entity cursor) + `SageRecordSnapshot` (raw replica).
+  Prisma client regenerated.
+- Config: `SAGE_SOAP_URL/USER/PASSWORD` documented in `.env.example` and declared
+  `@IsOptional() @IsString()` in `apps/api/src/config/env.validation.ts`.
+  `apps/api/src/sage/sage.config.ts` — `sageCredentials()` all-three-or-none
+  capability helper (mirrors `googleCredentials()`).
+- `apps/api/src/sage/` module:
+  - `sage-soap.client.ts` — `SageSoapClient`: logon (session cache + one
+    re-logon on stale-session fault), `query(entity, predicate)`, `logoff`; raw
+    `fetch` + hand-built envelopes; `SageResult<T>` union (never throws).
+  - `sage-xml.ts` — pure parsing via `fast-xml-parser` (added dep):
+    `parseSessionId`, `parseFault`, `parseRecords` (returns a record's OWN
+    scalar fields; drops nested child collections so a `company` response's
+    nested people don't leak).
+  - `sage.mappings.ts` — `mapCompany`/`mapContact` (+ `sage100Display`), and the
+    static Sage-user->email owner map from the team with `emailForSageUser`
+    (unknown ids -> null, i.e. former employees -> fallback owner).
+  - `sage.constants.ts`, `sage.module.ts`; `SageModule` registered in
+    `app.module.ts`.
+- Tests: `apps/api/test/sage-xml.spec.ts` + `test/sage-mappings.spec.ts` (16).
+
+**How and why**
+
+- Picked the durable, non-breaking foundation for one session: schema + client +
+  mappings, fully typed/linted/tested. Migration authored by hand + `migrate
+  deploy` because `prisma migrate dev` needs a TTY (non-interactive here).
+  Used `fast-xml-parser` rather than regex because the `company` response nests
+  child records — regex can't reliably scope a record's own fields.
+
+**Deviations**
+
+- Deferred ALL Deal changes (the `DealStage` enum swap re-keys the deal board UI
+  and existing deals — too big to bundle safely) and the import route/UI. The
+  SOAP client therefore has no runtime caller yet; it is exercised only by tests.
+- Owner map: Jordan Johnson intentionally imitates Ken (id 27); unknown/former
+  users resolve to null for a fallback owner (per the human's instruction).
+
+**What's next**
+
+- 7.4a: the Mobile Mark test-slice import (companies + people) behind a
+  `CRON_SECRET` internal route, then 7.4c (Sage-ID UI), then a dedicated deals
+  session (enum swap + forecasting + opportunity import). Full pull (7.4b) must
+  paginate — Sage caps queries at ~100 rows.
+
+### 2026-08-02 — Phase 7 feature-gap pass: Sage modules + forecasting (agent: Opus via Cursor)
+
+**Plan / phase**: `docs/plans/sage-crm-sync.md` — feature-completeness review.
+
+**What was completed**
+
+- Probed Sage module availability over SOAP. Enabled: `company`, `person`,
+  `opportunity`, `communication` (activities), `lead`. NOT enabled: `forecast`,
+  `campaign`. Ambiguous ("Query failed", likely enabled but wrong id column):
+  `case`, `quotes`, `orders`, `user`. Two distinct error strings distinguish
+  "not Web Service enabled" from "query error" — documented in the plan.
+- Enumerated opportunity vocabulary (100-row sample): stages
+  Investigation/Prospecting, Proposal, Negotiation, Purchasing, Closed Won,
+  Lost; statuses In Progress/Won/Lost/Closed; types Key Opportunity/New
+  Business/Baseline Business; certainty 0-100%.
+- Answered the forecasting question in the plan (section 3b): Sage forecasting
+  is OPPORTUNITY-driven (`forecast`/`total`/`certainty`/`targetclose`/`type`),
+  not a separate syncable record. Local `Deal` is missing
+  probability/weighted-amount/type + any forecast view — the headline gap for a
+  Sage interface layer. Added a feature-completeness table (section 3c) and new
+  open items (stage model A/B, forecasting scope, extra modules).
+- Updated `HANDOFF.md` and the `project-overview` rule pointer to Phase 7.
+
+**How and why**
+
+- The human flagged that the team forecasts in Sage and worried about missing
+  crucial functionality. Probed live to ground the answer instead of guessing.
+  Forecasting turns out to be the real risk: without it the app is not yet a
+  replacement surface for the team.
+
+**Deviations**
+
+- None. New constraint: `forecast` entity is not Web-Service enabled, so formal
+  Sage forecast submissions cannot be synced (reconstruct from opportunities).
+
+**What's next**
+
+- Get decisions in plan section 4 (owner fallback, amount source, stage model,
+  forecasting-in-first-cut, extra modules), then start Phase 7.1 schema.
+
+### 2026-08-02 — Phase 7 scoping: Sage CRM SOAP confirmed + mappings (agent: Opus via Cursor)
+
+**Plan / phase**: `docs/plans/sage-crm-sync.md` — Phase 7.0 (de-risk / scope).
+
+**What was completed**
+
+- Probed the live Sage CRM SOAP endpoint (`.../eware.dll/WebServices/SOAP`)
+  with the service account in root `.env`. Confirmed logon -> `sessionid`
+  (SOAP header `sessionheader`), `query { queryString, Entity }`, and `logoff`.
+  Namespaces: request `http://tempuri.org/`, response `http://tempuri.org/type`.
+- Confirmed the triad is queryable: `company`, `person`, `opportunity` all
+  return records. `user` entity is NOT exposed (query fails) — blocks direct
+  owner mapping. GET/WSDL return empty; only SOAP POST works.
+- Captured full field lists for company/person/opportunity (+ nested
+  email/phone/address) and wrote the field-mapping catalog into
+  `docs/plans/sage-crm-sync.md` (section 3). Predicates use DB names
+  (`comp_`/`pers_`/`oppo_`); responses use short names; cursor = `updateddate`.
+- Test slice sized: `comp_name like 'Mobile Mark%'` = 8 companies (<=10 cap).
+  Company `24` (MOBILE MARK INC) has 4 opportunities incl. real data
+  ("249 PR-LTMWG944-SP716" Closed Won, "Jordan Test Push From Sales Tool").
+- Company carries `mas_ardivisionno` + `mas_customerno` — the Sage 100 key that
+  joins to `MasHeader`/`MasOrderDetailHistory` for a future order-history phase.
+- Repointed the Phase 7 stub in `docs/plans/m365-expansion.md` at the new doc.
+
+**How and why**
+
+- Scope-before-build per the user's request. Probing live proved the triad is
+  reachable (only `Mas*` was proven before) and gave real field names so the
+  mapping catalog is grounded, not guessed. Pull each entity flat (person via
+  `pers_companyid`, opportunity via `oppo_primarycompanyid`) instead of walking
+  the deep nested `company` doc — simpler parser, smaller payloads.
+
+**Deviations**
+
+- None from the plan. New constraint discovered: no `user` entity over SOAP, so
+  Deal owner (required) needs a fallback owner / static map — logged as open
+  item #1 in the Sage plan.
+
+**What's next**
+
+- Phase 7.1: schema migration `add_sage_sync` (sage*Id columns,
+  `RecordSource.SAGE`, `SageSyncState`, `SageRecordSnapshot`). Then 7.2 client,
+  7.3 mappings, 7.4a Mobile Mark test-slice import. Decide open items (owner
+  fallback, amount = forecast vs total) before/at build.
+
+### 2026-08-02 — Phase 5 human smoke complete; Phase 6 deferred (agent: Grok via Cursor)
+
+**Plan / phase**: `docs/plans/m365-expansion.md` — Phase 5 DoD close-out;
+Phase 6 decision.
+
+**What was completed**
+
+- Human smoke on `/follow-ups`: saw the suggested follow-up, accepted it,
+  TASK was created, then cleared the task (happy path). Phase 5 marked
+  DONE in Current state + plan DoD.
+- Phase 6 reviewed with human and deferred:
+  1. Outlook contacts import — skip (Screening-from-mail covers most
+     cases; needs `Contacts.Read`).
+  2. Meeting prep — already present in
+     `apps/api/src/microsoft/outlook-calendar-sync.service.ts`
+     (`prepareForMeeting` → `AgentTriggerService.meetingSoon`); plan
+     bullet was stale.
+  3. Teams digest — skip for now.
+
+**How and why**
+
+- Close Phase 5 on observed accept→task→clear rather than leaving open
+  smoke. Record Phase 6 skip so the next agent does not re-propose those
+  extras.
+
+**Deviations**
+
+- Phase 6 meeting-prep item was already implemented in Phase 2 MS calendar
+  sync; plan text left as optional extras with a note in Current state.
+
+**What's next**
+
+1. Optional: Microsoft settings panel + sign-in visual pass vs upstream
+   design refresh.
+2. Phase 7 (Sage) only with a dedicated plan — do not start without one.
+3. No Phase 6 work unless the human re-asks.
+
+### 2026-08-02 — Phase 5 agent smoke (suggestions written) (agent: Grok via Cursor)
+
+**Plan / phase**: `docs/plans/m365-expansion.md` — Phase 5 smoke
+(curl/dispatch side).
+
+**What was completed**
+
+- Confirmed `AI_GATEWAY_API_KEY` present in root `.env`; restarted
+  `apps/agent` (`eve dev` on `:2000`).
+- Enqueue: `POST /internal/agent/followups` → `{"enqueued":1}`.
+- Dispatch: `POST /eve/v1/dev/schedules/dispatch` →
+  `{"scheduleId":"dispatch","sessionIds":["wrun_01KZ217NWH2NB5WF9VW3T3ZK01"]}`
+  (HTTP 200). Turn completed with model tokens/cost; tools included
+  `read_rep_followup_context` + `propose_followups`.
+- DB: 1 `FollowUpSuggestion` PROPOSED (`reply-owed`, summary about Ten18
+  antenna order). Evidence `messageId=cmsbxjv9j000cf48o6ippaxmi` exists in
+  `emailMessage` (subject "Coming back at you"). `mailCount=8`.
+- Left accept / snooze / dismiss + Priority prefs reshape to the human on
+  `/follow-ups` (per request).
+
+**How and why**
+
+- Finished the blocked agent path without touching UI decisions the human
+  owns. Gateway key was the missing piece from the prior handoff.
+
+**Deviations**
+
+- Only one suggestion this run (enough for evidence spot-check). Root
+  session may still show `running` briefly under eve while the turn is
+  already `completed` — suggestions were committed either way.
+
+**What's next**
+
+1. Human: on `/follow-ups`, accept one suggestion (confirm TASK on timeline
+   + My open tasks), try snooze/dismiss, change Priority selects.
+2. Check remaining Phase 5 DoD boxes in `docs/plans/m365-expansion.md`.
+3. Phase 6 (asked): choose first extra — Outlook contacts → Screening,
+   meeting prep `meetingSoon()`, or Teams digest webhook.
 
 ### 2026-08-02 — Phase 5 prefs smoke notes + Priority 3-col UI (agent: Grok via Cursor)
 

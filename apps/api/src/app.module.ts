@@ -19,6 +19,7 @@ import { HealthModule } from "./health/health.module";
 import { LoggingModule } from "./logging/logging.module";
 import { logAuthRoute } from "./logging/request-logger.middleware";
 import { MicrosoftModule } from "./microsoft/microsoft.module";
+import { SageModule } from "./sage/sage.module";
 import { ScreeningModule } from "./screening/screening.module";
 import { SearchModule } from "./search/search.module";
 import { TrpcModule } from "./trpc/trpc.module";
@@ -49,6 +50,7 @@ import { UsersModule } from "./users/users.module";
 		SearchModule,
 		GoogleModule,
 		MicrosoftModule,
+		SageModule,
 		ScreeningModule,
 		FollowupsModule,
 	],

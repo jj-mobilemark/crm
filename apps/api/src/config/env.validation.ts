@@ -100,6 +100,24 @@ export class EnvironmentVariables {
 	@IsString()
 	MICROSOFT_TENANT_ID?: string;
 
+	/**
+	 * Sage CRM SOAP (eware.dll web service). Optional — set all three to turn the
+	 * Sage sync on; leave them empty and the capability is simply absent. The
+	 * Sage module enforces that they are set together. See
+	 * `docs/plans/sage-crm-sync.md`.
+	 */
+	@IsOptional()
+	@IsString()
+	SAGE_SOAP_URL?: string;
+
+	@IsOptional()
+	@IsString()
+	SAGE_SOAP_USER?: string;
+
+	@IsOptional()
+	@IsString()
+	SAGE_SOAP_PASSWORD?: string;
+
 	// --- defaulted ----------------------------------------------------------
 
 	/** Where this API is reachable. Only needs setting off localhost. */
