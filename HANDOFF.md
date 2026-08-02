@@ -23,6 +23,21 @@ it before stopping. The rules for maintaining it live in `AGENTS.md`
 
 ## Current state (keep this section up to date)
 
+- **Git layout (NEW)**: local work now lives on branch **`m365-expansion`**.
+  `main` tracks upstream `trycompai/crm` and was fast-forwarded to `288d41a`
+  (the "comp design system" release). Upstream was merged INTO
+  `m365-expansion` with zero conflicts. The pre-merge snapshot of all local
+  work is commit `421e556`. To keep updating in future: commit on
+  `m365-expansion`, `git checkout main && git merge --ff-only origin/main`,
+  then `git checkout m365-expansion && git merge main`.
+- **Upstream delta absorbed**: the new release restyled ~40 `packages/ui`
+  components + `globals.css`, split the company overview, added a favicon
+  resolver, and added row-hover prefetch. This is cosmetic/mechanical and did
+  not touch the Microsoft module. **Visual pass still needed** on the
+  Microsoft settings panel and sign-in page against the new design system.
+- **Verification after merge**: `check-types` 10/10, `lint` 7/7, `test`
+  111 pass / 0 fail (incl. `hasMsSyncScopes`). `server.ts` regenerates
+  identical (10 routers, 47 procedures) — no drift.
 - **Runs locally**: Bun 1.3.12 monorepo; Postgres via `docker compose up -d`;
   `bun run dev` serves app on :3000 and API on :3001. Setup details in
   `docs/local-setup.md`.
@@ -42,6 +57,53 @@ it before stopping. The rules for maintaining it live in `AGENTS.md`
   (backfill on contact add). See newest work-log entry.
 
 ## Work log (newest first)
+
+### 2026-08-02 — Sync to upstream comp design system (288d41a) (agent: Opus via Cursor)
+
+**Plan / phase**: Not a phase — a safe upstream update requested by the human
+after finishing local Phase 2 work.
+
+**What was completed**
+
+- Committed ALL local work (74 files, Phases 0-2 + auth fallback +
+  CompanyPicker + docs + `.cursor/`) as a safety snapshot on a new branch
+  `m365-expansion` (commit `421e556`). `.env` stayed ignored; no secret was
+  staged.
+- Fast-forwarded `main` from `856ae2f` to upstream `288d41a` (15 commits: the
+  "comp design system" UI overhaul, favicon resolver, row-hover prefetch,
+  list-search-in-header, and small fixes).
+- Merged `main` into `m365-expansion`. Result: **zero conflicts**. Only three
+  files were touched on both sides — `AGENTS.md` and the two create sheets —
+  and the edits sat in different line regions, so the 3-way merge combined
+  them automatically (verified: CompanyPicker + upstream `<Button>` both
+  present; both AGENTS.md sections present; no conflict markers).
+- Verified the merged branch: `bun install` clean, `check-types` 10/10,
+  `lint` 7/7, `test` 111 pass / 0 fail.
+
+**How and why**
+
+- Branch-first, commit-first because ALL work was uncommitted — a dirty-tree
+  `git pull` would have aborted (3 shared files) and left no recovery point.
+  The snapshot commit `421e556` is the fallback; `git merge --abort` was
+  never needed.
+
+**Deviations**
+
+- None from the intended procedure. New vs upstream: this fork now keeps its
+  auth-fallback + Microsoft additions on the `m365-expansion` branch;
+  `main` is pure upstream.
+
+**What's next (for the next agent)**
+
+1. Do a visual pass on Microsoft settings
+   (`apps/app/app/(app)/settings/microsoft-connection.tsx`) and the sign-in
+   page against the new comp design system (flat white, one brand green — see
+   `adrs/comp-palette.md` and `docs/design.md`). Several `packages/ui`
+   components and design tokens changed.
+2. Continue the Phase 2 Definition of Done smoke test (see the Phase 2 entry
+   below and the plan).
+3. Keep future upstream updates on the same branch discipline (see "Git
+   layout" in Current state).
 
 ### 2026-08-02 — Phase 2 Microsoft mail + calendar sync (agent: Grok via Cursor)
 
