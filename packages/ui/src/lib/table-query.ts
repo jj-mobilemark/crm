@@ -7,9 +7,12 @@ export type SortDirection = "asc" | "desc";
  * them. The implementation lives in the app (`useTableQuery`) because routing
  * is not the design system's business — but the shape belongs next to the
  * component that consumes it, so the two cannot drift.
+ *
+ * Search is not in here. It is the one list control that lives in the page
+ * header rather than the toolbar, so it reads `q` out of the URL itself and the
+ * table never sees it.
  */
 export type TableQueryState = {
-	q: string;
 	sort: string;
 	dir: SortDirection;
 	page: number;
@@ -19,7 +22,6 @@ export type TableQueryState = {
 	tabId?: string;
 	/** Facet id → selected value, `"all"` when unfiltered. */
 	filters: Record<string, string>;
-	setSearch: (value: string) => void;
 	toggleSort: (id: string) => void;
 	setSort: (id: string) => void;
 	setDir: (dir: SortDirection) => void;

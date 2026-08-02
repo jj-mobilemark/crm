@@ -1,5 +1,5 @@
 import { EnrichmentStatus } from "@crm/db";
-import { defineChannel } from "eve/channels";
+import { defineChannel, POST } from "eve/channels";
 import { settle } from "../lib/enrichment";
 import { completeTask, taskSubject } from "../lib/tasks";
 
@@ -30,9 +30,30 @@ function taskFromToken(token: string | undefined): string | null {
 }
 
 export default defineChannel({
-	// No inbound HTTP surface. Work reaches this channel by hand-off from the
-	// dispatcher, not by request — the API queues a row, it does not call us.
-	routes: [],
+	/**
+	 * Work reaches this channel by hand-off from the dispatcher, not by request
+	 * — the API queues a row, it does not call us. So this route is not an entry
+	 * point and refuses everything.
+	 *
+	 * It exists because eve builds its channel registry *from routes*: one
+	 * manifest entry per method/path pair. With `routes: []` the channel
+	 * compiles to nothing, never registers, and `receive(crm, …)` fails with
+	 * "the channel passed as the first argument is not registered in this
+	 * agent's channels/" — which reads like a bad import and is not one.
+	 * Nothing reports it: `resolveTargetByReference` matches on object
+	 * identity, its `createRouteFingerprint` fallback returns null for an empty
+	 * route set, and a channel contributing no routes is not a discovery error,
+	 * so `diagnostics` stays at zero while every dispatched task fails.
+	 *
+	 * Registering this way is what keeps the hand-off working; if eve gains a
+	 * way to register a routeless channel, this goes.
+	 */
+	routes: [
+		POST(
+			"/internal/crm/dispatch-only",
+			async () => new Response("Not found", { status: 404 }),
+		),
+	],
 
 	/**
 	 * A turn ending is what retires the row.

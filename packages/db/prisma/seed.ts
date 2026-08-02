@@ -1,4 +1,5 @@
 import { db } from "../src/client";
+import { resolveFavicon } from "../src/favicon";
 import { ActivityType, DealStage } from "../src/generated/prisma/enums";
 
 /**
@@ -401,12 +402,49 @@ async function seedCompanies(
 				createdAt: daysFromNow(-integer(30, 400), 12),
 			},
 			update: {},
-			select: { id: true, name: true, domain: true },
+			select: { id: true, name: true, domain: true, iconUrl: true },
 		});
 		companies.push({ ...row, domain: row.domain ?? company.domain });
 	}
 
-	return companies;
+	await seedIcons(companies);
+
+	return companies.map(({ iconUrl: _, ...company }) => company);
+}
+
+/**
+ * The favicon each seeded company serves, so a fresh clone is a list of real
+ * companies rather than a column of grey squares.
+ *
+ * Resolved here rather than hard-coded because these URLs rot — half of them
+ * carry a deploy hash — and a dead `<img>` is worse than the initials it
+ * replaced. Icons the agent has since found are left alone, and a machine with
+ * no network simply seeds without them: every failure is a `null`, so the seed
+ * cannot be broken by somebody else's origin being down.
+ */
+async function seedIcons(
+	companies: { id: string; domain: string | null; iconUrl: string | null }[],
+): Promise<void> {
+	const missing = companies.filter(
+		(company) => company.iconUrl === null && company.domain,
+	);
+	if (missing.length === 0) return;
+
+	// Sequential: this walks fifteen origins that did not ask to be walked, and
+	// all at once is a burst that looks like a scan.
+	let resolved = 0;
+	for (const company of missing) {
+		const iconUrl = await resolveFavicon(company.domain);
+		if (!iconUrl) continue;
+
+		await db.company.updateMany({
+			where: { id: company.id, iconUrl: null },
+			data: { iconUrl },
+		});
+		resolved += 1;
+	}
+
+	console.log(`Resolved ${resolved} of ${missing.length} company icons.`);
 }
 
 type SeededContact = { id: string; companyId: string };

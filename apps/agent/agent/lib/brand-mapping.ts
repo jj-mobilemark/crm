@@ -5,9 +5,12 @@ import type { Brand } from "./context-dev";
  * What the agent is allowed to change about a company.
  *
  * Every field Context.dev returns is nullable, and a human's typed-in value
- * always outranks a guess: this only ever *fills gaps*. Nothing here overwrites
- * something that is already set, which is why every assignment goes through
- * `fill`.
+ * always outranks a guess: this only ever *fills gaps*, which is why almost
+ * every assignment goes through `fill`.
+ *
+ * The two exceptions are `name` and `iconUrl`, and both are exceptions for the
+ * same reason — their existing value was written by us rather than by a person,
+ * so there is nobody to overrule. Each is marked at the assignment.
  */
 export type BrandUpdate = Prisma.CompanyUpdateInput;
 
@@ -143,9 +146,9 @@ function clean(value: string | null | undefined): string | null {
 /**
  * Builds the Prisma update for a brand lookup.
  *
- * Returns only the fields that are currently empty and that the lookup actually
- * found, so re-enriching a company a rep has been editing does not undo their
- * work.
+ * Returns the fields the lookup actually found that are currently empty — plus
+ * the two the agent owns outright — so re-enriching a company a rep has been
+ * editing does not undo their work.
  */
 export function brandToUpdate(
 	brand: Brand,
@@ -173,7 +176,16 @@ export function brandToUpdate(
 
 	fill("logoUrl", pickLogo(brand.logos, "logo", "light"));
 	fill("logoDarkUrl", pickLogo(brand.logos, "logo", "dark"));
-	fill("iconUrl", pickIcon(brand.logos)?.url ?? null);
+
+	// The second non-null field the agent may replace, and for the same reason
+	// as the name: `iconUrl` has another writer. The API derives a favicon from
+	// the domain so a new company is not a grey square while we work, and this
+	// icon is the curated one — `fill` would see a non-null value and skip,
+	// leaving the stand-in in place permanently. No human can set `iconUrl`
+	// (it is not in `companyUpdateInput`), so there is nobody to overrule.
+	const icon = pickIcon(brand.logos)?.url ?? null;
+	if (icon) update.iconUrl = icon;
+
 	fill("iconDarkUrl", pickLogo(brand.logos, "icon", "dark"));
 	fill("iconTone", iconTone(brand.logos));
 

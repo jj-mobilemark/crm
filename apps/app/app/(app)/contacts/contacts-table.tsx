@@ -12,6 +12,7 @@ import { useQuery } from "@tanstack/react-query";
 import { CompanyCell } from "@/components/crm/company-cell";
 import { contactName } from "@/components/crm/contact-name";
 import { OwnerCell } from "@/components/crm/owner-cell";
+import { usePrefetchRecord } from "@/components/crm/record-sheet/record-prefetch";
 import { useOpenRecord } from "@/components/crm/record-sheet/record-stack";
 import { useTableQuery } from "@/components/data-table/use-table-query";
 import { useTRPC } from "@/lib/trpc/client";
@@ -113,6 +114,7 @@ const COLUMNS: DataTableColumn<ContactRow>[] = [
 export function ContactsTable() {
 	const openRecord = useOpenRecord();
 	const trpc = useTRPC();
+	const prefetchRecord = usePrefetchRecord();
 	const { query, input } = useTableQuery(contactsSearchParams);
 
 	const contacts = useQuery({
@@ -159,7 +161,7 @@ export function ContactsTable() {
 			facets={facets}
 			getRowId={(row) => row.id}
 			loading={contacts.isFetching}
-			searchPlaceholder="Search by name, email or company…"
+			onRowHover={(row) => prefetchRecord({ kind: "contact", id: row.id })}
 			onRowClick={(row) => openRecord({ kind: "contact", id: row.id })}
 			empty="No contacts match this view."
 		/>

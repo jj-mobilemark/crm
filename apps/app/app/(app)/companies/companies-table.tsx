@@ -19,6 +19,7 @@ import {
 	isEnriching,
 } from "@/components/crm/enrichment-status";
 import { OwnerCell } from "@/components/crm/owner-cell";
+import { usePrefetchRecord } from "@/components/crm/record-sheet/record-prefetch";
 import { useOpenRecord } from "@/components/crm/record-sheet/record-stack";
 import { useTableQuery } from "@/components/data-table/use-table-query";
 import { useTRPC } from "@/lib/trpc/client";
@@ -146,6 +147,7 @@ const COLUMNS: DataTableColumn<CompanyRow>[] = [
 export function CompaniesTable() {
 	const openRecord = useOpenRecord();
 	const trpc = useTRPC();
+	const prefetchRecord = usePrefetchRecord();
 	const { query, input } = useTableQuery(companiesSearchParams);
 
 	const companies = useQuery({
@@ -210,7 +212,7 @@ export function CompaniesTable() {
 			facets={facets}
 			getRowId={(row) => row.id}
 			loading={companies.isFetching}
-			searchPlaceholder="Search companies by name or domain…"
+			onRowHover={(row) => prefetchRecord({ kind: "company", id: row.id })}
 			onRowClick={(row) => openRecord({ kind: "company", id: row.id })}
 			empty="No companies match this view."
 		/>

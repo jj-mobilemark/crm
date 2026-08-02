@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import type { SearchParams } from "nuqs/server";
+import { ListSearch } from "@/components/data-table/list-search";
 import {
 	PageShell,
 	PageShellActions,
@@ -51,6 +52,7 @@ export default async function CompaniesPage({
 					</PageShellDescription>
 				</PageShellHeading>
 				<PageShellActions>
+					<ListSearch placeholder="Search companies by name or domain…" />
 					<CreateCompanySheet />
 				</PageShellActions>
 			</PageShellHeader>

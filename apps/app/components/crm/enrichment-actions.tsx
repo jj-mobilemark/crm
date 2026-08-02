@@ -72,8 +72,9 @@ export function EnrichmentActions({
 				<span className="hidden sm:inline">Re-enrich</span>
 			</Button>
 
+			{/* Research is the action on this record, so it takes the fill.
+			 * Re-enrich beside it is the quieter "do that again". */}
 			<Button
-				variant="outline"
 				size="sm"
 				disabled={!hasDomain || research.isPending}
 				onClick={() => research.mutate({ id: companyId })}

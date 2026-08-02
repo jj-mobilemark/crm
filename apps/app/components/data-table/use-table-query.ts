@@ -2,7 +2,6 @@
 
 import type { TableQueryState } from "@crm/ui/lib/table-query";
 import { useQueryStates } from "nuqs";
-import { useDeferredValue } from "react";
 import type {
 	ListInput,
 	ListSearchParams,
@@ -21,6 +20,11 @@ export type TableQuery<TKey extends string> = {
  *
  * Lives in the app rather than in `@crm/ui` because it is routing state: the
  * design system renders the controls, the app decides what a URL means.
+ *
+ * Nothing here is debounced or deferred. `q` reaches the URL only once typing
+ * has paused, because `ListSearch` holds the keystrokes in local state until
+ * then — so by the time this reads it, every value in the URL is one a user
+ * settled on and is worth a request.
  */
 export function useTableQuery<TTab extends string, TFacet extends string>(
 	searchParams: ListSearchParams<TTab, TFacet>,
@@ -41,7 +45,6 @@ export function useTableQuery<TTab extends string, TFacet extends string>(
 	}
 
 	const query: TableQueryState = {
-		q: values.q,
 		sort: values.sort,
 		dir: values.dir,
 		page,
@@ -51,7 +54,6 @@ export function useTableQuery<TTab extends string, TFacet extends string>(
 		filters,
 		// Every filter change resets to page 1: staying on page 7 of a result set
 		// that now has two pages shows an empty table.
-		setSearch: (value) => setState((prev) => ({ ...prev, q: value, page: 1 })),
 		toggleSort: (id) =>
 			setState((prev) =>
 				prev.sort === id
@@ -69,11 +71,5 @@ export function useTableQuery<TTab extends string, TFacet extends string>(
 			setState((prev) => ({ ...prev, [id]: value, page: 1 })),
 	};
 
-	// The search box is responsive because `q` updates on every keystroke; the
-	// fetch does not need to be. Deferring the value the query is built from lets
-	// a burst of typing collapse into a single request.
-	const deferredQ = useDeferredValue(values.q);
-	const input = toInput({ ...values, q: deferredQ });
-
-	return { query, input };
+	return { query, input: toInput(values) };
 }

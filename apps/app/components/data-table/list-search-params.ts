@@ -1,7 +1,6 @@
 import type { SortDirection } from "@crm/ui/lib/table-query";
 import {
 	createLoader,
-	debounce,
 	type LoaderFunction,
 	type ParserBuilder,
 	parseAsInteger,
@@ -23,6 +22,22 @@ import {
 const SORT_DIRECTIONS = ["asc", "desc"] as const;
 
 type StringParser = ParserBuilder<string> & { defaultValue: string };
+
+/**
+ * The two keys the search box owns, identical on every list.
+ *
+ * Exported so `ListSearch` can bind to them without being handed a module's
+ * whole parser map. Search genuinely does not care which list it is on, and
+ * taking the map would cost more than it looks: parsers carry functions, a
+ * server component cannot pass a function to a client one, so every page would
+ * need a client wrapper of its own whose only job is to import the map on the
+ * right side of the boundary.
+ */
+export const searchParsers = {
+	q: parseAsString.withDefault(""),
+	// Paging is the one table change worth a Back button.
+	page: parseAsInteger.withDefault(1).withOptions({ history: "push" }),
+};
 
 /**
  * Base keys every list has, plus one string key per tab and facet.
@@ -103,16 +118,9 @@ export function createListSearchParams<
 	}
 
 	const parsers = {
-		// Typing writes the URL once the user pauses. The value the input renders
-		// updates immediately regardless — nuqs returns the queued value — so this
-		// costs nothing in responsiveness; it just keeps the history clean.
-		q: parseAsString.withDefault("").withOptions({
-			limitUrlUpdates: debounce(300),
-		}),
+		...searchParsers,
 		sort: parseAsString.withDefault(defaultSort),
 		dir: parseAsStringLiteral(SORT_DIRECTIONS).withDefault(defaultDir),
-		// Paging is the one table change worth a Back button.
-		page: parseAsInteger.withDefault(1).withOptions({ history: "push" }),
 		...extras,
 	} as ListParsers<TTab | TFacet>;
 

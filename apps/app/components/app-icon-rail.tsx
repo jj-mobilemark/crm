@@ -62,7 +62,7 @@ function RailLink({ item, active }: { item: RailItem; active: boolean }) {
 					className={cn(
 						"text-muted-foreground",
 						active &&
-							"bg-primary/10 text-primary hover:bg-primary/10 hover:text-primary",
+							"bg-muted text-foreground hover:bg-muted hover:text-foreground",
 					)}
 				>
 					<Link
@@ -96,7 +96,7 @@ function MobileRailLink({
 			className={cn(
 				"justify-start gap-3 text-muted-foreground",
 				active &&
-					"bg-primary/10 text-primary hover:bg-primary/10 hover:text-primary",
+					"bg-muted text-foreground hover:bg-muted hover:text-foreground",
 			)}
 		>
 			<Link

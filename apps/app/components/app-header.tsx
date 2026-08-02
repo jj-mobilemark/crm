@@ -60,7 +60,11 @@ export function AppHeader({ user }: { user: User }) {
 				<Link
 					href="/"
 					aria-label="Homepage"
-					className="hidden size-8 items-center justify-center text-primary md:flex"
+					// The mark wears the page's ink, not the brand green. `text-primary`
+					// used to be near-black and became the accent when the palette
+					// changed, which put a second green on screen competing with the
+					// one button that is meant to be the only one.
+					className="hidden size-8 items-center justify-center text-foreground md:flex"
 				>
 					<Logo className="size-5" />
 				</Link>

@@ -42,9 +42,13 @@ import { Timeline } from "@/components/crm/timeline/timeline";
 import {
 	DetailSheetBody,
 	DetailSheetEmpty,
+	DetailSheetMain,
+	DetailSheetPending,
 	DetailSheetProperties,
 	DetailSheetProse,
+	DetailSheetRail,
 	DetailSheetSection,
+	DetailSheetSplit,
 	DetailSheetStat,
 	DetailSheetStats,
 	type DetailSheetTab,
@@ -65,6 +69,23 @@ type Company = RouterOutputs["companies"]["byId"];
 type CompanyDeal = Company["deals"][number];
 
 const UNASSIGNED = "unassigned";
+
+/**
+ * The fields only the agent can fill, that it has not filled yet.
+ *
+ * Strictly the ones with no editor anywhere in this sheet. Phone, email, city
+ * and country are `InlineField`s a rep types into, so their emptiness means
+ * "nobody has entered this" — listing them here would blame the agent for a
+ * blank a human was always going to fill, and imply it was off looking for
+ * something it never looks for.
+ */
+function pendingFields(company: Company): string[] {
+	const missing: string[] = [];
+	if (!company.industry) missing.push("industry");
+	if (!company.description) missing.push("description");
+	if (!hasCompanyLinks(company)) missing.push("social links");
+	return missing;
+}
 
 const CONTACT_COLUMNS = [
 	{ srLabel: "Primary", width: "w-10", className: "pl-5" },
@@ -183,7 +204,15 @@ export function CompanySheet({ companyId }: { companyId: string }) {
 				{
 					value: "overview",
 					label: "Overview",
-					content: <CompanyOverview company={company} />,
+					content: (
+						<CompanyOverview
+							company={company}
+							onAddContact={() => {
+								setAdding("contact");
+								setTab("contacts");
+							}}
+						/>
+					),
 				},
 				{
 					value: "contacts",
@@ -306,7 +335,13 @@ export function CompanySheet({ companyId }: { companyId: string }) {
 	);
 }
 
-function CompanyOverview({ company }: { company: Company }) {
+function CompanyOverview({
+	company,
+	onAddContact,
+}: {
+	company: Company;
+	onAddContact: () => void;
+}) {
 	const trpc = useTRPC();
 	const cache = useCrmCache();
 
@@ -328,89 +363,116 @@ function CompanyOverview({ company }: { company: Company }) {
 
 	return (
 		<DetailSheetBody>
-			{/*
-			 * Only the fields a rep would correct by hand are editable: the brand,
-			 * industry and socials come from the agent, and a text box inviting
-			 * someone to retype them is a text box inviting someone to fight it.
-			 */}
-			<DetailSheetSection title="Details">
-				<DetailSheetProperties>
-					<InlineField
-						label="Name"
-						value={company.name}
-						saving={isSaving("name")}
-						onSave={(name) => name && save({ name })}
-					/>
-					<InlineField
-						label="Domain"
-						value={company.domain}
-						type="url"
-						placeholder="stripe.com"
-						saving={isSaving("domain")}
-						onSave={(domain) => save({ domain })}
-					/>
-					<InlineField
-						label="Website"
-						value={company.website}
-						type="url"
-						placeholder="https://stripe.com"
-						saving={isSaving("website")}
-						onSave={(website) => save({ website })}
-					/>
-					<InlineField
-						label="Phone"
-						value={company.phone}
-						type="tel"
-						saving={isSaving("phone")}
-						onSave={(phone) => save({ phone })}
-					/>
-					<InlineField
-						label="Email"
-						value={company.email}
-						type="email"
-						saving={isSaving("email")}
-						onSave={(email) => save({ email })}
-					/>
-					<InlineField
-						label="City"
-						value={company.city}
-						saving={isSaving("city")}
-						onSave={(city) => save({ city })}
-					/>
-					<InlineField
-						label="Country"
-						value={company.country}
-						saving={isSaving("country")}
-						onSave={(country) => save({ country })}
-					/>
-					<InlineSelectField
-						label="Owner"
-						value={company.owner?.id ?? UNASSIGNED}
-						options={[
-							{ value: UNASSIGNED, label: "Unassigned" },
-							...(users.data ?? []).map((user) => ({
-								value: user.id,
-								label: user.name,
-							})),
-						]}
-						onSave={(ownerId) =>
-							save({ ownerId: ownerId === UNASSIGNED ? null : ownerId })
-						}
-					/>
-				</DetailSheetProperties>
-			</DetailSheetSection>
+			<DetailSheetSplit>
+				<DetailSheetMain>
+					{company.description ? (
+						<DetailSheetSection title="About">
+							<DetailSheetProse>{company.description}</DetailSheetProse>
+						</DetailSheetSection>
+					) : null}
 
-			{company.description ? (
-				<DetailSheetSection title="About">
-					<DetailSheetProse>{company.description}</DetailSheetProse>
-				</DetailSheetSection>
-			) : null}
+					{/*
+					 * Promoted out of its tab. "Who do we know there" is the question a
+					 * rep opens a company to answer, and it was behind a click while
+					 * eight label/value rows had the whole panel.
+					 */}
+					<DetailSheetSection title="People">
+						{/* Adding happens on the Contacts tab, which owns the form:
+						 * two quick-add forms bound to one `?add=` would both open. */}
+						<CompanyContacts
+							company={company}
+							adding={false}
+							onAdd={onAddContact}
+							onDone={() => undefined}
+						/>
+					</DetailSheetSection>
+				</DetailSheetMain>
 
-			{hasCompanyLinks(company) ? (
-				<DetailSheetSection title="Links">
-					<CompanySocials company={company} />
-				</DetailSheetSection>
-			) : null}
+				<DetailSheetRail>
+					{/*
+					 * Only the fields a rep would correct by hand are editable: the brand,
+					 * industry and socials come from the agent, and a text box inviting
+					 * someone to retype them is a text box inviting someone to fight it.
+					 */}
+					<DetailSheetSection title="Details">
+						<DetailSheetProperties columns={1}>
+							<InlineField
+								label="Name"
+								value={company.name}
+								saving={isSaving("name")}
+								onSave={(name) => name && save({ name })}
+							/>
+							<InlineField
+								label="Domain"
+								value={company.domain}
+								type="url"
+								placeholder="stripe.com"
+								saving={isSaving("domain")}
+								onSave={(domain) => save({ domain })}
+							/>
+							<InlineField
+								label="Website"
+								value={company.website}
+								type="url"
+								placeholder="https://stripe.com"
+								saving={isSaving("website")}
+								onSave={(website) => save({ website })}
+							/>
+							<InlineField
+								label="Phone"
+								value={company.phone}
+								type="tel"
+								saving={isSaving("phone")}
+								onSave={(phone) => save({ phone })}
+							/>
+							<InlineField
+								label="Email"
+								value={company.email}
+								type="email"
+								saving={isSaving("email")}
+								onSave={(email) => save({ email })}
+							/>
+							<InlineField
+								label="City"
+								value={company.city}
+								saving={isSaving("city")}
+								onSave={(city) => save({ city })}
+							/>
+							<InlineField
+								label="Country"
+								value={company.country}
+								saving={isSaving("country")}
+								onSave={(country) => save({ country })}
+							/>
+							<InlineSelectField
+								label="Owner"
+								value={company.owner?.id ?? UNASSIGNED}
+								options={[
+									{ value: UNASSIGNED, label: "Unassigned" },
+									...(users.data ?? []).map((user) => ({
+										value: user.id,
+										label: user.name,
+									})),
+								]}
+								onSave={(ownerId) =>
+									save({ ownerId: ownerId === UNASSIGNED ? null : ownerId })
+								}
+							/>
+						</DetailSheetProperties>
+					</DetailSheetSection>
+
+					<DetailSheetPending
+						fields={pendingFields(company)}
+						running={isEnriching(company.enrichmentStatus, company.queued)}
+					/>
+
+					{hasCompanyLinks(company) ? (
+						<DetailSheetSection title="Links">
+							<CompanySocials company={company} />
+						</DetailSheetSection>
+					) : null}
+				</DetailSheetRail>
+			</DetailSheetSplit>
 		</DetailSheetBody>
 	);
 }

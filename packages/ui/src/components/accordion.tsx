@@ -33,7 +33,7 @@ function AccordionItem({
 }
 
 const accordionTriggerVariants = cva(
-	"group/accordion-trigger relative flex items-start rounded-none border border-transparent text-left outline-none transition-all focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:after:border-ring disabled:pointer-events-none disabled:opacity-50 **:data-[slot=accordion-trigger-icon]:text-muted-foreground",
+	"group/accordion-trigger relative flex items-start rounded-md border border-transparent text-left outline-none transition-all focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:after:border-ring disabled:pointer-events-none disabled:opacity-50 **:data-[slot=accordion-trigger-icon]:text-muted-foreground",
 	{
 		variants: {
 			// `subtle` is the one that belongs inside a record sheet: a line of

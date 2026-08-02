@@ -85,7 +85,7 @@ export function CreateCompanySheet() {
 	return (
 		<Sheet open={open} onOpenChange={(next) => setOpen(next || null)}>
 			<SheetTrigger asChild>
-				<Button size="sm">
+				<Button>
 					<Icon icon={Add} data-icon="inline-start" />
 					New company
 				</Button>

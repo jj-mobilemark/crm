@@ -14,21 +14,36 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
-	--background: oklch(1 0 0);
-	--foreground: oklch(0.145 0 0);
-	--card: oklch(1 0 0);
-	--card-foreground: oklch(0.145 0 0);
-	--popover: oklch(1 0 0);
-	--popover-foreground: oklch(0.145 0 0);
-	--primary: oklch(0.205 0 0);
-	--primary-foreground: oklch(0.985 0 0);
-	--secondary: oklch(0.97 0 0);
-	--secondary-foreground: oklch(0.205 0 0);
-	--muted: oklch(0.97 0 0);
-	--muted-foreground: oklch(0.556 0 0);
-	--accent: oklch(0.97 0 0);
-	--accent-foreground: oklch(0.205 0 0);
-	--destructive: oklch(0.577 0.245 27.325);
+	/*
+	 * Comp's palette: flat white, neutral greys, one brand green.
+	 *
+	 * The greys are deliberately untinted. There is no scene to tint them
+	 * toward — the brand is "flat white and #006B4F" — and a tinted grey
+	 * without a reason reads as indecision rather than as a choice.
+	 */
+	--background: #ffffff;
+	--foreground: #171717;
+	--card: #ffffff;
+	--card-foreground: #171717;
+	--popover: #ffffff;
+	--popover-foreground: #171717;
+	/*
+	 * The brand green, spent on the most-pressed control in the product.
+	 * White on it measures 6.4:1, so a 13px label clears AA comfortably.
+	 */
+	--primary: #006b4f;
+	--primary-foreground: #ffffff;
+	--secondary: #f4f4f4;
+	--secondary-foreground: #171717;
+	--muted: #f4f4f4;
+	--muted-foreground: #6b6b6b;
+	--accent: #f4f4f4;
+	--accent-foreground: #171717;
+	/*
+	 * Bricked back from a pure red so it does not read as a holiday pairing
+	 * next to the green. Still 6.2:1 against white.
+	 */
+	--destructive: #ae2e24;
 	--destructive-foreground: #ffffff;
 	--success: oklch(0.55 0.13 150);
 	--success-foreground: #ffffff;
@@ -36,31 +51,61 @@
 	--warning-foreground: #ffffff;
 	--info: oklch(0.55 0.16 255);
 	--info-foreground: #ffffff;
-	--border: oklch(0.922 0 0);
-	--input: oklch(0.922 0 0);
-	--ring: oklch(0.708 0 0);
-	--chart-1: oklch(0.879 0.169 91.605);
-	--chart-2: oklch(0.769 0.188 70.08);
-	--chart-3: oklch(0.666 0.179 58.318);
-	--chart-4: oklch(0.555 0.163 48.998);
-	--chart-5: oklch(0.473 0.137 46.201);
+	--border: #e2e2e2;
+	--input: #e2e2e2;
+	/*
+	 * The scrim behind a modal. A token rather than `bg-black/10` because the
+	 * two themes need different strengths: 10% black over a near-black page is
+	 * almost nothing, so a dialog in dark had no separation from the page
+	 * underneath it.
+	 */
+	--overlay: rgb(0 0 0 / 0.18);
+	/*
+	 * Focus is green. It is drawn as a ring outside the control's own border
+	 * rather than replacing it — a ring that swaps the border out changes the
+	 * control's apparent size the moment it is focused.
+	 */
+	--ring: #006b4f;
+	/*
+	 * Categorical, not a ramp. Deal stages appear as segments of the overview
+	 * donut with a legend beside it, so adjacent stages have to be told apart —
+	 * a single-hue green ramp measured ΔE 8.3 between neighbours, which is below
+	 * the 15 floor at which full-colour vision can separate them.
+	 *
+	 * Validated: lightness band, chroma floor, CVD separation, normal-vision
+	 * floor and contrast all pass against the light surface. Assign in order,
+	 * never cycle — a stage keeps its hue when the others are filtered out.
+	 *
+	 * Slot 1 is a brighter step of the brand green; #006b4f itself measures
+	 * C 0.096, under the 0.10 chroma floor, so it reads grey in a chart.
+	 */
+	--chart-1: #00915f;
+	--chart-2: #2563eb;
+	--chart-3: #b45309;
+	--chart-4: #7c3aed;
+	--chart-5: #0891b2;
 	--severity-critical: var(--destructive);
 	--severity-high: oklch(0.646 0.222 41.116);
 	--severity-medium: oklch(0.681 0.162 75.834);
 	--severity-low: var(--muted-foreground);
 	--severity-info: oklch(0.71 0.01 286);
 	--severity-unknown: oklch(0.75 0 0);
-	--sidebar: oklch(0.985 0 0);
-	--sidebar-foreground: oklch(0.145 0 0);
-	--sidebar-primary: oklch(0.205 0 0);
-	--sidebar-primary-foreground: oklch(0.985 0 0);
-	--sidebar-accent: oklch(0.97 0 0);
-	--sidebar-accent-foreground: oklch(0.205 0 0);
-	--sidebar-border: oklch(0.922 0 0);
-	--sidebar-ring: oklch(0.708 0 0);
+	--sidebar: #fafafa;
+	--sidebar-foreground: #171717;
+	--sidebar-primary: #006b4f;
+	--sidebar-primary-foreground: #ffffff;
+	--sidebar-accent: #f4f4f4;
+	--sidebar-accent-foreground: #171717;
+	--sidebar-border: #e2e2e2;
+	--sidebar-ring: #006b4f;
 	--font-sans: var(--font-geist-sans, "Geist", sans-serif);
 	--font-mono: var(--font-geist-mono, "Geist Mono", monospace);
-	--radius: 0.625rem;
+	/*
+	 * 5px, down from 10px. Enough to read as deliberately rounded next to the
+	 * square controls this replaced, tight enough that a dense table does not
+	 * start looking like a consumer app.
+	 */
+	--radius: 5px;
 	--shadow-x: 0px;
 	--shadow-y: 1px;
 	--shadow-blur: 2px;
@@ -80,21 +125,30 @@
 }
 
 .dark {
-	--background: oklch(0.145 0 0);
-	--foreground: oklch(0.985 0 0);
-	--card: oklch(0.205 0 0);
-	--card-foreground: oklch(0.985 0 0);
-	--popover: oklch(0.205 0 0);
-	--popover-foreground: oklch(0.985 0 0);
-	--primary: oklch(0.922 0 0);
-	--primary-foreground: oklch(0.205 0 0);
-	--secondary: oklch(0.269 0 0);
-	--secondary-foreground: oklch(0.985 0 0);
-	--muted: oklch(0.269 0 0);
-	--muted-foreground: oklch(0.708 0 0);
-	--accent: oklch(0.269 0 0);
-	--accent-foreground: oklch(0.985 0 0);
-	--destructive: oklch(0.704 0.191 22.216);
+	--background: #0f0f0f;
+	--foreground: #f5f5f5;
+	--card: #171717;
+	--card-foreground: #f5f5f5;
+	--popover: #171717;
+	--popover-foreground: #f5f5f5;
+	/*
+	 * The same green as light, deliberately. A brand colour that changes value
+	 * per theme is not one colour, it is two — and both then need maintaining.
+	 * #006b4f still reads clearly green against near-black, and white on it is
+	 * unchanged at 6.4:1.
+	 *
+	 * This replaces a near-white primary, so a primary button in dark now
+	 * carries the brand rather than being a light slab.
+	 */
+	--primary: #006b4f;
+	--primary-foreground: #ffffff;
+	--secondary: #1f1f1f;
+	--secondary-foreground: #f5f5f5;
+	--muted: #1f1f1f;
+	--muted-foreground: #a0a0a0;
+	--accent: #292929;
+	--accent-foreground: #f5f5f5;
+	--destructive: #ae2e24;
 	--destructive-foreground: #ffffff;
 	--success: oklch(0.72 0.16 155);
 	--success-foreground: oklch(0.205 0 0);
@@ -102,31 +156,57 @@
 	--warning-foreground: oklch(0.205 0 0);
 	--info: oklch(0.7 0.15 250);
 	--info-foreground: oklch(0.205 0 0);
-	--border: oklch(1 0 0 / 10%);
-	--input: oklch(1 0 0 / 15%);
-	--ring: oklch(0.556 0 0);
-	--chart-1: oklch(0.879 0.169 91.605);
-	--chart-2: oklch(0.769 0.188 70.08);
-	--chart-3: oklch(0.666 0.179 58.318);
-	--chart-4: oklch(0.555 0.163 48.998);
-	--chart-5: oklch(0.473 0.137 46.201);
+	/* Lighter than the background: on near-black there is nothing darker to
+	 * draw a line with, so a border sits above its surface rather than below. */
+	--border: #2a2a2a;
+	/*
+	 * The same value as `--border`. A control in dark is a #1f1f1f fill with a
+	 * #2a2a2a edge — the fill is what separates it from the page, and the edge
+	 * only has to define where it stops.
+	 *
+	 * This is deliberately below the 3:1 non-text contrast guideline. A lighter
+	 * edge reads as a bright grey outline on every input and filter at once,
+	 * which is louder than the controls themselves. The fill difference against
+	 * the page carries the affordance instead.
+	 */
+	--input: #2a2a2a;
+	/* Much stronger than light: the page it covers is already dark. */
+	--overlay: rgb(0 0 0 / 0.55);
+	/*
+	 * The one value that does NOT match its light counterpart. #006b4f is too
+	 * close to near-black to register as a ring at all. A fill carries the
+	 * brand; a ring only has to be seen, so this one lightens.
+	 */
+	--ring: #40be96;
+	/*
+	 * Selected against the dark surface, not flipped from light. The dark
+	 * lightness band is L 0.48–0.67 — narrower *and* darker than light's
+	 * 0.43–0.77 — so the light steps do not simply carry over.
+	 */
+	--chart-1: #0fa871;
+	--chart-2: #4b87f0;
+	--chart-3: #c07e22;
+	--chart-4: #9b7bf0;
+	--chart-5: #1e93b8;
 	--severity-critical: oklch(0.637 0.237 25.331);
 	--severity-high: oklch(0.705 0.213 47.604);
 	--severity-medium: var(--chart-2);
 	--severity-low: var(--muted-foreground);
 	--severity-info: oklch(0.71 0.01 286);
 	--severity-unknown: oklch(0.5 0 0);
-	--sidebar: oklch(0.205 0 0);
-	--sidebar-foreground: oklch(0.985 0 0);
-	--sidebar-primary: oklch(0.922 0 0);
-	--sidebar-primary-foreground: oklch(0.205 0 0);
-	--sidebar-accent: oklch(0.269 0 0);
-	--sidebar-accent-foreground: oklch(0.985 0 0);
-	--sidebar-border: oklch(1 0 0 / 10%);
-	--sidebar-ring: oklch(0.556 0 0);
+	--sidebar: #171717;
+	--sidebar-foreground: #f5f5f5;
+	--sidebar-primary: #006b4f;
+	--sidebar-primary-foreground: #ffffff;
+	--sidebar-accent: #292929;
+	--sidebar-accent-foreground: #f5f5f5;
+	--sidebar-border: #2a2a2a;
+	--sidebar-ring: #40be96;
 	--font-sans: var(--font-geist-sans, "Geist", sans-serif);
 	--font-mono: var(--font-geist-mono, "Geist Mono", monospace);
-	--radius: 0.75rem;
+	/* Matches light. The themes disagreed before — 10px against 12px — which
+	 * meant a control quietly changed shape when the theme was switched. */
+	--radius: 5px;
 	--shadow-x: 0px;
 	--shadow-y: 1px;
 	--shadow-blur: 2px;
@@ -169,6 +249,7 @@
 	--color-border: var(--border);
 	--color-input: var(--input);
 	--color-ring: var(--ring);
+	--color-overlay: var(--overlay);
 	--color-chart-1: var(--chart-1);
 	--color-chart-2: var(--chart-2);
 	--color-chart-3: var(--chart-3);
@@ -191,10 +272,10 @@
 
 	--font-sans: var(--font-sans);
 	--font-mono: var(--font-mono);
-	--radius-sm: 6px;
-	--radius-md: 8px;
-	--radius-lg: var(--radius);
-	--radius-xl: 16px;
+	--radius-sm: 4px;
+	--radius-md: var(--radius);
+	--radius-lg: 8px;
+	--radius-xl: 12px;
 
 	--shadow-2xs: var(--shadow-2xs);
 	--shadow-xs: var(--shadow-xs);
@@ -885,5 +966,57 @@
 		animation: none !important;
 		/* biome-ignore lint/complexity/noImportantStyles: reduced-motion reset must override transition declarations */
 		transition-duration: 0.01ms !important;
+	}
+}
+
+/*
+ * "It is still here."
+ *
+ * Re-running a check that fails the same way changes nothing on screen, so the
+ * button reads as broken rather than the connection. This replays whenever a
+ * check lands on an error that is still the same one — a short nudge plus a
+ * ring that fades out, which is enough to say the page did respond without
+ * announcing a new problem that has not happened.
+ *
+ * The ring is the part that carries the message; the nudge is the part that
+ * carries the urgency, so only the nudge is dropped under reduced motion.
+ */
+@keyframes alert-attention-nudge {
+	0%,
+	100% {
+		transform: translateX(0);
+	}
+	15% {
+		transform: translateX(-3px);
+	}
+	35% {
+		transform: translateX(3px);
+	}
+	55% {
+		transform: translateX(-2px);
+	}
+	75% {
+		transform: translateX(2px);
+	}
+}
+
+@keyframes alert-attention-ring {
+	from {
+		box-shadow: 0 0 0 3px var(--ring);
+	}
+	to {
+		box-shadow: 0 0 0 0 transparent;
+	}
+}
+
+@utility alert-attention {
+	animation:
+		alert-attention-nudge 0.5s ease-in-out,
+		alert-attention-ring 1.4s ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.alert-attention {
+		animation: alert-attention-ring 1.4s ease-out;
 	}
 }

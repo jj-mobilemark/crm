@@ -209,7 +209,11 @@ export function DetailSheetHeader({
  * of furniture, not information.
  */
 export function DetailSheetStats({ children }: { children: ReactNode }) {
-	return <dl className="flex shrink-0 divide-x border-b">{children}</dl>;
+	// A filled shelf rather than a bare band: the stats sit above the tabs and
+	// below the identity, and the fill is what separates the three.
+	return (
+		<dl className="flex shrink-0 divide-x border-b bg-muted/40">{children}</dl>
+	);
 }
 
 export function DetailSheetStat({
@@ -220,9 +224,13 @@ export function DetailSheetStat({
 	children: ReactNode;
 }) {
 	return (
-		<div className={cn("flex min-w-0 flex-1 flex-col gap-0.5 py-2", GUTTER)}>
+		<div className={cn("flex min-w-0 flex-1 flex-col gap-1 py-2.5", GUTTER)}>
 			<dt className="truncate text-muted-foreground text-xs/5">{label}</dt>
-			<dd className="min-w-0 truncate text-xs/5">{children}</dd>
+			{/* The value outranks its label — it is the thing you opened the sheet
+			 * to read, and at the same size the two competed. */}
+			<dd className="min-w-0 truncate font-medium text-foreground text-sm/5">
+				{children}
+			</dd>
 		</div>
 	);
 }
@@ -369,13 +377,103 @@ export function DetailSheetSection({
 }
 
 /**
+ * An overview in two columns: what the record *is* on the left, what we know
+ * *about* it on the right.
+ *
+ * One column made the sheet a long list of label/value rows with the useful
+ * prose at the bottom, so a rep opening a company scrolled past eight fields to
+ * reach the description and never saw the contacts at all. Collapses below `lg`,
+ * where a rail would be too narrow to hold a value.
+ */
+export function DetailSheetSplit({ children }: { children: ReactNode }) {
+	return (
+		<div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:gap-8">
+			{children}
+		</div>
+	);
+}
+
+/** The wide half of a split: prose, and the records hanging off this one. */
+export function DetailSheetMain({ children }: { children: ReactNode }) {
+	return <div className="flex min-w-0 flex-1 flex-col">{children}</div>;
+}
+
+/** The narrow half of a split: the record's own fields, and its gaps. */
+export function DetailSheetRail({ children }: { children: ReactNode }) {
+	// `min-w-0` so a long value truncates inside the rail instead of pushing it
+	// wider than the sheet and running off the edge of the screen.
+	return (
+		<div className="flex w-full min-w-0 shrink-0 flex-col lg:w-80">
+			{children}
+		</div>
+	);
+}
+
+/**
  * Two columns of editable properties on a wide panel, one on a narrow one.
  *
  * Paired rather than a single list because a company has eight of these and a
  * single column turns the first screen of the sheet into a ladder you scroll.
  */
-export function DetailSheetProperties({ children }: { children: ReactNode }) {
-	return <div className="grid gap-x-8 sm:grid-cols-2">{children}</div>;
+export function DetailSheetProperties({
+	children,
+	columns = 2,
+}: {
+	children: ReactNode;
+	/**
+	 * One column when the properties sit in a `DetailSheetRail`.
+	 *
+	 * Each row is a 6.5rem label plus its value, so two of them inside a 288px
+	 * rail leave about 32px for the value and every one of them clips. Two
+	 * columns is right across a full-width panel and wrong anywhere narrow.
+	 */
+	columns?: 1 | 2;
+}) {
+	return (
+		<div className={cn("grid gap-x-8", columns === 2 && "sm:grid-cols-2")}>
+			{children}
+		</div>
+	);
+}
+
+/**
+ * What the agent has not filled in yet, as one line rather than a column of
+ * em dashes.
+ *
+ * An empty field rendered as "—" costs a full row and says nothing; five of
+ * them say nothing five times. Naming the gaps once, next to the fact that
+ * something is working on them, is the same information in a tenth of the
+ * space — and it gives the agent a visible presence on a record, which matters
+ * in a product whose whole premise is that the agent does the looking.
+ */
+export function DetailSheetPending({
+	fields,
+	running,
+}: {
+	fields: string[];
+	running: boolean;
+}) {
+	if (fields.length === 0) return null;
+
+	return (
+		<div className="flex flex-col gap-1.5 rounded-md bg-muted/40 p-3">
+			<div className="flex items-center gap-2">
+				<span
+					aria-hidden
+					className={cn(
+						"size-1.5 shrink-0 rounded-full",
+						running ? "bg-primary" : "bg-muted-foreground",
+					)}
+				/>
+				<span className="font-medium text-xs">
+					{running ? "Agent is researching" : "Not known yet"}
+				</span>
+			</div>
+			<p className="text-pretty text-muted-foreground text-xs/5">
+				{fields.join(", ")}
+			</p>
+		</div>
+	);
 }
 
 /**

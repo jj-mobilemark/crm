@@ -35,6 +35,8 @@ complete eve documentation ships in `apps/agent/node_modules/eve/docs` and
 matches the installed version — read the relevant guide before writing eve code
 rather than working from memory of the API.
 
+ABSOLUTELY, no coauthoring commits.
+
 ## Environment / configuration:
 Read @docs/environment.md
 

@@ -42,7 +42,7 @@ export function TablePagination({
 			{totalPages > 1 && (
 				<div className="flex items-center gap-2">
 					<Button
-						variant="outline"
+						variant="ghost"
 						size="sm"
 						disabled={page <= 1}
 						onClick={() => onPageChange(Math.max(1, page - 1))}
@@ -53,8 +53,10 @@ export function TablePagination({
 					<span className="text-muted-foreground text-xs tabular-nums">
 						{page} / {totalPages}
 					</span>
+					{/* Next carries the weight: it is the one you press to move
+					 * through a list, and Previous is the way back. */}
 					<Button
-						variant="outline"
+						variant="contrast"
 						size="sm"
 						disabled={page >= totalPages}
 						onClick={() => onPageChange(page + 1)}

@@ -32,6 +32,7 @@ import type {
 	CompanyUpdateInput,
 } from "./companies.contracts";
 import { normalizeDomain } from "./domain";
+import { FaviconService } from "./favicon.service";
 
 const OWNER_SELECT = {
 	id: true,
@@ -106,6 +107,7 @@ export class CompaniesService {
 		@InjectDatabase() private readonly db: Db,
 		private readonly agent: AgentTriggerService,
 		private readonly queue: AgentQueueService,
+		private readonly favicon: FaviconService,
 	) {}
 
 	async list(input: CompanyListInput): Promise<ListResult<CompanyRow>> {
@@ -321,6 +323,11 @@ export class CompaniesService {
 		// agent's call.
 		await this.agent.companyCreated(company.id);
 
+		// Not awaited, for the same reason: the icon is worth a second or two of
+		// somebody else's origin being slow, and the form is not. The list polls
+		// while the row is enriching, so it lands without a reload.
+		void this.favicon.backfill(company.id, company.domain);
+
 		return company;
 	}
 
@@ -367,6 +374,18 @@ export class CompaniesService {
 			if (current && current.domain !== domain) {
 				data.enrichmentStatus = "PENDING";
 				data.enrichmentError = null;
+				// The icon is one of the things that was about a different company,
+				// and it is the one a rep can see. Cleared so the row shows a
+				// placeholder until the new domain answers, rather than confidently
+				// showing the old company's mark.
+				//
+				// All three variants, not just `iconUrl`: the agent's `brandToUpdate`
+				// only fills fields that are null, so a stale `iconDarkUrl` would
+				// survive re-enrichment and keep showing the previous company's mark
+				// to anyone in dark mode.
+				data.iconUrl = null;
+				data.iconDarkUrl = null;
+				data.iconTone = null;
 			}
 		}
 
@@ -382,6 +401,7 @@ export class CompaniesService {
 					id,
 					"Domain changed — anything we knew was about a different company",
 				);
+				void this.favicon.backfill(id, updated.domain);
 			}
 
 			return updated;

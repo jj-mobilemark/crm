@@ -12,6 +12,7 @@ import { CLOSING_OPTIONS } from "@/components/crm/closing-window";
 import { CompanyCell } from "@/components/crm/company-cell";
 import { DEAL_STAGE_OPTIONS } from "@/components/crm/deal-stage";
 import { OwnerCell } from "@/components/crm/owner-cell";
+import { usePrefetchRecord } from "@/components/crm/record-sheet/record-prefetch";
 import { useOpenRecord } from "@/components/crm/record-sheet/record-stack";
 import { DealStageMenu } from "@/components/crm/stage-change";
 import { useTableQuery } from "@/components/data-table/use-table-query";
@@ -126,6 +127,7 @@ const COLUMNS: DataTableColumn<DealRow>[] = [
 export function DealsTable() {
 	const openRecord = useOpenRecord();
 	const trpc = useTRPC();
+	const prefetchRecord = usePrefetchRecord();
 	const { query, input } = useTableQuery(dealsSearchParams);
 
 	const deals = useQuery({
@@ -180,7 +182,7 @@ export function DealsTable() {
 			}}
 			getRowId={(row) => row.id}
 			loading={deals.isFetching}
-			searchPlaceholder="Search deals by name or company…"
+			onRowHover={(row) => prefetchRecord({ kind: "deal", id: row.id })}
 			onRowClick={(row) => openRecord({ kind: "deal", id: row.id })}
 			empty="No deals match this view."
 			meta={

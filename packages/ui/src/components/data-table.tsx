@@ -7,7 +7,6 @@ import ChevronDown from "@carbon/icons-react/es/ChevronDown";
 import ChevronRight from "@carbon/icons-react/es/ChevronRight";
 import Column from "@carbon/icons-react/es/Column";
 import Filter from "@carbon/icons-react/es/Filter";
-import Search from "@carbon/icons-react/es/Search";
 import { Button } from "@crm/ui/components/button";
 import {
 	DropdownMenu,
@@ -19,11 +18,6 @@ import {
 	DropdownMenuSeparator,
 	DropdownMenuTrigger,
 } from "@crm/ui/components/dropdown-menu";
-import {
-	InputGroup,
-	InputGroupAddon,
-	InputGroupInput,
-} from "@crm/ui/components/input-group";
 import { Spinner } from "@crm/ui/components/spinner";
 import { TablePagination } from "@crm/ui/components/table-pagination";
 import {
@@ -91,10 +85,18 @@ export type DataTableProps<TRow, TSub> = {
 	total: number;
 	facetCounts?: Record<string, Record<string, number>>;
 	loading?: boolean;
-	searchPlaceholder?: string;
 	facets?: DataTableFacet[];
 	tabs?: DataTableTabs;
 	onRowClick?: (row: TRow) => void;
+	/**
+	 * The pointer or the keyboard has landed on a row, ahead of any click.
+	 *
+	 * For warming the record the row opens. Opening a sheet is a cold fetch
+	 * otherwise, so the panel appears with a spinner and a placeholder title
+	 * and only becomes the record a moment later — which reads as the sheet
+	 * not having opened at all.
+	 */
+	onRowHover?: (row: TRow) => void;
 	expandable?: DataTableExpandable<TRow, TSub>;
 	actions?: ReactNode;
 	leadingActions?: ReactNode;
@@ -161,10 +163,10 @@ export function DataTable<TRow, TSub = unknown>({
 	total,
 	facetCounts,
 	loading,
-	searchPlaceholder = "Search…",
 	facets,
 	tabs,
 	onRowClick,
+	onRowHover,
 	expandable,
 	actions,
 	leadingActions,
@@ -433,18 +435,6 @@ export function DataTable<TRow, TSub = unknown>({
 						{actions}
 					</div>
 				</div>
-
-				<InputGroup>
-					<InputGroupAddon>
-						<Search />
-					</InputGroupAddon>
-					<InputGroupInput
-						placeholder={searchPlaceholder}
-						value={query.q}
-						onChange={(event) => query.setSearch(event.target.value)}
-						autoComplete="off"
-					/>
-				</InputGroup>
 			</div>
 
 			<Table
@@ -452,12 +442,20 @@ export function DataTable<TRow, TSub = unknown>({
 				// truncates (cells are overflow-hidden) instead of blowing the table
 				// out horizontally.
 				className={cn(
-					"table-fixed [&_td:first-child]:pl-0 [&_th:first-child]:pl-0",
+					"table-fixed [&_td:first-child]:pl-4 [&_th:first-child]:pl-4 [&_td:last-child]:pr-4 [&_th:last-child]:pr-4",
 					tableClassName,
 				)}
-				containerClassName="min-h-0 flex-1 overflow-auto"
+				// The shell: one rounded, bordered surface the rows live inside,
+				// rather than rows floating on the page. `overflow-hidden` is what
+				// makes the first and last row clip to the radius.
+				containerClassName="min-h-0 flex-1 overflow-auto rounded-lg border bg-card"
 			>
-				<TableHeader className="sticky top-0 z-10 bg-background [&_th]:bg-background">
+				{/*
+				 * The header is a shelf above the rows, not another row. It gets the
+				 * muted fill and an inset rule rather than a border, so it stays put
+				 * when the body scrolls under it.
+				 */}
+				<TableHeader className="sticky top-0 z-10 bg-muted [&_th]:bg-muted [&_tr]:border-0 [&_tr]:shadow-[inset_0_-1px_0_var(--border)]">
 					<TableRow>
 						{anyExpandable && (
 							<TableHead className="h-11 w-10 px-3">
@@ -542,6 +540,10 @@ export function DataTable<TRow, TSub = unknown>({
 								<Fragment key={id}>
 									<TableRow
 										onClick={clickable ? handleClick : undefined}
+										onMouseEnter={
+											onRowHover ? () => onRowHover(row) : undefined
+										}
+										onFocus={onRowHover ? () => onRowHover(row) : undefined}
 										className={
 											clickable
 												? anyExpandable
