@@ -23,13 +23,18 @@ it before stopping. The rules for maintaining it live in `AGENTS.md`
 
 ## Current state (keep this section up to date)
 
-- **Git layout (NEW)**: local work now lives on branch **`m365-expansion`**.
-  `main` tracks upstream `trycompai/crm` and was fast-forwarded to `288d41a`
-  (the "comp design system" release). Upstream was merged INTO
-  `m365-expansion` with zero conflicts. The pre-merge snapshot of all local
-  work is commit `421e556`. To keep updating in future: commit on
-  `m365-expansion`, `git checkout main && git merge --ff-only origin/main`,
-  then `git checkout m365-expansion && git merge main`.
+- **Git layout (NEW)**: this is now its own repo — **`origin` is
+  `jj-mobilemark/crm`** (a fork, created 2026-08-02), **`upstream` is
+  `trycompai/crm`** (the original open-source project, read-only for this
+  account). `main` on `origin` is the real working branch: it was fast-forwarded
+  straight to `m365-expansion`'s tip (`8d025d2`), so it carries every phase
+  done so far, not just what upstream has. `m365-expansion` still exists on
+  `origin` too (same commit, kept for history) — new work can go straight on
+  `main` from here, no more juggling two branches for local vs. upstream. The
+  pre-upstream-merge snapshot of all local work is commit `421e556` if it's
+  ever needed. To pull a future upstream release:
+  `git fetch upstream && git merge upstream/main` (while on `main`), verify,
+  then `git push origin main`.
 - **Upstream delta absorbed**: the new release restyled ~40 `packages/ui`
   components + `globals.css`, split the company overview, added a favicon
   resolver, and added row-hover prefetch. This is cosmetic/mechanical and did
@@ -79,6 +84,48 @@ it before stopping. The rules for maintaining it live in `AGENTS.md`
   until it's root-caused.
 
 ## Work log (newest first)
+
+### 2026-08-02 — Forked to jj-mobilemark/crm; main is now the real branch (agent: Sonnet via Cursor)
+
+**Plan / phase**: Not a phase — repo ownership change requested by the human.
+
+**What was completed**
+
+- `origin` no longer points at `trycompai/crm` (it never had write access
+  there — confirmed `viewerPermission: "READ"` before touching anything).
+  Renamed that remote to `upstream`; created a fork at
+  `github.com/jj-mobilemark/crm` and added it as the new `origin`.
+- Pushed `m365-expansion` (commit `8d025d2`, all of Phases 0-5) to the fork.
+- Fast-forwarded local `main` to `8d025d2` (a clean fast-forward — `main` was
+  already an ancestor of `m365-expansion`, so no merge commit was needed) and
+  pushed it to `origin/main`. The fork's default branch is `main`.
+- Updated the "Current state" git-layout note above for the new remotes and
+  the simpler go-forward workflow (work on `main` directly; pull upstream
+  with `git fetch upstream && git merge upstream/main`).
+
+**How and why**
+
+- Human asked to commit and push; `git push` to the old `origin` would have
+  failed outright (read-only), and even with access, pushing personal/company
+  work-in-progress to someone else's public OSS repo without being asked
+  would have been wrong. A fork is the correct destination, and the human
+  confirmed: fork under their own account, merge `m365-expansion` into `main`
+  so `main` is the full working CRM, and keep `upstream` around for pulling
+  future `trycompai/crm` releases.
+
+**Deviations**
+
+- None from what was asked. `m365-expansion` branch was left in place on the
+  fork (not deleted) in case anything ever needs to be diffed against it —
+  it points at the same commit as `main` right now, so it costs nothing to
+  keep.
+
+**What's next**
+
+1. Continue work directly on `main` from here — no more dual-branch
+   maintenance for local-vs-upstream.
+2. Everything under "Next step" below still applies (Phase 5 human smoke,
+   then Phase 6 only if asked).
 
 ### 2026-08-02 — Phase 5 Follow-ups / Sales Cockpit (agent: Sonnet via Cursor)
 
