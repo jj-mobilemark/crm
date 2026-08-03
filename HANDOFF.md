@@ -25,6 +25,11 @@ it before stopping. The rules for maintaining it live in `AGENTS.md`
 
 - **Git**: `origin` = `jj-mobilemark/crm` (fork); `upstream` = `trycompai/crm`
   (read-only). Work on `main`.
+- **Prod tRPC proxy (FIXED 2026-08-03)**: Settings "Check now" was failing
+  with `Unexpected token '<', "<!doctype "...` because the Next proxy
+  hairpinned through Cloudflare (`API_URL`) and got Error 1000 HTML.
+  Fix: `INTERNAL_API_URL=http://api.railway.internal:3001` on the app
+  service; proxy + RSC use it (`apps/app/lib/env.ts`). Deployed `9f0b65c`.
 - **Branding**: **Mobile Mark CRM** (no Comp AI in UI). Signal mark +
   wordmark in `apps/app/public/`; `Logo` component uses the mark; auth
   shell shows the wordmark on the dark panel.
@@ -71,6 +76,36 @@ it before stopping. The rules for maintaining it live in `AGENTS.md`
 ---
 
 ## Work log
+
+### 2026-08-03 — Fix Settings "Check now" Cloudflare hairpin
+
+**What was completed**
+- Diagnosed prod toast `Unexpected token '<', "<!doctype "... is not
+  valid JSON`: app `/api/[...path]` proxy fetched
+  `https://api.mobilemarksalestool.com` and Cloudflare returned Error
+  1000 HTML ("DNS points to prohibited IP").
+- Added `INTERNAL_API_URL` for server-side Nest reachability
+  (`apps/app/lib/env.ts`); wired proxy
+  (`apps/app/app/api/[...path]/route.ts`) and RSC tRPC
+  (`apps/app/lib/trpc/server.ts`) to it; HTML upstream → JSON 502.
+- Documented in `.env.example` + `docs/environment.md`.
+- Set Railway app var
+  `INTERNAL_API_URL=http://api.railway.internal:3001`; shipped
+  `9f0b65c`. Verified unauthed proxy POST returns JSON `UNAUTHORIZED`
+  (not HTML).
+
+**How and why**
+- Browser auth still needs the public `API_URL` (cookie / redirects).
+  Only the Next *server* must use Railway private networking to avoid
+  CDN hairpins.
+
+**Deviations**
+- None.
+
+**What's next**
+- Smoke in the browser: Settings → Microsoft/Google **Check now** while
+  signed in. Optional: grey-cloud or leave Cloudflare as-is (private
+  URL is the durable fix).
 
 ### 2026-08-03 — Mobile Mark CRM branding + logo/favicon
 
