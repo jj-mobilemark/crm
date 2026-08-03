@@ -7,7 +7,7 @@ import {
 import type { AppRouter } from "api/app-router";
 import { cookies } from "next/headers";
 import { cache } from "react";
-import { API_URL } from "@/lib/env";
+import { INTERNAL_API_URL } from "@/lib/env";
 import { makeQueryClient } from "./query-client";
 
 /**
@@ -18,15 +18,16 @@ import { makeQueryClient } from "./query-client";
 export const getServerQueryClient = cache(makeQueryClient);
 
 /**
- * tRPC for server components. Goes straight to the API rather than through the
+ * tRPC for server components. Goes straight to Nest rather than through the
  * app's own proxy route — there is no browser in the loop, so there is no
- * same-origin problem to solve, and one fewer hop.
+ * same-origin problem to solve, and one fewer hop. Uses `INTERNAL_API_URL` so
+ * production does not hairpin through the public CDN.
  */
 export function getServerTrpc(): TRPCOptionsProxy<AppRouter> {
 	const client = createTRPCClient<AppRouter>({
 		links: [
 			httpBatchLink({
-				url: `${API_URL}/api/trpc`,
+				url: `${INTERNAL_API_URL}/api/trpc`,
 				headers: async () => {
 					// Forward the incoming session cookie so the API's AuthMiddleware
 					// resolves the same user this render is for.

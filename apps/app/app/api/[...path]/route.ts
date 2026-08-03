@@ -1,5 +1,5 @@
 import { brotliDecompressSync, gunzipSync, inflateSync } from "node:zlib";
-import { API_URL } from "@/lib/env";
+import { INTERNAL_API_URL } from "@/lib/env";
 
 /**
  * Same-origin passthrough to the NestJS API.
@@ -9,6 +9,9 @@ import { API_URL } from "@/lib/env";
  * cookie blocking all become problems the moment the app and the API are not on
  * the same host. Forwarding through the app makes `/api/trpc` look local, and
  * the session cookie just works.
+ *
+ * Upstream is `INTERNAL_API_URL`, not the public API origin — server→Cloudflare
+ * hairpins return HTML error pages that the tRPC client then fails to parse.
  */
 
 /**
@@ -30,7 +33,7 @@ function decode(buf: Buffer, encoding: string | null): Buffer {
 
 async function handler(request: Request): Promise<Response> {
 	const url = new URL(request.url);
-	const target = `${API_URL}${url.pathname}${url.search}`;
+	const target = `${INTERNAL_API_URL}${url.pathname}${url.search}`;
 
 	const headers = new Headers(request.headers);
 	// Hop-by-hop and origin-describing headers belong to the browser→app hop,
@@ -63,7 +66,23 @@ async function handler(request: Request): Promise<Response> {
 		init.duplex = "half";
 	}
 
-	const upstream = await fetch(target, init);
+	let upstream: Response;
+	try {
+		upstream = await fetch(target, init);
+	} catch (error) {
+		const message =
+			error instanceof Error ? error.message : "API proxy fetch failed";
+		return Response.json(
+			{
+				error: {
+					message: `Could not reach the API at ${INTERNAL_API_URL}: ${message}`,
+					code: -32603,
+					data: { code: "INTERNAL_SERVER_ERROR", httpStatus: 502 },
+				},
+			},
+			{ status: 502 },
+		);
+	}
 
 	const responseHeaders = new Headers(upstream.headers);
 	for (const header of [
@@ -97,6 +116,28 @@ async function handler(request: Request): Promise<Response> {
 
 	const raw = Buffer.from(await upstream.arrayBuffer());
 	const body = decode(raw, upstream.headers.get("content-encoding"));
+
+	// CDN / gateway HTML (Cloudflare Error 1000, 502 pages, …) must not reach the
+	// tRPC client as a "successful" body — it surfaces as a JSON parse toast.
+	const contentType = upstream.headers.get("content-type") ?? "";
+	const head = body.subarray(0, 32).toString("utf8").trimStart().toLowerCase();
+	const looksHtml =
+		contentType.includes("text/html") ||
+		head.startsWith("<!doctype") ||
+		head.startsWith("<html");
+	if (looksHtml) {
+		return Response.json(
+			{
+				error: {
+					message:
+						"API proxy received an HTML error page instead of JSON. Set INTERNAL_API_URL to the private API origin (Railway: http://api.railway.internal:3001).",
+					code: -32603,
+					data: { code: "INTERNAL_SERVER_ERROR", httpStatus: 502 },
+				},
+			},
+			{ status: 502 },
+		);
+	}
 
 	return new Response(new Uint8Array(body), {
 		status: upstream.status,

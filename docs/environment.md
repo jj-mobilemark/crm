@@ -94,9 +94,14 @@ Live in `packages/auth/src/workspace.ts`.
 
 - **`API_URL`** is the origin that mints session cookies and serves
   `/api/auth/*`. `next.config.ts` republishes it as `NEXT_PUBLIC_API_URL`, which
-  is what the browser's auth client and tRPC proxy use — so one variable
-  configures both sides. `BETTER_AUTH_URL` is still read as a fallback because
-  Better Auth's own tooling looks for it, but `API_URL` is the name to use.
+  is what the browser's auth client uses. `BETTER_AUTH_URL` is still read as a
+  fallback because Better Auth's own tooling looks for it, but `API_URL` is the
+  name to use.
+- **`INTERNAL_API_URL`** is where the Next.js *server* reaches Nest (the
+  `/api/[...path]` proxy and RSC tRPC). Defaults to `API_URL`. On Railway when
+  the public API hostname is behind Cloudflare, set
+  `http://api.railway.internal:3001` — otherwise the app hairpins through the
+  CDN and the browser sees HTML instead of JSON ("Unexpected token '<'").
 - **`APP_URL`** is where the browser is, and it is also the trusted-origin
   allow-list: the set of origins allowed to call the API with credentials, and
   the list Better Auth validates post-sign-in `callbackURL`s against.
