@@ -22,6 +22,8 @@ if (env.microsoft) {
 		// Mail + Calendar are the CRM sync extras; Mail.Send powers sequences.
 		scope: [...MS_ALL_SCOPES],
 		prompt: "select_account",
+		// Existing accounts only — no first-time OAuth user create.
+		disableImplicitSignUp: true,
 	};
 }
 
@@ -61,6 +63,8 @@ if (env.google) {
 		// consumer mailbox): `hd` has to be a real domain, and sending an empty
 		// one hides every account in the chooser.
 		...(primaryWorkspaceDomain() ? { hd: primaryWorkspaceDomain() } : {}),
+		// Existing accounts only — no first-time OAuth user create.
+		disableImplicitSignUp: true,
 	};
 }
 
@@ -72,10 +76,11 @@ export const auth = betterAuth({
 	}),
 
 	emailAndPassword: {
-		// Enabled so the CRM can be used without a Google OAuth client. The
-		// `databaseHooks.user.create.before` allow-list below still applies to
-		// registrations, so ALLOWED_SIGN_IN remains the whole authorisation model.
+		// Sign-in for existing users only. Public registration is off so prod
+		// customer data cannot gain new accounts from the welcome page (or a
+		// direct /sign-up/email call). Seed / invite users out-of-band.
 		enabled: true,
+		disableSignUp: true,
 	},
 
 	socialProviders,

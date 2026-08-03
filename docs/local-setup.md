@@ -33,7 +33,8 @@ required `.env` values are:
 
 - [x] `BETTER_AUTH_SECRET` — generated
 - [x] `ALLOWED_SIGN_IN` — set to `mobilemark.com` (the whole authorisation
-  model: only addresses on this domain may register or sign in)
+  model: only addresses on this domain may sign in; public registration
+  is disabled — see below)
 - [x] Microsoft Entra (`MICROSOFT_CLIENT_ID` / `MICROSOFT_CLIENT_SECRET` /
   `MICROSOFT_TENANT_ID`) — set for local Microsoft sign-in
 - Google OAuth (`GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`) — left empty; the
@@ -46,14 +47,17 @@ bun run dev        # app on http://localhost:3000, api on http://localhost:3001
 ```
 
 1. Open http://localhost:3000 → you land on `/sign-in`.
-2. Prefer **Continue with Microsoft** (Entra SSO), or use email/password:
-   click **Need an account? Create one**, enter your name, an
-   `@mobilemark.com` email, and a password (min 8 chars), then **Create
-   account**.
-3. Next time, use Microsoft again, or the same email + password.
+2. Prefer **Continue with Microsoft** (Entra SSO), or email/password for an
+   **existing** user. Public “Create account” is off
+   (`emailAndPassword.disableSignUp` + OAuth `disableImplicitSignUp`) so
+   prod/local CRM data cannot grow new accounts from the welcome page.
+3. To bootstrap the first local user: insert a row in `user` + credential
+   `account` (or temporarily set `disableSignUp: false` / clear
+   `disableImplicitSignUp`, create one account, then lock again).
+4. Next time, use Microsoft again, or the same email + password.
 
-An email whose domain is not on `ALLOWED_SIGN_IN` is refused at registration
-(HTTP 403) — that guard is unchanged.
+An email whose domain is not on `ALLOWED_SIGN_IN` is still refused if signup
+is ever re-enabled (HTTP 403).
 
 ### Microsoft Entra redirect URI
 
@@ -83,17 +87,19 @@ automatically.
 
 To run without a Google account, this install differs from upstream `trycompai/crm`:
 
-- `packages/auth/src/auth.ts` — `emailAndPassword.enabled: true`.
+- `packages/auth/src/auth.ts` — `emailAndPassword.enabled: true` with
+  `disableSignUp: true` (existing accounts only); Microsoft/Google use
+  `disableImplicitSignUp: true`.
 - `apps/api/src/config/env.validation.ts` — `GOOGLE_CLIENT_ID` /
   `GOOGLE_CLIENT_SECRET` are now optional (were required).
 - `apps/app/app/(app)/layout.tsx` — gate relaxed from `requireGoogleAccess()`
   to `requireSession()`, since the Gmail/Calendar scope gate is Google-only and
   would lock out email/password users.
-- `apps/app/app/(auth)/sign-in/` — added `credentials-form.tsx`; the page shows
-  the email/password form and only renders the Google button when configured.
+- `apps/app/app/(auth)/sign-in/` — `credentials-form.tsx` is sign-in only
+  (no register mode); the Google/Microsoft buttons only appear when configured.
 
-The `ALLOWED_SIGN_IN` allow-list still governs who may register or sign in, so
-the authorisation model is unchanged.
+The `ALLOWED_SIGN_IN` allow-list still governs who may sign in when signup is
+enabled; with signup locked, only pre-existing users get in.
 
 ## Agent harness config (Cursor / Claude Code / Codex)
 

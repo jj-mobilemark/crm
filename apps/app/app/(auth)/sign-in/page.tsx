@@ -56,8 +56,8 @@ export default async function SignInPage() {
 			{googleEnabled && <GoogleSignIn />}
 
 			<p className="text-center text-muted-foreground text-sm/5">
-				Mobile Mark CRM is internal. If you cannot get in, ask an admin to check
-				the sign-in allow-list.
+				Mobile Mark CRM is internal. Sign-in is for existing accounts only —
+				ask an admin if you need access.
 			</p>
 		</AuthShell>
 	);

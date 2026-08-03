@@ -1,6 +1,6 @@
 "use client";
 
-import { signIn, signUp } from "@crm/auth/client";
+import { signIn } from "@crm/auth/client";
 import { Button } from "@crm/ui/components/button";
 import { Field, FieldLabel } from "@crm/ui/components/field";
 import { Input } from "@crm/ui/components/input";
@@ -9,35 +9,23 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { toast } from "sonner";
 
-type Mode = "sign-in" | "register";
-
 export function CredentialsForm() {
 	const router = useRouter();
-	const [mode, setMode] = useState<Mode>("sign-in");
 	const [pending, setPending] = useState(false);
-	const [name, setName] = useState("");
 	const [email, setEmail] = useState("");
 	const [password, setPassword] = useState("");
-
-	const isRegister = mode === "register";
 
 	async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
 		event.preventDefault();
 		setPending(true);
 
-		const { error } = isRegister
-			? await signUp.email({
-					name: name.trim() || email.split("@")[0] || "User",
-					email: email.trim(),
-					password,
-				})
-			: await signIn.email({ email: email.trim(), password });
+		const { error } = await signIn.email({
+			email: email.trim(),
+			password,
+		});
 
 		if (error) {
-			toast.error(
-				error.message ??
-					(isRegister ? "Could not create the account." : "Could not sign in."),
-			);
+			toast.error(error.message ?? "Could not sign in.");
 			setPending(false);
 			return;
 		}
@@ -49,20 +37,6 @@ export function CredentialsForm() {
 
 	return (
 		<form className="flex flex-col gap-5" onSubmit={handleSubmit}>
-			{isRegister && (
-				<Field>
-					<FieldLabel htmlFor="name">Name</FieldLabel>
-					<Input
-						id="name"
-						name="name"
-						autoComplete="name"
-						placeholder="Ada Lovelace"
-						value={name}
-						onChange={(event) => setName(event.target.value)}
-					/>
-				</Field>
-			)}
-
 			<Field>
 				<FieldLabel htmlFor="email">Email</FieldLabel>
 				<Input
@@ -83,7 +57,7 @@ export function CredentialsForm() {
 					id="password"
 					name="password"
 					type="password"
-					autoComplete={isRegister ? "new-password" : "current-password"}
+					autoComplete="current-password"
 					required
 					minLength={8}
 					placeholder="••••••••"
@@ -94,18 +68,8 @@ export function CredentialsForm() {
 
 			<Button className="w-full" disabled={pending} type="submit">
 				{pending && <Spinner data-icon="inline-start" />}
-				{isRegister ? "Create account" : "Sign in"}
+				Sign in
 			</Button>
-
-			<button
-				type="button"
-				className="text-center text-muted-foreground text-sm/5 underline underline-offset-4 hover:text-foreground"
-				onClick={() => setMode(isRegister ? "sign-in" : "register")}
-			>
-				{isRegister
-					? "Already have an account? Sign in"
-					: "Need an account? Create one"}
-			</button>
 		</form>
 	);
 }

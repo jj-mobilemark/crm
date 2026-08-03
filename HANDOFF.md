@@ -25,6 +25,10 @@ it before stopping. The rules for maintaining it live in `AGENTS.md`
 
 - **Git**: `origin` = `jj-mobilemark/crm` (fork); `upstream` = `trycompai/crm`
   (read-only). Work on `main`.
+- **Auth registration (LOCKED 2026-08-03)**: welcome page is sign-in only.
+  `emailAndPassword.disableSignUp: true`; Microsoft/Google
+  `disableImplicitSignUp: true`. Existing users only — seed/invite
+  out-of-band.
 - **Prod tRPC proxy (FIXED 2026-08-03)**: Settings "Check now" was failing
   with `Unexpected token '<', "<!doctype "...` because the Next proxy
   hairpinned through Cloudflare (`API_URL`) and got Error 1000 HTML.
@@ -81,6 +85,27 @@ it before stopping. The rules for maintaining it live in `AGENTS.md`
 ---
 
 ## Work log
+
+### 2026-08-03 — Disable public account registration
+
+**What was completed**
+- Removed “Create account” / mode toggle from
+  `apps/app/app/(auth)/sign-in/credentials-form.tsx` (sign-in only).
+- Server: `emailAndPassword.disableSignUp: true`; Microsoft + Google
+  `disableImplicitSignUp: true` in `packages/auth/src/auth.ts`.
+- Sign-in page copy notes existing accounts only.
+
+**How and why**
+- Protect prod CRM data: no new users from the welcome form or a raw
+  sign-up API call. Admins seed users out-of-band.
+
+**Deviations**
+- None.
+
+**What's next**
+- Deploy; smoke that Create account is gone and `/sign-up/email`
+  rejects. When adding a teammate, create the user in DB (or temporarily
+  re-enable signup).
 
 ### 2026-08-03 — Map Sage filter uses Sage 100, not CRM
 
