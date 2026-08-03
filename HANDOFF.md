@@ -25,10 +25,11 @@ it before stopping. The rules for maintaining it live in `AGENTS.md`
 
 - **Git**: `origin` = `jj-mobilemark/crm` (fork); `upstream` = `trycompai/crm`
   (read-only). Work on `main`.
-- **Active track done recently**: companies map UX polish (viewport list,
-  fly-to, in-place sheet) — commit pending push with this handoff. Next:
-  Sage push E2E / Entra **Mail.Send** for sequences; leave unrelated
-  `sales-dashboard.tsx` KPI tweak uncommitted unless asked.
+- **Active track done recently**: companies map UX polish pushed
+  (`5592e59` on `origin/main`). Next: wait for Railway app deploy; Sage
+  push E2E / Entra **Mail.Send** for sequences. Unrelated local edit
+  remains in `sales-dashboard.tsx` ("Due this month" KPI) — commit only
+  if wanted.
 - **Companies map (DONE 2026-08-03)**: `/map` split list + Leaflet
   (shadcn-map); `companies.mapList`; Company lat/lng + `GeocodeCache`;
   Nominatim `apps/api/scripts/geocode-companies.ts`; Sage pull writes
@@ -92,7 +93,7 @@ it before stopping. The rules for maintaining it live in `AGENTS.md`
   this commit.
 
 **What's next**
-- Deploy app so prod `/map` gets UX polish (geocode already on prod).
+- Wait for Railway `app` deploy of `5592e59`; smoke prod `/map`.
 - Sage push E2E / sequences Mail.Send, or commit sales-dashboard KPI if
   wanted.
 
