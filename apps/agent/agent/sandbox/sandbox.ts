@@ -23,8 +23,9 @@ import { defaultBackend, defineSandbox } from "eve/sandbox";
  * The policy is set on the backend factory rather than in `onSession` so it
  * applies to every session by construction — a per-session call is a per-session
  * call somebody can forget. No backend is pinned: `defaultBackend()` resolves
- * Vercel Sandbox in production and Docker or microsandbox locally, and each one
- * is told the same thing.
+ * Vercel Sandbox on Vercel, Docker / microsandbox when available, and
+ * `just-bash` elsewhere (including Railway). `just-bash` is a runtime
+ * dependency so production start does not fail on that fallback.
  */
 export default defineSandbox({
 	backend: defaultBackend({

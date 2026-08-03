@@ -1,0 +1,36 @@
+# Research agent (eve) — Bun for install/build tooling; Node 24+ for eve.
+#
+# Railway has no Docker/KVM sandbox, so eve falls back to just-bash. That
+# package patches Node's Module API and fails under Bun
+# (`DefenseInDepthBox: Module._resolveFilename`). eve itself also requires
+# Node.js >= 24. Do NOT use `npx` here — npm refuses this repo's
+# `devEngines.packageManager = bun`. Invoke eve with `node` directly.
+# See docs/plans/agent-railway.md.
+FROM oven/bun:1.3
+
+RUN apt-get update \
+	&& apt-get install -y --no-install-recommends ca-certificates curl gnupg \
+	&& curl -fsSL https://deb.nodesource.com/setup_24.x | bash - \
+	&& apt-get install -y --no-install-recommends nodejs \
+	&& node -v \
+	&& rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+COPY package.json bun.lock turbo.json ./
+COPY apps ./apps
+COPY packages ./packages
+COPY scripts/railway-agent-start.sh /app/scripts/railway-agent-start.sh
+
+# prisma generate (postinstall) reads DATABASE_URL from prisma.config.ts —
+# only needed at build time for client generation, not a real connection.
+ENV DATABASE_URL="postgresql://postgres:postgres@127.0.0.1:5432/crm?schema=public"
+
+RUN bun install --frozen-lockfile \
+	&& bunx turbo run build --filter=agent \
+	&& chmod +x /app/scripts/railway-agent-start.sh
+
+ENV NODE_ENV=production
+EXPOSE 2000
+
+CMD ["/app/scripts/railway-agent-start.sh"]

@@ -25,6 +25,23 @@ it before stopping. The rules for maintaining it live in `AGENTS.md`
 
 - **Git**: `origin` = `jj-mobilemark/crm` (fork); `upstream` = `trycompai/crm`
   (read-only). Work on `main`.
+- **Prod crons (DONE 2026-08-03)**: Railway curl services hit
+  `api` with `CRON_SECRET` (UTC schedules). No Google cron.
+  - `cron-microsoft` `*/5 * * * *` → `/internal/sync/microsoft`
+    (smoke OK: synced=4)
+  - `cron-sequences` `*/5 * * * *` → `/internal/sequences/tick`
+    (Railway min interval is 5m; was 2m on Vercel)
+  - `cron-followups` `0 13 * * *` → `/internal/agent/followups`
+    (8:00 AM CDT). Agent claims these rows (see prod agent below).
+  - `cron-sage` `0 6 * * *` → `/internal/sync/sage` (1:00 AM CDT)
+  Image `curlimages/curl:8.12.1`; start via `sh -c 'curl …'`;
+  vars `API_PUBLIC_URL` + `CRON_SECRET` on each cron service.
+- **Prod agent (DONE 2026-08-03)**: Railway service `agent` always-on;
+  `Dockerfile.agent` + `scripts/railway-agent-start.sh` (Node 24 hosts
+  eve / just-bash; Bun for install). App has
+  `AGENT_URL=http://agent.railway.internal:2000` + matching
+  `AGENT_BRIDGE_SECRET`. Optional: `RAPIDAPI_KEY` (LinkedIn) on
+  **agent** only. Plan: `docs/plans/agent-railway.md`.
 - **Auth registration (LOCKED 2026-08-03)**: welcome page is sign-in only.
   `emailAndPassword.disableSignUp: true`; Microsoft/Google
   `disableImplicitSignUp: true`. Existing users only — seed/invite
@@ -85,6 +102,89 @@ it before stopping. The rules for maintaining it live in `AGENTS.md`
 ---
 
 ## Work log
+
+### 2026-08-03 — Railway agent online (Dockerfile + service + bridge)
+
+**What was completed**
+- Added `Dockerfile.agent` and `scripts/railway-agent-start.sh` (Node 24
+  runs `eve start`; Bun installs/builds; `just-bash` runtime dep).
+- Created Railway `agent` service (repo `jj-mobilemark/crm`, Dockerfile
+  builder, `PORT=2000`, `DATABASE_URL`, `AI_GATEWAY_API_KEY`,
+  `AGENT_BRIDGE_SECRET`).
+- Set on `app`: `AGENT_URL=http://agent.railway.internal:2000` + same
+  bridge secret; redeployed.
+- Smoke: follow-ups enqueue `{"enqueued":2}`; agent listens on :2000;
+  boot shows LinkedIn capability when `RAPIDAPI_KEY` is set.
+- Docs: `docs/plans/agent-railway.md` status DONE; Current state updated.
+
+**How and why**
+- Follow-ups cron only writes `AgentTask` rows; eve must be always-on to
+  claim them and serve the Agent tab via the app bridge.
+
+**Deviations**
+- `npx eve start` crashes (npm vs `packageManager: bun`) — start script
+  invokes `node …/eve/bin/eve.js` instead.
+- GitHub-sourced builds need `Dockerfile.agent` on `main` (this commit).
+
+**What's next**
+- Optional: set `PERPLEXITY_API_KEY` / `CONTEXT_DEV_API_KEY` on **agent**.
+- Confirm Entra **Mail.Send** for sequences.
+- UI smoke: `/follow-ups` + contact Agent tab in prod.
+
+### 2026-08-03 — Document agent Railway go-live checklist
+
+**What was completed**
+- Added `docs/plans/agent-railway.md`: why follow-ups enqueue-only today,
+  what’s already on Railway, and the exact next steps (Dockerfile.agent,
+  `agent` service, env matrix, `AGENT_URL` / `AGENT_BRIDGE_SECRET` on
+  app, smoke tests).
+- Pointed Current state + project-overview at that plan.
+
+**How and why**
+- Cron workers are live but the eve process is not; operators needed one
+  place that says how to hook app ↔ agent ↔ follow-ups cron.
+
+**Deviations**
+- Docs only — did not add `Dockerfile.agent` or create the Railway
+  service in this pass.
+
+**What's next**
+- Execute `docs/plans/agent-railway.md` (start with Dockerfile + service).
+
+### 2026-08-03 — Railway cron workers (Microsoft / sequences / followups / Sage)
+
+**What was completed**
+- Created four Railway cron services in project MM-CRM / production:
+  `cron-microsoft`, `cron-sequences`, `cron-followups`, `cron-sage`
+  (`curlimages/curl:8.12.1`).
+- Schedules (UTC): `*/5` microsoft + sequences; `0 13 * * *`
+  followups (8am CDT); `0 6 * * *` sage (1am CDT).
+- Start commands curl the matching `/internal/...` routes with
+  `Authorization: Bearer $CRON_SECRET`.
+- Vars: `API_PUBLIC_URL=https://api.mobilemarksalestool.com`,
+  `CRON_SECRET` (same as api). No Google cron.
+- Smoke: `deploymentRestart` on `cron-microsoft` → API reported
+  `attempted=4 synced=4`.
+
+**How and why**
+- Upstream crons lived in Vercel Build Output (`build-func.mjs`).
+  Prod is Railway; Vercel Cron does not run. Railway cron services
+  call the existing Nest routes.
+
+**Deviations**
+- Sequences every **5** minutes (Railway minimum), not every 2.
+- Follow-ups enqueue `AgentTask` rows only; eve agent is still not
+  deployed on Railway, so the daily sweep will queue without a
+  dispatcher until agent is hosted.
+- `railway environment edit` did not apply start/cron; used
+  GraphQL `serviceInstanceUpdate` instead. Curl image needs
+  `sh -c '…'` so ENTRYPOINT does not swallow the command.
+
+**What's next**
+- Execute `docs/plans/agent-railway.md` (Dockerfile.agent → Railway
+  `agent` service → wire `AGENT_URL` / `AGENT_BRIDGE_SECRET`).
+- Confirm Entra **Mail.Send** before relying on sequences tick.
+- Optional: watch first nightly `cron-sage` run in Railway logs.
 
 ### 2026-08-03 — Disable public account registration
 
