@@ -86,7 +86,13 @@ export function SalesDashboard({ summary }: { summary: Summary }) {
 	// fall back so the overview still paints while the query refetches.
 	const forecast = summary.forecast ?? EMPTY_FORECAST;
 	const rangeLabel = summary.range?.label ?? "Year to date";
-	const closingWeightedCents = closingThisMonthTotal.weightedCents ?? 0;
+	// Unweighted close-this-month total. Fall back to weighted only when amount
+	// is empty — same idea as dealMoneyCents, so a Sage deal that only has
+	// forecast still shows up while certainty is still noisy as a KPI.
+	const dueThisMonthCents =
+		closingThisMonthTotal.valueCents !== 0
+			? closingThisMonthTotal.valueCents
+			: (closingThisMonthTotal.weightedCents ?? 0);
 
 	const hasTrend = trend.some((point) => point.won > 0 || point.created > 0);
 
@@ -131,14 +137,14 @@ export function SalesDashboard({ summary }: { summary: Summary }) {
 					description={`${rangeLabel} · ${formatCount(wonThisMonth.count, "deal")} · ${formatMoneyCompact(wonPrevMonth.valueCents)} prior`}
 				/>
 				<StatCard
-					label="Weighted forecast"
-					value={formatMoneyCompact(forecast.totals.weightedCents)}
-					description={`${formatCount(forecast.totals.dealCount, "open deal")} · ${formatMoneyCompact(forecast.totals.amountCents)} unweighted`}
+					label="Due this month"
+					value={formatMoneyCompact(dueThisMonthCents)}
+					description={`${formatCount(closingThisMonthTotal.count, "open deal")} with a close date this month`}
 				/>
 				<StatCard
 					label="Open pipeline"
 					value={formatMoneyCompact(pipeline.totalCents)}
-					description={`${formatCount(pipeline.totalDeals, "deal")} in progress · ${formatMoneyCompact(closingWeightedCents)} weighted due this month`}
+					description={`${formatCount(pipeline.totalDeals, "deal")} in progress · ${formatMoneyCompact(forecast.totals.weightedCents)} weighted`}
 				/>
 				<StatCard
 					label={`Win rate (${performance.windowDays}d)`}
