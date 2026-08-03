@@ -28,12 +28,22 @@ function inBounds(
 	longitude: number,
 	bounds: MapLatLngBounds,
 ): boolean {
-	return (
-		latitude >= bounds.south &&
-		latitude <= bounds.north &&
-		longitude >= bounds.west &&
-		longitude <= bounds.east
-	);
+	if (latitude < bounds.south || latitude > bounds.north) return false;
+	// Leaflet can report west > east when the view crosses the antimeridian.
+	if (bounds.west <= bounds.east) {
+		return longitude >= bounds.west && longitude <= bounds.east;
+	}
+	return longitude >= bounds.west || longitude <= bounds.east;
+}
+
+/** Ignore getBounds() from an unsized / not-yet-laid-out map. */
+function isUsableBounds(bounds: MapLatLngBounds): boolean {
+	const latSpan = bounds.north - bounds.south;
+	const lngSpan =
+		bounds.west <= bounds.east
+			? bounds.east - bounds.west
+			: 360 - (bounds.west - bounds.east);
+	return latSpan > 0.05 && lngSpan > 0.05;
 }
 
 function boundsKey(bounds: MapLatLngBounds): string {
@@ -52,29 +62,36 @@ export function MapPanel() {
 
 	const [searchValue, setSearchValue] = useSearchInput(params.q, (next) => {
 		setClusterIds(null);
+		setMapBounds(null);
+		lastBoundsKeyRef.current = null;
 		void setParams({ q: next, selected: "" });
 	});
 
 	const mapList = useQuery({
 		...trpc.companies.mapList.queryOptions(input),
+		// Keep pins/list visible while a filter refetch runs — otherwise the map
+		// unmounts, remounts ~12k markers, and the UI flashes empty.
+		placeholderData: (previous) => previous,
 	});
 
 	const rows = mapList.data?.rows ?? [];
 	const clusterIdSet =
 		clusterIds == null ? null : new Set(clusterIds);
+	const usableBounds =
+		mapBounds != null && isUsableBounds(mapBounds) ? mapBounds : null;
 
 	const listRows = (() => {
 		if (clusterIdSet != null) {
 			return rows.filter((row) => clusterIdSet.has(row.id));
 		}
-		if (mapBounds == null || params.hasLocation === "no") {
+		if (usableBounds == null || params.hasLocation === "no") {
 			return rows;
 		}
 		return rows.filter(
 			(row) =>
 				row.latitude != null &&
 				row.longitude != null &&
-				inBounds(row.latitude, row.longitude, mapBounds),
+				inBounds(row.latitude, row.longitude, usableBounds),
 		);
 	})();
 
@@ -100,11 +117,24 @@ export function MapPanel() {
 
 	function clearMapFocusAndSet(patch: Parameters<typeof setParams>[0]) {
 		setClusterIds(null);
+		// Drop stale viewport so the list shows every match until the map
+		// reports bounds for the current view again.
+		setMapBounds(null);
+		lastBoundsKeyRef.current = null;
 		void setParams(patch);
 	}
 
 	const viewportActive =
-		clusterIdSet == null && mapBounds != null && params.hasLocation !== "no";
+		clusterIdSet == null &&
+		usableBounds != null &&
+		params.hasLocation !== "no";
+	const initialLoading = mapList.isPending && !mapList.data;
+	const filterError =
+		mapList.error instanceof Error
+			? mapList.error.message
+			: mapList.error
+				? String(mapList.error)
+				: null;
 
 	return (
 		<div className="flex min-h-0 flex-1 flex-col gap-4 lg:flex-row">
@@ -211,13 +241,15 @@ export function MapPanel() {
 
 				<div className="flex flex-wrap items-center gap-2 text-muted-foreground text-xs">
 					<span>
-						{mapList.isLoading
+						{initialLoading
 							? "Loading…"
-							: clusterIdSet != null
-								? `${listRows.length.toLocaleString()} in cluster · ${rows.length.toLocaleString()} match filters`
-								: viewportActive
-									? `${listRows.length.toLocaleString()} in view · ${points.length.toLocaleString()} on map`
-									: `${rows.length.toLocaleString()} companies · ${points.length.toLocaleString()} on map`}
+							: mapList.isFetching
+								? `Updating… · ${points.length.toLocaleString()} on map`
+								: clusterIdSet != null
+									? `${listRows.length.toLocaleString()} in cluster · ${rows.length.toLocaleString()} match filters`
+									: viewportActive
+										? `${listRows.length.toLocaleString()} in view · ${points.length.toLocaleString()} on map`
+										: `${rows.length.toLocaleString()} companies · ${points.length.toLocaleString()} on map`}
 					</span>
 					{clusterIdSet != null ? (
 						<Button
@@ -233,6 +265,12 @@ export function MapPanel() {
 						</Button>
 					) : null}
 				</div>
+
+				{filterError ? (
+					<p className="rounded-lg border border-destructive/40 bg-destructive/5 px-3 py-2 text-destructive text-sm">
+						Could not load companies: {filterError}
+					</p>
+				) : null}
 
 				<ul className="min-h-0 flex-1 overflow-y-auto rounded-lg border border-border">
 					{listRows.map((row) => {
@@ -274,13 +312,15 @@ export function MapPanel() {
 							</li>
 						);
 					})}
-					{!mapList.isLoading && listRows.length === 0 ? (
+					{!initialLoading && !filterError && listRows.length === 0 ? (
 						<li className="px-3 py-6 text-center text-muted-foreground text-sm">
 							{clusterIdSet != null
 								? "No companies in this cluster match the current filters."
-								: viewportActive
-									? "No companies with pins in this map view."
-									: "No companies match these filters."}
+								: rows.length > 0 && points.length === 0
+									? "Matching companies have no map pins yet. Run the geocode script or choose “Missing pin”."
+									: viewportActive
+										? "No companies with pins in this map view. Pan or zoom out, or clear filters."
+										: "No companies match these filters."}
 						</li>
 					) : null}
 				</ul>
@@ -302,8 +342,8 @@ export function MapPanel() {
 					</span>
 				</div>
 
-				<div className="min-h-0 flex-1 overflow-hidden rounded-lg border border-border">
-					{mapList.isLoading ? (
+				<div className="relative min-h-0 flex-1 overflow-hidden rounded-lg border border-border">
+					{initialLoading ? (
 						<div className="flex size-full min-h-[28rem] items-center justify-center text-muted-foreground text-sm">
 							Loading map…
 						</div>
@@ -317,6 +357,7 @@ export function MapPanel() {
 								void setParams({ selected: "" });
 							}}
 							onBoundsChange={(bounds) => {
+								if (!isUsableBounds(bounds)) return;
 								const key = boundsKey(bounds);
 								if (lastBoundsKeyRef.current !== key) {
 									lastBoundsKeyRef.current = key;
@@ -326,6 +367,11 @@ export function MapPanel() {
 							}}
 						/>
 					)}
+					{mapList.isFetching && !initialLoading ? (
+						<div className="pointer-events-none absolute top-2 right-2 rounded-md bg-background/90 px-2 py-1 text-muted-foreground text-xs shadow-sm">
+							Updating…
+						</div>
+					) : null}
 				</div>
 
 				{selected ? (

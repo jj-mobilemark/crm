@@ -671,9 +671,27 @@ export class CompaniesService {
 		};
 
 		if (input.sage === "linked") {
-			where.sageCrmCompanyId = { not: null };
+			// Non-null and non-empty — empty string is not a real Sage id.
+			where.AND = [
+				...(Array.isArray(where.AND)
+					? where.AND
+					: where.AND
+						? [where.AND]
+						: []),
+				{ sageCrmCompanyId: { not: null } },
+				{ NOT: { sageCrmCompanyId: "" } },
+			];
 		} else if (input.sage === "unlinked") {
-			where.sageCrmCompanyId = null;
+			where.AND = [
+				...(Array.isArray(where.AND)
+					? where.AND
+					: where.AND
+						? [where.AND]
+						: []),
+				{
+					OR: [{ sageCrmCompanyId: null }, { sageCrmCompanyId: "" }],
+				},
+			];
 		}
 
 		if (input.hasLocation === "yes") {

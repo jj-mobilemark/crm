@@ -41,6 +41,10 @@ it before stopping. The rules for maintaining it live in `AGENTS.md`
   **UX**: list follows viewport (`MapBoundsListener`) / cluster click;
   list/pin select flies + highlights; **Open company** → `useOpenRecord`
   sheet on `/map`. Helper: `packages/db/scripts/pull-geocode-from-prod.ts`.
+  **Filter empty flash (FIXED 2026-08-03)**: keep previous
+  `mapList` data while refetching; reset stale Leaflet bounds on
+  filter change; ignore degenerate bounds; surface query errors;
+  Sage linked/unlinked treat `""` as unlinked.
 - **Prod geocode (DONE)**: full pass via railway ssh —
   `fetchedOk=3651`, `companiesUpdated=12147`. Local imported same coords
   (3811 cache / 12319 company rows; **12147** with coords). TCP proxy gone.
@@ -76,6 +80,34 @@ it before stopping. The rules for maintaining it live in `AGENTS.md`
 ---
 
 ## Work log
+
+### 2026-08-03 — Map filter “Has Sage ID” empty results
+
+**What was completed**
+- Fixed `/map` showing `0 in view · 0 on map` after toggling Sage
+  (and other) filters even when the API returned thousands of rows.
+- `apps/app/app/(app)/map/map-panel.tsx`: `placeholderData` so the map
+  stays mounted during refetch; clear stale `mapBounds` on filter/
+  search change; `isUsableBounds` + antimeridian-aware `inBounds`;
+  show load errors; clearer empty copy; “Updating…” while fetching.
+- `apps/api/src/companies/companies.service.ts` `buildMapWhere`: linked
+  = non-null and not `""`; unlinked = null or `""` (nested under AND
+  so search `OR` is not overwritten).
+
+**How and why**
+- Local DB has 14 252 companies all with Sage ids and 12 147 with
+  pins — the Sage SQL was not the empty cause. Filter change cleared
+  React Query data → full-screen loading → map remount + bad/stale
+  Leaflet bounds filtered the list to zero. Keeping prior data and
+  resetting bounds fixes the flash/empty UI.
+
+**Deviations**
+- None. Empty-string Sage handling is defensive; this dataset has no
+  empty ids.
+
+**What's next**
+- Smoke `/map` → Has Sage ID (expect ~12k pins). Restart local Nest
+  if the API process predates the service change.
 
 ### 2026-08-03 — Fix Settings "Check now" Cloudflare hairpin
 
