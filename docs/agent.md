@@ -203,16 +203,21 @@ Three things worth knowing before you touch it:
 downstream: the header the panel sends, the claim the proxy mints, the field a
 conversation is filed under, and the questions offered on an empty thread. A
 contact is asked "Who is this person?", a company "What do they do?", a deal
-"Where does this stand?" — offering the first of those on a company is the tell
-that a chat box was bolted on rather than built into the record.
+"Where does this stand?", the overview pipeline "What moved this week?" —
+offering the first of those on a company is the tell that a chat box was bolted
+on rather than built into the record.
 
 The agent gets the same context: `instructions/task.ts` opens a session with a
 preamble built from the record, so a deal session starts knowing the stage, the
 amount, the close date and who is on it, rather than spending its first two tool
-calls finding out.
+calls finding out. A **pipeline** session (`AgentRecordKind = "pipeline"`, id =
+`me` | `everyone`) carries Me/Everyone from the overview URL, files under
+`AgentConversation.pipelineScope`, and opens with pulse counts plus
+`read_pipeline_pulse` — never invents totals. Shared query:
+`packages/db/src/pipeline-pulse.ts`. Plan: `docs/plans/pipeline-pulse.md`.
 
-Adding a fourth kind is one entry in `COPY` plus a branch in the agent's
-preamble — not four edits in four layers.
+Adding a kind is one entry in `COPY` plus a branch in the agent's preamble —
+not four edits in four layers.
 
 ### Conversations are kept
 

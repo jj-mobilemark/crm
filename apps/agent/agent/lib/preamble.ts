@@ -1,4 +1,4 @@
-import { db } from "@crm/db";
+import { db, loadPipelinePulse, type PipelinePulseScope } from "@crm/db";
 import { capabilitiesMarkdown } from "./capabilities";
 import { loadFollowupPrefs } from "./followups";
 
@@ -13,7 +13,8 @@ import { loadFollowupPrefs } from "./followups";
  * having no way to address any of them — asked the rep to paste a contact id
  * off the screen they were looking at. Every neighbouring record is now named
  * **with its id**, because an id in the preamble is a tool call and a count is
- * a dead end.
+ * a dead end. The overview pipeline is a fourth kind: Me/Everyone scope and
+ * pulse counts, not a dump of every deal.
  *
  * **Who opened it.** A dispatched task is a research pass with a budget. A rep
  * in the contact sheet is a conversation. Told neither, the agent assumed the
@@ -44,6 +45,9 @@ export async function sessionPreamble(
 		contactId?: string | null;
 		companyId?: string | null;
 		dealId?: string | null;
+		pipelineScope?: string | null;
+		/** Acting rep — needed for Me-scoped pipeline pulse. */
+		actingUserId?: string | null;
 		userId?: string | null;
 	},
 	opened: Opened,
@@ -51,6 +55,13 @@ export async function sessionPreamble(
 	if (record.contactId) return contactPreamble(record.contactId, opened);
 	if (record.companyId) return companyPreamble(record.companyId, opened);
 	if (record.dealId) return dealPreamble(record.dealId, opened);
+	if (record.pipelineScope === "me" || record.pipelineScope === "everyone") {
+		return pipelinePreamble(
+			record.pipelineScope,
+			record.actingUserId ?? null,
+			opened,
+		);
+	}
 	if (record.userId) return followupsPreamble(record.userId, opened);
 	return noRecordPreamble();
 }
@@ -340,6 +351,72 @@ export async function dealPreamble(
 	// Focused on the company, because that is the record every fact the agent
 	// can write hangs off — a deal has no fields of its own to enrich.
 	return { markdown, focus: { companyId: deal.company?.id ?? null } };
+}
+
+/**
+ * Overview pipeline chat — Me or Everyone, with pulse *counts* only.
+ *
+ * Do not dump every deal into the preamble. The tool returns movers / recent /
+ * stuck when asked; the opener only names the scope and the strip totals so
+ * the agent starts oriented and then reads.
+ */
+export async function pipelinePreamble(
+	scope: PipelinePulseScope,
+	actingUserId: string | null,
+	opened: Opened,
+): Promise<Preamble> {
+	const scopeLabel = scope === "me" ? "your deals (Me)" : "everyone's deals";
+
+	let countsLine =
+		"Pulse counts are not loaded yet — call `read_pipeline_pulse` first.";
+
+	if (scope === "everyone" || actingUserId) {
+		try {
+			const pulse = await loadPipelinePulse(db, {
+				scope,
+				userId: actingUserId,
+			});
+			const c = pulse.counts;
+			countsLine = [
+				`Last ${pulse.windowDays} days: ${c.total} tracked change(s)`,
+				`— ${c.won} won, ${c.lost} lost, ${c.certainty} certainty, ${c.stage} stage,`,
+				`${c.amount} amount. ${pulse.stuck.length} stuck deal(s) (${pulse.stuckDays}d+ without a stage/certainty move).`,
+			].join(" ");
+		} catch {
+			// Me without a user id, or a DB blip — the tool still works.
+		}
+	}
+
+	const markdown = [
+		"## This session",
+		"",
+		`A sales manager has the **overview** open on **${scopeLabel}**.`,
+		"This is not one contact, company or deal — it is the pipeline pulse.",
+		actingUserId ? `Acting rep user id: \`${actingUserId}\`.` : "",
+		"",
+		countsLine,
+		"",
+		opening(
+			opened,
+			"what moved this week, who is stuck, or where deals were lost",
+		),
+		"",
+		"Start with `read_pipeline_pulse` for this scope" +
+			(actingUserId
+				? ` (pass userId \`${actingUserId}\` when scope is me)`
+				: "") +
+			". It returns the same",
+		"shape as the overview strip: counts, biggest movers, recent feed, and",
+		"stuck deals. **Never invent totals** — only report what that tool (or",
+		"`search_crm` / `read_deal_history` on drill-down) observed.",
+		"",
+		"The change log only grows going forward; empty recent feed means no",
+		"edits or Sage pulls in the window, not a system failure.",
+		"",
+		capabilitiesMarkdown(),
+	].join("\n");
+
+	return { markdown, focus: {} };
 }
 
 /**

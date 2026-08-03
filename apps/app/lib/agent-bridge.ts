@@ -74,7 +74,13 @@ export async function mintBridgeToken(
 	 * "About contact <cuid> (Name):" — put plumbing in front of a person and
 	 * made their own question unreadable.
 	 */
-	record: { contactId?: string; companyId?: string; dealId?: string } = {},
+	record: {
+		contactId?: string;
+		companyId?: string;
+		dealId?: string;
+		/** Overview Me/Everyone — not a cuid; do not run through cuid(). */
+		pipelineScope?: string;
+	} = {},
 ): Promise<string> {
 	const secret = process.env.AGENT_BRIDGE_SECRET;
 	if (!secret) throw new Error("AGENT_BRIDGE_SECRET is not set.");
@@ -91,6 +97,7 @@ export async function mintBridgeToken(
 		...(record.contactId ? { contactId: record.contactId } : {}),
 		...(record.companyId ? { companyId: record.companyId } : {}),
 		...(record.dealId ? { dealId: record.dealId } : {}),
+		...(record.pipelineScope ? { pipelineScope: record.pipelineScope } : {}),
 		iat: now,
 		// `nbf` a little in the past: the agent allows clock skew, but there is no
 		// reason to hand it a token that is not valid yet.

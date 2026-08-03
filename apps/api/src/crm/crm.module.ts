@@ -1,5 +1,6 @@
 import { Global, Module } from "@nestjs/common";
 import { ActivityStampService } from "./activity-stamp.service";
+import { DealChangeRecorder } from "./deal-change.service";
 import { EnrichmentLogService } from "./enrichment-log.service";
 
 /**
@@ -12,7 +13,7 @@ import { EnrichmentLogService } from "./enrichment-log.service";
  */
 @Global()
 @Module({
-	providers: [ActivityStampService, EnrichmentLogService],
-	exports: [ActivityStampService, EnrichmentLogService],
+	providers: [ActivityStampService, EnrichmentLogService, DealChangeRecorder],
+	exports: [ActivityStampService, EnrichmentLogService, DealChangeRecorder],
 })
 export class CrmModule {}

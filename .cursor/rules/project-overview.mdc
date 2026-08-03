@@ -59,8 +59,13 @@ surface on top, syncing bidirectionally (pull first, push later).
 - **7.4b full pull is DONE** (2026-08-02): ~14.2k companies / ~24.8k contacts /
   525 deals imported by the local one-shot `apps/api/scripts/sage-backfill.ts`;
   `phase = incremental`, nightly cron wired. Company/contact owners come from
-  Sage `acctmgr` (name match). Remaining Sage work (reconcile soft-deactivate,
-  push) is DESIGN-ONLY. See `docs/plans/sage-crm-sync.md` §3.3/§3b/§6.
+  Sage `acctmgr` (name match). **Push write-back is BUILT** (outbox + echo-guard);
+  remaining Sage work (reconcile soft-deactivate, nested field push) is
+  DESIGN-ONLY / deferred. See `docs/plans/sage-crm-sync.md` and
+  `HANDOFF-SAGE-SYNC.md`.
+- **Pipeline pulse (DONE 2026-08-03)**: overview change feed + stuck deals +
+  pipeline AI chat. Sage pull (non-echo) appends `DealFieldChange` rows with
+  `source: sage`. Plan: `docs/plans/pipeline-pulse.md`.
 
 ## Where to read more
 
@@ -68,3 +73,5 @@ surface on top, syncing bidirectionally (pull first, push later).
 - `docs/agent.md`, `docs/api.md`, `docs/design.md`, `docs/environment.md`
 - `docs/local-setup.md` — how this machine was set up and what's left to do
 - `docs/plans/sage-crm-sync.md` — Phase 7 Sage sync (confirmed SOAP + mappings)
+- `docs/plans/pipeline-pulse.md` — overview pulse + pipeline agent
+- `HANDOFF-SAGE-SYNC.md` — Sage push write-back handoff

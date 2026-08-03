@@ -34,6 +34,12 @@ export default defineDynamic({
 					contactId: asString(attributes.contactId),
 					companyId: asString(attributes.companyId),
 					dealId: asString(attributes.dealId),
+					pipelineScope: asString(attributes.pipelineScope),
+					// Panel JWT subject = acting rep; followups dispatch sets userId.
+					actingUserId:
+						asString(attributes.userId) ??
+						ctx.session.auth.current?.principalId ??
+						null,
 					userId: asString(attributes.userId),
 				},
 				{

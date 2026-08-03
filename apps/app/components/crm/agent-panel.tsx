@@ -46,6 +46,7 @@ import {
 import { Spinner } from "@crm/ui/components/spinner";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEveAgent } from "eve/react";
+import { parseAsString, useQueryStates } from "nuqs";
 import { useEffect, useRef, useState } from "react";
 import {
 	type Conversation,
@@ -112,8 +113,43 @@ import { useRecordSheetView } from "./record-sheet/record-stack";
  * visit had the list cached and got it right.
  */
 export function AgentPanel({ record }: { record: AgentRecord }) {
-	const conversations = useConversations(recordFilter(record));
 	const { thread, setThread } = useRecordSheetView("overview");
+	return (
+		<AgentPanelBody record={record} thread={thread} setThread={setThread} />
+	);
+}
+
+/**
+ * Overview pipeline chat — same panel, thread in the overview URL (not the
+ * record-sheet stack). Scope is Me/Everyone from the overview toggle.
+ */
+export function PipelineAgentPanel({
+	scope,
+}: {
+	scope: "me" | "everyone";
+}) {
+	const [{ thread }, setParams] = useQueryStates({
+		thread: parseAsString,
+	});
+	return (
+		<AgentPanelBody
+			record={{ kind: "pipeline", id: scope }}
+			thread={thread}
+			setThread={(next) => void setParams({ thread: next })}
+		/>
+	);
+}
+
+function AgentPanelBody({
+	record,
+	thread,
+	setThread,
+}: {
+	record: AgentRecord;
+	thread: string | null;
+	setThread: (next: string | null) => void;
+}) {
+	const conversations = useConversations(recordFilter(record));
 
 	const history = conversations.data ?? [];
 
@@ -677,7 +713,12 @@ function useSavedConversation({
 	session,
 	messages,
 }: {
-	record: { contactId?: string; companyId?: string; dealId?: string };
+	record: {
+		contactId?: string;
+		companyId?: string;
+		dealId?: string;
+		pipelineScope?: "me" | "everyone";
+	};
 	conversation: Conversation | null;
 	opening: React.RefObject<string | null>;
 	/** `useEveAgent`'s own cursor. */
@@ -695,7 +736,7 @@ function useSavedConversation({
 	const sessionId = session?.sessionId ?? null;
 	const token = session?.continuationToken ?? null;
 	const streamIndex = session?.streamIndex ?? 0;
-	const { contactId, companyId, dealId } = record;
+	const { contactId, companyId, dealId, pipelineScope } = record;
 
 	// **Not just "there was no conversation when we mounted".**
 	//
@@ -735,6 +776,7 @@ function useSavedConversation({
 				...(contactId ? { contactId } : {}),
 				...(companyId ? { companyId } : {}),
 				...(dealId ? { dealId } : {}),
+				...(pipelineScope ? { pipelineScope } : {}),
 				sessionId,
 				continuationToken: token,
 				streamIndex,
@@ -762,6 +804,7 @@ function useSavedConversation({
 		contactId,
 		companyId,
 		dealId,
+		pipelineScope,
 		isNew,
 	]);
 }

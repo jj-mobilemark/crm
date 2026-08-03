@@ -15,6 +15,11 @@ import {
 	NotFoundException,
 } from "@nestjs/common";
 import { ActivityStampService } from "../crm/activity-stamp.service";
+import {
+	DEAL_CHANGE_SELECT,
+	type DealChangeSnapshot,
+	DealChangeRecorder,
+} from "../crm/deal-change.service";
 import { fromCents, toCents } from "../crm/values";
 import { InjectDatabase } from "../database/database.constants";
 import { SagePushService } from "../sage/sage-push.service";
@@ -91,6 +96,7 @@ export class DealsService {
 		@InjectDatabase() private readonly db: Db,
 		private readonly stamp: ActivityStampService,
 		private readonly sagePush: SagePushService,
+		private readonly dealChanges: DealChangeRecorder,
 	) {}
 
 	async list(input: DealListInput) {
@@ -269,9 +275,7 @@ export class DealsService {
 			where: { id },
 			select: {
 				id: true,
-				ownerId: true,
-				amount: true,
-				probability: true,
+				...DEAL_CHANGE_SELECT,
 			},
 		});
 
@@ -328,11 +332,33 @@ export class DealsService {
 			data.weightedAmount = weightedFromAmount(nextAmount, nextProbability);
 		}
 
+		const after: DealChangeSnapshot = {
+			stage: existing.stage,
+			probability: nextProbability,
+			amount: nextAmount,
+			expectedCloseDate:
+				input.expectedCloseDate !== undefined
+					? parseDate(input.expectedCloseDate)
+					: existing.expectedCloseDate,
+			ownerId: input.ownerId ?? existing.ownerId,
+			priority:
+				input.priority !== undefined ? input.priority : existing.priority,
+			sageStage: existing.sageStage,
+		};
+
 		try {
 			const updated = await this.db.deal.update({
 				where: { id },
 				data,
 				select: { id: true, name: true },
+			});
+
+			await this.dealChanges.recordDiffs({
+				dealId: id,
+				before: existing,
+				after,
+				source: "app",
+				actorUserId: actor.id,
 			});
 
 			if (
@@ -367,10 +393,8 @@ export class DealsService {
 			where: { id: input.id },
 			select: {
 				id: true,
-				stage: true,
 				companyId: true,
-				ownerId: true,
-				amount: true,
+				...DEAL_CHANGE_SELECT,
 			},
 		});
 
@@ -425,6 +449,23 @@ export class DealsService {
 				},
 			}),
 		]);
+
+		await this.dealChanges.recordDiffs({
+			dealId: deal.id,
+			before: deal,
+			after: {
+				stage: input.stage,
+				probability,
+				amount,
+				expectedCloseDate: deal.expectedCloseDate,
+				ownerId: deal.ownerId,
+				priority: deal.priority,
+				sageStage: deal.sageStage,
+			},
+			source: "app",
+			actorUserId: actor.id,
+			at: now,
+		});
 
 		await this.stamp.touch(
 			{ companyId: deal.companyId, dealId: deal.id },

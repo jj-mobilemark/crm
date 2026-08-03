@@ -37,6 +37,7 @@ model User {
   createdSequences     EmailSequence[]      @relation("SequenceCreator")
   sequenceEnrollments  SequenceEnrollment[] @relation("SequenceSender")
   enrolledSequences    SequenceEnrollment[] @relation("SequenceEnroller")
+  dealFieldChanges     DealFieldChange[]    @relation("DealFieldChangeActor")
 
   @@unique([email])
   @@map("user")
@@ -522,13 +523,19 @@ model AgentEvent {
 model AgentConversation {
   id String @id @default(cuid())
 
-  /// Which record it is about. Exactly one of these is set.
+  /// Which record it is about. Exactly one of contact/company/deal is set —
+  /// unless this is a pipeline (overview) session, which sets `pipelineScope`
+  /// instead and leaves the three FKs null.
   contactId String?
   contact   Contact? @relation(fields: [contactId], references: [id], onDelete: Cascade)
   companyId String?
   company   Company? @relation(fields: [companyId], references: [id], onDelete: Cascade)
   dealId    String?
   deal      Deal?    @relation(fields: [dealId], references: [id], onDelete: Cascade)
+
+  /// Overview pipeline chat: `"me"` or `"everyone"`. Mutually exclusive with
+  /// the three record FKs above.
+  pipelineScope String?
 
   /// Whose conversation. Two reps asking about the same contact are having two
   /// different conversations, and neither should see the other's half-finished
@@ -551,6 +558,7 @@ model AgentConversation {
   @@index([contactId, lastMessageAt])
   @@index([companyId, lastMessageAt])
   @@index([dealId, lastMessageAt])
+  @@index([userId, pipelineScope, lastMessageAt])
   @@map("agentConversation")
 }
 
@@ -601,10 +609,11 @@ model Deal {
   /// thing on the page. Maintained through `ActivityStampService`.
   lastActivityAt DateTime?
 
-  contacts   DealContact[]
-  activities Activity[]
-  createdAt  DateTime      @default(now())
-  updatedAt  DateTime      @updatedAt
+  contacts     DealContact[]
+  activities   Activity[]
+  fieldChanges DealFieldChange[]
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
 
   @@index([companyId])
   @@index([ownerId])
@@ -613,6 +622,37 @@ model Deal {
   @@index([expectedCloseDate])
   @@index([lastActivityAt])
   @@map("deal")
+}
+
+/// Append-only log of deal field moves for the overview pulse.
+///
+/// Written when the app edits a deal or Sage pull applies a non-echo update.
+/// `SageRecordSnapshot` is latest-only; this table is what makes "certainty
+/// went 50 → 75" queryable. Values are stringified so one table covers stage
+/// enums, ints, money, and dates without a JSON blob per row.
+model DealFieldChange {
+  id     String @id @default(cuid())
+  dealId String
+  deal   Deal   @relation(fields: [dealId], references: [id], onDelete: Cascade)
+
+  /// stage | probability | amount | expectedCloseDate | ownerId | priority | sageStage
+  field     String
+  fromValue String?
+  toValue   String?
+  /// "app" (UI / Nest write) | "sage" (pull applied a remote change).
+  source String
+
+  /// Set for app writes; null for Sage-originated rows.
+  actorUserId String?
+  actor       User?   @relation("DealFieldChangeActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([dealId, createdAt])
+  @@index([field, createdAt])
+  @@index([source, createdAt])
+  @@map("dealFieldChange")
 }
 
 model DealContact {

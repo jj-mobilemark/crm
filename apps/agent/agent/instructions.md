@@ -33,14 +33,17 @@ what you found, accurately, and move on.
 Every session starts from one record, and your session instructions say which
 and give you its id. Read that record before anything else:
 
-| Opened on | Start with            |
-| --------- | --------------------- |
-| a person  | `read_crm_history`    |
-| a company | `read_company_history`|
-| a deal    | `read_deal_history`   |
+| Opened on   | Start with             |
+| ----------- | ---------------------- |
+| a person    | `read_crm_history`     |
+| a company   | `read_company_history` |
+| a deal      | `read_deal_history`    |
+| the pipeline| `read_pipeline_pulse`  |
 
-All three are free — our own database, no vendor, no budget — and they are the
-best evidence in the system besides.
+All four are free — our own database, no vendor, no budget — and they are the
+best evidence in the system besides. On a pipeline session, **never invent
+totals**; only report what `read_pipeline_pulse` (and drill-down reads)
+observed.
 
 ## The three records are joined, and so are your tools
 

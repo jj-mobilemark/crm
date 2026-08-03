@@ -1,10 +1,13 @@
 import { z } from "zod";
 
-/** Which record's conversations. One of the two, checked in the service. */
+const pipelineScope = z.enum(["me", "everyone"]);
+
+/** Which record's conversations. Exactly one filing key, checked in the service. */
 export const conversationListInput = z.object({
 	contactId: z.string().optional(),
 	companyId: z.string().optional(),
 	dealId: z.string().optional(),
+	pipelineScope: pipelineScope.optional(),
 });
 
 export type ConversationListInput = z.infer<typeof conversationListInput>;
@@ -19,6 +22,7 @@ export const conversationSaveInput = z.object({
 	contactId: z.string().optional(),
 	companyId: z.string().optional(),
 	dealId: z.string().optional(),
+	pipelineScope: pipelineScope.optional(),
 	sessionId: z.string(),
 	continuationToken: z.string().nullish(),
 	streamIndex: z.number().int().min(0).optional(),

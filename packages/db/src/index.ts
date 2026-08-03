@@ -22,3 +22,10 @@ export { Prisma, PrismaClient } from "./generated/prisma/client";
 export * from "./generated/prisma/enums";
 export type * from "./generated/prisma/models";
 export type { ContactBriefSections, FactEvidence } from "./json";
+export {
+	loadPipelinePulse,
+	PULSE_WINDOW_DAYS,
+	STUCK_DAYS,
+	type PipelinePulse,
+	type PipelinePulseScope,
+} from "./pipeline-pulse";

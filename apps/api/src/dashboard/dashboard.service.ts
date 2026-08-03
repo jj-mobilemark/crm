@@ -1,4 +1,10 @@
-import { ActivityType, type Db, DealStage, type Prisma } from "@crm/db";
+import {
+	ActivityType,
+	type Db,
+	DealStage,
+	loadPipelinePulse,
+	type Prisma,
+} from "@crm/db";
 import { Injectable } from "@nestjs/common";
 import { toCents } from "../crm/values";
 import { InjectDatabase } from "../database/database.constants";
@@ -262,6 +268,7 @@ export class DashboardService {
 			biggestOpen,
 			overdueTasks,
 			recentActivity,
+			pulse,
 		] = await Promise.all([
 			this.db.deal.groupBy({
 				by: ["stage"],
@@ -366,6 +373,12 @@ export class DashboardService {
 					company: { select: { id: true, name: true } },
 					deal: { select: { id: true, name: true } },
 				},
+			}),
+			// Pulse: shared helper — same shape the agent tool reads.
+			loadPipelinePulse(this.db, {
+				scope: input.scope,
+				userId: actingUserId,
+				now,
 			}),
 		]);
 
@@ -481,6 +494,11 @@ export class DashboardService {
 			 * unweighted (`amount`) and weighted (`weightedAmount`) totals.
 			 */
 			forecast,
+			/**
+			 * Deal-field moves in the last 7 days + stuck open deals (14d+).
+			 * Independent of the closed-won range control.
+			 */
+			pulse,
 			biggestOpen: biggestOpen.map(
 				({
 					amount,

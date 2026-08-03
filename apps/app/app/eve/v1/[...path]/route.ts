@@ -68,9 +68,11 @@ async function handler(request: Request): Promise<Response> {
 	const contactId = request.headers.get("x-crm-contact");
 	const companyId = request.headers.get("x-crm-company");
 	const dealId = request.headers.get("x-crm-deal");
+	const pipelineScope = request.headers.get("x-crm-pipeline");
 	headers.delete("x-crm-contact");
 	headers.delete("x-crm-company");
 	headers.delete("x-crm-deal");
+	headers.delete("x-crm-pipeline");
 
 	headers.set(
 		"authorization",
@@ -84,6 +86,8 @@ async function handler(request: Request): Promise<Response> {
 				contactId: cuid(contactId),
 				companyId: cuid(companyId),
 				dealId: cuid(dealId),
+				// Scope is `me` / `everyone` — not a cuid. Drop anything else.
+				pipelineScope: pipelineScopeLiteral(pipelineScope),
 			},
 		)}`,
 	);
@@ -150,4 +154,9 @@ export {
 /** A cuid, or nothing. Decides what the agent looks at, never what it may do. */
 function cuid(value: string | null): string | undefined {
 	return value && /^[a-z0-9]{20,32}$/.test(value) ? value : undefined;
+}
+
+/** Overview Me/Everyone — not a cuid; anything else is dropped. */
+function pipelineScopeLiteral(value: string | null): string | undefined {
+	return value === "me" || value === "everyone" ? value : undefined;
 }

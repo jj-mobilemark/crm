@@ -24,39 +24,155 @@ it before stopping. The rules for maintaining it live in `AGENTS.md`
 ## Current state (keep this section up to date)
 
 - **Git**: `origin` = `jj-mobilemark/crm` (fork); `upstream` = `trycompai/crm`
-  (read-only). Work on `main`.
-- **Active plan**: `docs/plans/sequences.md` (email sequences — **IMPLEMENTED**
-  2026-08-03). Sage: `docs/plans/sage-crm-sync.md` (7.4b full pull DONE;
-  **push BUILT 2026-08-03** — see dedicated `HANDOFF-SAGE-SYNC.md`).
-  M365 Phases 0–5 DONE; Phase 6 DEFERRED.
-- **Deal/task priority + Tasks page (new, 2026-08-03)**: nullable `Priority`
-  enum (`LOW`/`MEDIUM`/`HIGH`/`HIGHEST`) on `Deal` and `Activity`; migration
-  `20260803110000_add_priority` applied locally. Dedicated `/tasks` nav page
-  with filters + global New task sheet (still requires company/deal anchor).
-- **Email sequences**: `/sequences` panel + Nest tick every 2 min.
-  Requires Entra **Mail.Send** admin consent + rep re-consent. See
-  `docs/plans/sequences.md`. Migration
-  `20260803100000_add_email_sequences` applied locally.
-- **Verification**: `check-types` app + db green; api still has pre-existing
-  `sage-soap.client.ts` `SAGE_TYPE_NS` error unrelated to priority/tasks.
-- **Runs locally**: Postgres via `docker compose up -d`. Prefer
-  `bun run src/main.ts` in `apps/api` + `bun run dev` in `apps/app`.
-  **API has no hot reload** — restart after these API edits.
+  (read-only). Work on `main` (pipeline pulse + agent committed/pushed).
+- **Active plan**: `docs/plans/pipeline-pulse.md` — **DONE**. Next focus:
+  Sage push E2E smoke (`HANDOFF-SAGE-SYNC.md`), sequences Entra **Mail.Send**.
+  M365 0–5 DONE / 6 DEFERRED.
+- **Pipeline pulse + agent (DONE, 2026-08-03)**: `DealFieldChange` log; overview
+  strip/movers/feed/stuck; fourth `AgentRecordKind` `pipeline`;
+  `AgentConversation.pipelineScope`; bridge `x-crm-pipeline` → JWT;
+  `pipelinePreamble` + `read_pipeline_pulse` (shared `loadPipelinePulse` in
+  `@crm/db`); `PipelineAgentPanel` on overview. Migrations
+  `20260803130000_add_deal_field_change` + `20260803140000_add_pipeline_scope`
+  applied locally. No history backfill. Docs: `docs/agent.md`,
+  `docs/plans/pipeline-pulse.md`, project-overview rule.
+- **Local API**: `bun run src/main.ts` in `apps/api` (:3001). App `bun run
+  dev` on :3000. Restart agent if `eve` is running after agent code changes.
+- **Deal/task priority + Tasks page**: nullable `Priority` on Deal/Activity;
+  `/tasks` page. Migration `20260803110000_add_priority`.
+- **Email sequences**: `/sequences` + Nest tick; needs Entra **Mail.Send**.
+- **Verification**: check-types app + api + db + agent green; agent-session +
+  agent-transcript + deal-change tests green.
 - **Auth / env**: allow-list `ALLOWED_SIGN_IN=mobilemark.com`; Microsoft SSO
-  works. `MICROSOFT_*` + `CRON_SECRET` + `SAGE_SOAP_*` in root `.env` (never
-  record secrets here). Optional `APP_PUBLIC_URL` for sequence tracking links.
-- **Local CRM data**: Sage backfill data (companies/contacts/deals) — do not
-  re-run `bun run db:seed` casually.
-- **Key files (priority/tasks)**:
-  - `packages/db/prisma/schema.prisma` — `Priority` enum + columns
-  - `apps/api/src/deals/`, `apps/api/src/activities/` — contracts + service
-  - `apps/app/components/crm/priority.tsx` — shared badge/options
-  - `apps/app/app/(app)/tasks/` — page, table, create sheet
-  - `apps/app/components/app-icon-rail.tsx` — Tasks nav item
+  works. `MICROSOFT_*` + `CRON_SECRET` + `SAGE_SOAP_*` + `AGENT_BRIDGE_SECRET`
+  in root `.env` (never record secrets here).
+- **Local CRM data**: Sage backfill data — do not re-run `bun run db:seed`
+  casually.
+- **Key files (pipeline agent)**:
+  - `docs/plans/pipeline-pulse.md`
+  - `packages/db/src/pipeline-pulse.ts` — shared pulse query
+  - `apps/app/lib/agent-record.ts` — `pipeline` kind
+  - `apps/agent/agent/tools/read_pipeline_pulse.ts`
+  - `apps/agent/agent/lib/preamble.ts` — `pipelinePreamble`
+  - `apps/app/components/crm/agent-panel.tsx` — `PipelineAgentPanel`
+  - `apps/app/app/(app)/dashboard-summary.tsx` — mounts panel
 
 ---
 
 ## Work log
+
+### 2026-08-03 — Commit/push pipeline pulse + agent; docs refreshed
+
+**What was completed**
+- Committed and pushed pipeline pulse + overview agent to `origin/main`.
+- Docs: `docs/plans/pipeline-pulse.md` (status DONE), `docs/agent.md`
+  (pipeline kind), `.cursor/rules/project-overview.mdc` (pulse + push note),
+  `HANDOFF-SAGE-SYNC.md` (pull change-log note).
+
+**How and why**
+- Ship the forward-only deal change feed and manager chat so overview is
+  useful; keep Sage push handoff accurate about echo-safe logging.
+
+**Deviations**
+- None.
+
+**What's next**
+1. Deploy migrations on Railway (`db:deploy` / start script) if not auto.
+2. Sage push E2E: delete opp 805; smoke edit deal 557 — `HANDOFF-SAGE-SYNC.md`.
+3. Sequences: Entra **Mail.Send** if still missing.
+
+### 2026-08-03 — Pipeline agent on overview
+
+**What was completed**
+- Fourth kind `pipeline` end-to-end (`apps/app/lib/agent-record.ts`): header
+  `x-crm-pipeline`, filing `pipelineScope` (`me`|`everyone`).
+- Schema: `AgentConversation.pipelineScope` + migration
+  `packages/db/prisma/migrations/20260803140000_add_pipeline_scope/` (applied).
+- Conversations API: list/save/remove accept `pipelineScope`
+  (`conversations.contracts.ts` / `.service.ts`); tRPC regenerated.
+- Bridge: mint + proxy accept non-cuid scope (`agent-bridge.ts`,
+  `app/eve/v1/[...path]/route.ts`).
+- Shared pulse: `packages/db/src/pipeline-pulse.ts` `loadPipelinePulse`;
+  dashboard + agent tool both use it.
+- Agent: `pipelinePreamble`, `read_pipeline_pulse` tool, `instructions.md`
+  table row, `TOOL_VERBS` label, `task.ts` passes `pipelineScope` + acting user.
+- UI: `PipelineAgentPanel` on overview under pulse (`dashboard-summary.tsx`);
+  thread URL via nuqs `thread` (not record-sheet stack).
+- Tests: agent-session / agent-transcript / deal-change green; types green.
+
+**How and why**
+- Managers ask pipeline questions on `/`; record-scoped panel could not file
+  or mint focus without a CRM cuid. Scope is the record id; shared helper keeps
+  Nest pulse and agent tool identical.
+
+**Deviations**
+- Optional thin tools (`list_stuck_deals` / `list_deal_moves`) skipped —
+  `read_pipeline_pulse` + existing drill-down is enough for this pass.
+
+**What's next**
+1. Restart API (and agent if running). Smoke: overview Everyone → Ask about
+   the pipeline → “What moved this week?”; Me scopes owned deals.
+2. Commit when ready (pulse + agent + both migrations).
+3. Other tracks: Sage push smoke (`HANDOFF-SAGE-SYNC.md`), sequences Mail.Send.
+
+### 2026-08-03 — API restart; pulse ready for agent handoff
+
+**What was completed**
+- Restarted Nest API: `bun run src/main.ts` in `apps/api` (:3001 `/health`
+  OK). Pulse code from prior pass is live.
+- Confirmed next work is pipeline agent only — pulse UI is done.
+
+**How and why**
+- Nest has no hot reload; restart loads `DealFieldChange` writers +
+  `dashboard.summary.pulse`. Smoke: edit deal certainty/stage (or wait for
+  Sage pull) to grow the feed; stuck uses `stageChangedAt` without log rows.
+
+**Deviations**
+- None.
+
+**What's next**
+1. **Next agent: pipeline AI on overview** — read
+   `docs/plans/pipeline-pulse.md` § Agent handoff (do not skip). Deliver:
+   fourth `AgentRecordKind` (`pipeline`), preamble with Me/Everyone + pulse
+   summary counts, `read_pipeline_pulse` tool (same shape as dashboard
+   pulse), mount `AgentPanel` on overview. Pulse UI already done.
+2. Optional smoke while coding: edit a deal → App row in `dealFieldChange`;
+   overview Everyone shows movers/feed.
+3. Commit when ready (pulse + agent may share one PR or split).
+
+### 2026-08-03 — Pipeline pulse on overview (change log + UI)
+
+**What was completed**
+- Plan: `docs/plans/pipeline-pulse.md` (includes **Agent handoff** for the
+  next agent — do not skip).
+- Schema: `DealFieldChange` + migration
+  `packages/db/prisma/migrations/20260803130000_add_deal_field_change/`
+  (applied locally).
+- Recorder: `apps/api/src/crm/deal-change.service.ts` in global `CrmModule`.
+- Writers: `DealsService.update` / `setStage` (`source: app`);
+  `SagePullService.upsertDeal` (`source: sage`, skipped on push echo).
+- Dashboard: `summary.pulse` — 7-day counts, movers, recent feed, stuck
+  (14d+, stage/certainty).
+- UI: `apps/app/app/(app)/pipeline-pulse.tsx` mounted in
+  `dashboard-summary.tsx` under the sales KPI charts.
+- Test: `apps/api/test/deal-change.spec.ts`.
+
+**How and why**
+- Managers need “what moved” not only snapshot totals. `SageRecordSnapshot`
+  is latest-only, so an append-only field log is required. App push to Sage
+  already exists; echo-guard prevents double-logging local edits.
+
+**Deviations**
+- Pulse window is fixed 7 days (not tied to closed-won range control), as
+  agreed. Agent on overview deferred by product ask.
+
+**What's next**
+1. Restart API; smoke: edit deal certainty/stage → App rows; Sage pull
+   non-echo → Sage rows; overview Everyone shows pulse.
+2. **Next agent: pipeline AI on overview** — follow
+   `docs/plans/pipeline-pulse.md` § Agent handoff (new `pipeline`
+   AgentRecordKind, preamble, `read_pipeline_pulse` tool, mount panel).
+3. Commit when ready (pulse migration + UI may share tree with other work).
 
 ### 2026-08-03 — Sage push write-back (see HANDOFF-SAGE-SYNC.md)
 

@@ -3,27 +3,35 @@ import type { CarbonIcon } from "@crm/ui/components/icon";
 /**
  * Which record the agent is being asked about.
  *
- * The panel appears on three sheets and the questions worth asking are
- * different on each: a person has a job and a history, a company has a market
- * and a story, a deal has a state and a next step. Offering "Who is this
- * person?" on a company is the tell that a chat box was bolted on rather than
- * built into the record.
+ * The panel appears on three sheets and the overview, and the questions worth
+ * asking are different on each: a person has a job and a history, a company has
+ * a market and a story, a deal has a state and a next step, and the pipeline has
+ * what moved. Offering "Who is this person?" on a company is the tell that a
+ * chat box was bolted on rather than built into the record.
  *
  * One shape carries it end to end — the header the panel sends, the claim the
  * proxy mints, the field the conversation is filed under, and the preamble the
- * agent opens with — so adding a fourth kind is one entry rather than four
- * edits in four layers.
+ * agent opens with — so adding a kind is one entry rather than four edits in
+ * four layers.
  */
 
-export type AgentRecordKind = "contact" | "company" | "deal";
+export type AgentRecordKind = "contact" | "company" | "deal" | "pipeline";
 
-export type AgentRecord = { kind: AgentRecordKind; id: string };
+/** Overview Me/Everyone — carried as the record `id` for pipeline sessions. */
+export type PipelineScope = "me" | "everyone";
+
+export type AgentRecord =
+	| { kind: "contact" | "company" | "deal"; id: string }
+	| { kind: "pipeline"; id: PipelineScope };
 
 type RecordCopy = {
 	/** The header the panel sends; the proxy turns it into a token claim. */
 	header: string;
-	/** The tRPC field a conversation is filed under. */
-	field: "contactId" | "companyId" | "dealId";
+	/**
+	 * The tRPC field a conversation is filed under.
+	 * Pipeline uses `pipelineScope` (Me/Everyone), not a CRM cuid.
+	 */
+	field: "contactId" | "companyId" | "dealId" | "pipelineScope";
 	title: string;
 	blurb: string;
 	placeholder: string;
@@ -76,6 +84,19 @@ const COPY: Record<AgentRecordKind, RecordCopy> = {
 			"What is the risk here?",
 		],
 	},
+	pipeline: {
+		header: "x-crm-pipeline",
+		field: "pipelineScope",
+		title: "Ask about the pipeline",
+		blurb:
+			"It reads the last seven days of deal moves — never invents totals.",
+		placeholder: "What moved this week?",
+		suggestions: [
+			"What moved this week?",
+			"Who's stuck?",
+			"Where did we lose?",
+		],
+	},
 };
 
 export function recordCopy(kind: AgentRecordKind): RecordCopy {
@@ -92,6 +113,7 @@ export function recordFilter(record: AgentRecord): {
 	contactId?: string;
 	companyId?: string;
 	dealId?: string;
+	pipelineScope?: PipelineScope;
 } {
 	return { [COPY[record.kind].field]: record.id };
 }

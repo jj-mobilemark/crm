@@ -35,6 +35,7 @@ import {
 	DealStageIndicator,
 	dealStageColor,
 } from "@/components/crm/deal-stage";
+import { PipelineAgentPanel } from "@/components/crm/agent-panel";
 import { PriorityBadge } from "@/components/crm/priority";
 import { RecordLink } from "@/components/crm/record-sheet/record-link";
 import { useOpenRecord } from "@/components/crm/record-sheet/record-stack";
@@ -42,6 +43,7 @@ import { activityLabel } from "@/components/crm/timeline/activity-icon";
 import { useCrmCache } from "@/lib/trpc/cache";
 import { useTRPC } from "@/lib/trpc/client";
 import { overviewParsers } from "./overview-search-params";
+import { PipelinePulse } from "./pipeline-pulse";
 import { SalesDashboard } from "./sales-dashboard";
 
 /**
@@ -140,6 +142,21 @@ export function DashboardSummary() {
 	return (
 		<div className="flex flex-col gap-6">
 			<SalesDashboard summary={summary} />
+
+			<PipelinePulse pulse={summary.pulse} />
+
+			<Card className="min-w-0">
+				<CardHeader>
+					<CardTitle>Ask about the pipeline</CardTitle>
+					<CardDescription>
+						What moved, who is stuck, and where deals were lost — from the
+						change log, not guesses
+					</CardDescription>
+				</CardHeader>
+				<CardPanel className="flex h-96 flex-col overflow-hidden p-0">
+					<PipelineAgentPanel key={scope} scope={scope} />
+				</CardPanel>
+			</Card>
 
 			{/*
 			 * Two panels of one fixed height rather than four cards that each grew

@@ -142,6 +142,8 @@ function Forget({
 export function useConversations(recordId: {
 	contactId?: string;
 	companyId?: string;
+	dealId?: string;
+	pipelineScope?: "me" | "everyone";
 }) {
 	const trpc = useTRPC();
 	return useQuery(trpc.conversations.list.queryOptions(recordId));

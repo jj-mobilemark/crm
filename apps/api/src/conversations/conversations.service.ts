@@ -90,6 +90,9 @@ export class ConversationsService {
 				...(input.contactId ? { contactId: input.contactId } : {}),
 				...(input.companyId ? { companyId: input.companyId } : {}),
 				...(input.dealId ? { dealId: input.dealId } : {}),
+				...(input.pipelineScope
+					? { pipelineScope: input.pipelineScope }
+					: {}),
 			},
 			orderBy: { lastMessageAt: "desc" },
 			take: 20,
@@ -140,6 +143,7 @@ export class ConversationsService {
 				contactId: input.contactId ?? null,
 				companyId: input.companyId ?? null,
 				dealId: input.dealId ?? null,
+				pipelineScope: input.pipelineScope ?? null,
 			},
 			update: {
 				continuationToken: input.continuationToken ?? null,
@@ -209,6 +213,7 @@ export class ConversationsService {
 				contactId: true,
 				companyId: true,
 				dealId: true,
+				pipelineScope: true,
 				sessionId: true,
 			},
 		});
@@ -230,7 +235,9 @@ export class ConversationsService {
 				conversation.contactId ??
 					conversation.companyId ??
 					conversation.dealId ??
-					"",
+					(conversation.pipelineScope
+						? `pipeline:${conversation.pipelineScope}`
+						: ""),
 			),
 		);
 
@@ -239,20 +246,26 @@ export class ConversationsService {
 		return { id };
 	}
 
-	/** One record per conversation, and it has to be said which. */
+	/** One filing key per conversation, and it has to be said which. */
 	private recordId(input: {
 		contactId?: string;
 		companyId?: string;
 		dealId?: string;
+		pipelineScope?: string;
 	}): string {
-		const recordId = input.contactId ?? input.companyId ?? input.dealId;
+		const keys = [
+			input.contactId,
+			input.companyId,
+			input.dealId,
+			input.pipelineScope ? `pipeline:${input.pipelineScope}` : undefined,
+		].filter(Boolean);
 
-		if (!recordId) {
+		if (keys.length !== 1) {
 			throw new BadRequestException(
-				"A conversation belongs to a contact, a company or a deal.",
+				"A conversation belongs to a contact, a company, a deal, or the pipeline.",
 			);
 		}
 
-		return recordId;
+		return keys[0] as string;
 	}
 }

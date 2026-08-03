@@ -133,6 +133,7 @@ describe("record context", () => {
 		expect(recordCopy("contact").title).toBe("Ask about this person");
 		expect(recordCopy("company").title).toBe("Ask about this company");
 		expect(recordCopy("deal").title).toBe("Ask about this deal");
+		expect(recordCopy("pipeline").title).toBe("Ask about the pipeline");
 	});
 
 	it("offers questions that suit the record", () => {
@@ -140,6 +141,7 @@ describe("record context", () => {
 		expect(recordCopy("company").suggestions.join(" ")).not.toContain("person");
 		expect(recordCopy("deal").suggestions.join(" ")).not.toContain("person");
 		expect(recordCopy("contact").suggestions[0]).toBe("Who is this person?");
+		expect(recordCopy("pipeline").suggestions[0]).toBe("What moved this week?");
 	});
 
 	it("tells the agent which record it is on", () => {
@@ -152,6 +154,9 @@ describe("record context", () => {
 		expect(recordHeader({ kind: "deal", id: "d1" })).toEqual({
 			"x-crm-deal": "d1",
 		});
+		expect(recordHeader({ kind: "pipeline", id: "everyone" })).toEqual({
+			"x-crm-pipeline": "everyone",
+		});
 	});
 
 	it("files a conversation under one record and no other", () => {
@@ -159,6 +164,9 @@ describe("record context", () => {
 		expect(Object.keys(recordFilter({ kind: "company", id: "co1" }))).toEqual([
 			"companyId",
 		]);
+		expect(recordFilter({ kind: "pipeline", id: "me" })).toEqual({
+			pipelineScope: "me",
+		});
 	});
 });
 
@@ -179,7 +187,7 @@ describe("the panel", () => {
 	 * `recordCopy` did not" — which is visible in the file.
 	 */
 	it("takes its copy from the record, never from a literal", () => {
-		for (const kind of ["contact", "company", "deal"] as const) {
+		for (const kind of ["contact", "company", "deal", "pipeline"] as const) {
 			const copy = recordCopy(kind);
 			for (const literal of [copy.title, copy.blurb, copy.placeholder]) {
 				expect(source()).not.toContain(literal);

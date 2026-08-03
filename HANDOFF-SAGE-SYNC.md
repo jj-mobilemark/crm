@@ -28,6 +28,14 @@ Keep the main `HANDOFF.md` for other tracks; update **both** when you stop.
 | 6 Tests + smoke | **PARTIAL** | Unit tests green. End-to-end UI→outbox→Sage smoke **not** run in this session (API restart + manual UI edit still needed). |
 | Docs | **DONE** | This file + `sage-crm-sync.md` §5 item 7 updated. |
 
+### Related: pipeline change log (not push, but touches pull)
+
+Pull diffs on deals (when **not** a push echo) now append `DealFieldChange`
+rows (`source: sage`) via `DealChangeRecorder` in `SagePullService.upsertDeal`.
+That feeds the overview pulse / pipeline agent (`docs/plans/pipeline-pulse.md`).
+Echo-guard still skips mapped-field overwrite **and** skips change-log rows on
+echo, so a local push does not double-count.
+
 ### Locked decisions (do not relitigate)
 
 - **Scope**: UPDATE + CREATE for company / contact / deal.
@@ -126,6 +134,26 @@ Nightly /internal/sync/sage (CRON_SECRET)
 ---
 
 ## Work log (newest first)
+
+### 2026-08-03 — Note: DealFieldChange on Sage pull (pipeline pulse)
+
+**What was completed (adjacent track)**
+- `SagePullService.upsertDeal` records field diffs to `DealFieldChange` when
+  the update is **not** a push echo (`source: sage`). Same echo-guard as
+  mapped-field overwrite. See `docs/plans/pipeline-pulse.md` and main
+  `HANDOFF.md`.
+
+**How and why**
+- Overview pulse needs forward-only change history; pull is a primary source
+  of opportunity moves. Logging on echo would double-count local UI edits that
+  were already written with `source: app`.
+
+**Deviations**
+- None for push itself — push phases unchanged; E2E smoke still owed.
+
+**What's next**
+- Unchanged: delete Sage opp **805**; restart API; smoke UI edit of deal 557
+  + create under company 24; confirm echo-guard on next pull.
 
 ### 2026-08-03 — Sage push write-back wired end-to-end (agent: Cursor)
 

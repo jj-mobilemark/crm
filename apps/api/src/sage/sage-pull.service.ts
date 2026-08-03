@@ -1,5 +1,9 @@
 import { type Db, DealStage, RecordSource } from "@crm/db";
 import { Injectable, Logger } from "@nestjs/common";
+import {
+	DEAL_CHANGE_SELECT,
+	DealChangeRecorder,
+} from "../crm/deal-change.service";
 import { InjectDatabase } from "../database/database.constants";
 import {
 	countMappableContacts,
@@ -90,6 +94,7 @@ export class SagePullService {
 	constructor(
 		@InjectDatabase() private readonly db: Db,
 		private readonly soap: SageSoapClient,
+		private readonly dealChanges: DealChangeRecorder,
 	) {}
 
 	/**
@@ -321,7 +326,11 @@ export class SagePullService {
 	): Promise<string | null> {
 		const existing = await this.db.deal.findUnique({
 			where: { sageCrmOpportunityId: mapped.sageCrmOpportunityId },
-			select: { id: true, stage: true, sagePushedAt: true },
+			select: {
+				id: true,
+				sagePushedAt: true,
+				...DEAL_CHANGE_SELECT,
+			},
 		});
 
 		const fields = {
@@ -349,6 +358,7 @@ export class SagePullService {
 
 		if (existing) {
 			// Our own push coming back — keep local mapped fields, stamp cursor.
+			// Do not write DealFieldChange: the app already logged the local edit.
 			if (isPushEcho(mapped.sageUpdatedAt, existing.sagePushedAt)) {
 				await this.db.deal.update({
 					where: { id: existing.id },
@@ -363,6 +373,20 @@ export class SagePullService {
 					...fields,
 					...(stageChanged ? { stageChangedAt: new Date() } : {}),
 				},
+			});
+			await this.dealChanges.recordDiffs({
+				dealId: existing.id,
+				before: existing,
+				after: {
+					stage: mapped.stage,
+					probability: mapped.probability,
+					amount: mapped.amount,
+					expectedCloseDate: mapped.expectedCloseDate,
+					ownerId,
+					priority: existing.priority,
+					sageStage: mapped.sageStage,
+				},
+				source: "sage",
 			});
 			return existing.id;
 		}
