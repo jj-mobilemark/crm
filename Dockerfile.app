@@ -9,6 +9,10 @@ COPY package.json bun.lock turbo.json ./
 COPY apps ./apps
 COPY packages ./packages
 
+# prisma generate (postinstall) reads DATABASE_URL from prisma.config.ts —
+# only needed at build time for client generation, not a real connection.
+ENV DATABASE_URL="postgresql://postgres:postgres@127.0.0.1:5432/crm?schema=public"
+
 RUN bun install --frozen-lockfile \
 	&& bunx turbo run build --filter=app
 
