@@ -631,7 +631,7 @@ function Sources({ sources }: { sources: Source[] }) {
 /**
  * The agent wears the product's own mark.
  *
- * A generic robot glyph says "a chatbot was added here". The Comp AI logo says
+ * A generic robot glyph says "a chatbot was added here". The product logo says
  * this is the CRM speaking about its own record — which is what it is, and the
  * distinction is most of the difference in how much a rep trusts the answer.
  */

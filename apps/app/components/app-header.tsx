@@ -69,7 +69,7 @@ export function AppHeader({ user }: { user: User }) {
 					<Logo className="size-5" />
 				</Link>
 				<Separator orientation="vertical" className="mx-1 h-5 bg-transparent" />
-				<span className="font-medium text-sm">Comp AI CRM</span>
+				<span className="font-medium text-sm">Mobile Mark CRM</span>
 			</div>
 
 			<div className="ml-auto flex shrink-0 items-center gap-1.5">

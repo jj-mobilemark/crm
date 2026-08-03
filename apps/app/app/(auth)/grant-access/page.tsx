@@ -53,7 +53,7 @@ export default async function GrantAccessPage() {
 		<AuthShell>
 			<AuthHeading
 				title="One more step"
-				description={`Comp AI CRM reads your ${mailboxLabel} so meetings and email threads show up on the right company. It is read-only — nothing is ever sent on your behalf.`}
+				description={`Mobile Mark CRM reads your ${mailboxLabel} so meetings and email threads show up on the right company. It is read-only — nothing is ever sent on your behalf.`}
 			/>
 
 			<GrantAccess provider={provider} />

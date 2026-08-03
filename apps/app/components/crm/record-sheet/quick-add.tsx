@@ -238,7 +238,7 @@ export function QuickAddDeal({
 					autoFocus
 					value={name}
 					onChange={(event) => setName(event.target.value)}
-					placeholder={`${companyName} — Comp AI`}
+					placeholder={`${companyName} — Mobile Mark`}
 					autoComplete="off"
 				/>
 			</Field>

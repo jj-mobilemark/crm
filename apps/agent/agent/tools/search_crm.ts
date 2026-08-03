@@ -23,7 +23,7 @@ export default defineTool({
 			.string()
 			.min(2)
 			.describe(
-				"A name, an email address, a domain, or part of one. 'Comp AI', 'marchetti', 'fernhill.com'.",
+				"A name, an email address, a domain, or part of one. 'Mobile Mark', 'marchetti', 'fernhill.com'.",
 			),
 		kinds: z
 			.array(z.enum(["contact", "company", "deal"]))

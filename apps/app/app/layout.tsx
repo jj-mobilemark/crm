@@ -22,10 +22,10 @@ const fontMono = Geist_Mono({
 
 export const metadata: Metadata = {
 	title: {
-		default: "Comp AI - CRM",
-		template: "%s · Comp AI CRM",
+		default: "Mobile Mark CRM",
+		template: "%s · Mobile Mark CRM",
 	},
-	description: "Customer Relationship Management for Comp AI",
+	description: "Customer Relationship Management for Mobile Mark",
 	// app/favicon.ico is picked up by Next's file convention and covers the
 	// legacy /favicon.ico request on its own; these are the modern additions.
 	icons: {

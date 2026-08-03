@@ -6,7 +6,7 @@ import { searchCrm } from "../agent/lib/lookup";
  * Finding a record from what a person would type.
  *
  * The behaviour under test is the one whose absence was visible to a user: a
- * rep asked about "the Comp AI contact" and was told to paste an email
+ * rep asked about "the Fernhill contact" and was told to paste an email
  * address, because every lookup the agent had took an id. Each case here is a
  * phrasing that has to resolve without help.
  */
@@ -116,7 +116,7 @@ describe("searchCrm", () => {
 	it("finds the people at a company named in the query", async () => {
 		const result = await searchCrm(`Northwind ${suffix}`);
 
-		// "the Comp AI contact", in the shape it actually arrives in. Naming the
+		// "the Fernhill contact", in the shape it actually arrives in. Naming the
 		// employer has to reach the person, or the agent is back to asking.
 		expect(result.contacts.map((hit) => hit.id)).toContain(paulaId);
 	});

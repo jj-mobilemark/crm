@@ -141,7 +141,7 @@ export function CreateDealSheet({
 								id={nameId}
 								value={name}
 								onChange={(event) => setName(event.target.value)}
-								placeholder="Stripe — Comp AI"
+								placeholder="Stripe — Mobile Mark"
 								autoComplete="off"
 								required
 							/>

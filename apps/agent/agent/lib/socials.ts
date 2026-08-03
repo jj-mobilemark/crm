@@ -280,7 +280,7 @@ async function fetchGithubUser(
  *
  * The account naming the person is primary — it is their page asserting who
  * they are. The employer matching while the name does not is emphatically
- * *not*: `github.com/octocat` with `company: @CompAI` is a colleague, and
+ * *not*: `github.com/octocat` with `company: @acme` is a colleague, and
  * writing it to Lewis's record because they share an employer is the same
  * mistake as writing a stranger's LinkedIn to a contact because the company
  * matched. Both are recorded; the ledger prices them differently.
@@ -381,7 +381,7 @@ export async function verifyGithub(
  * pseudonymous accounts we could never confirm; and a search engine has to cite
  * that exact profile when asked about them by name and employer, which is the
  * only outside corroboration available. A handle that is really the company's
- * account is rejected before either — `x.com/trycompai` passes a name check for
+ * account is rejected before either — `x.com/acmecorp` passes a name check for
  * nobody and gets filed against everybody.
  */
 export async function verifyX(

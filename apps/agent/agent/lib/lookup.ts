@@ -7,7 +7,7 @@ import { domainOf, normalise } from "./names";
  * This is the gap that produced "I need an actual identifier: a contact's
  * name, email address, or a contact ID". The agent had a lookup by id and a
  * lookup by email and nothing that took the words a person would actually
- * type, so a rep sitting on the Comp AI record — with the answer on screen —
+ * type, so a rep sitting on the Mobile Mark record — with the answer on screen —
  * was asked to go and find a cuid.
  *
  * Free, local, and deliberately not clever: containment against the fields a
@@ -119,7 +119,7 @@ async function searchContacts(
 					? [{ email: { equals: email, mode: "insensitive" as const } }]
 					: []),
 				...contains,
-				// The whole phrase against the company, so "Comp AI" finds the
+				// The whole phrase against the company, so "Mobile Mark" finds the
 				// people there rather than only a person called Comp.
 				{ company: { name: { contains: term, mode: "insensitive" as const } } },
 			],

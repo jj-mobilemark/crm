@@ -11,7 +11,11 @@ export function AuthShell({ children }: { children: ReactNode }) {
 
 				<div className="relative flex gap-2 text-sm/5">
 					<Link href="/" aria-label="Homepage" className="flex">
-						<Logo className="size-5 shrink-0" />
+						<img
+							src="/mobile-mark-wordmark.png"
+							alt="Mobile Mark"
+							className="h-9 w-auto max-w-[14rem] object-contain object-left"
+						/>
 					</Link>
 				</div>
 
@@ -27,7 +31,7 @@ export function AuthShell({ children }: { children: ReactNode }) {
 				</div>
 
 				<p className="relative font-mono text-xs/4 text-muted-foreground">
-					Comp AI · staff access only
+					Mobile Mark CRM · staff access only
 				</p>
 			</section>
 

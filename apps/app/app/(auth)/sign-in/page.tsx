@@ -56,8 +56,8 @@ export default async function SignInPage() {
 			{googleEnabled && <GoogleSignIn />}
 
 			<p className="text-center text-muted-foreground text-sm/5">
-				Comp AI CRM is internal. If you cannot get in, ask an admin to check the
-				sign-in allow-list.
+				Mobile Mark CRM is internal. If you cannot get in, ask an admin to check
+				the sign-in allow-list.
 			</p>
 		</AuthShell>
 	);

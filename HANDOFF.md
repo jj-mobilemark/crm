@@ -25,11 +25,9 @@ it before stopping. The rules for maintaining it live in `AGENTS.md`
 
 - **Git**: `origin` = `jj-mobilemark/crm` (fork); `upstream` = `trycompai/crm`
   (read-only). Work on `main`.
-- **Active track done recently**: companies map UX polish pushed
-  (`5592e59` on `origin/main`). Next: wait for Railway app deploy; Sage
-  push E2E / Entra **Mail.Send** for sequences. Unrelated local edit
-  remains in `sales-dashboard.tsx` ("Due this month" KPI) — commit only
-  if wanted.
+- **Branding**: **Mobile Mark CRM** (no Comp AI in UI). Signal mark +
+  wordmark in `apps/app/public/`; `Logo` component uses the mark; auth
+  shell shows the wordmark on the dark panel.
 - **Companies map (DONE 2026-08-03)**: `/map` split list + Leaflet
   (shadcn-map); `companies.mapList`; Company lat/lng + `GeocodeCache`;
   Nominatim `apps/api/scripts/geocode-companies.ts`; Sage pull writes
@@ -73,6 +71,27 @@ it before stopping. The rules for maintaining it live in `AGENTS.md`
 ---
 
 ## Work log
+
+### 2026-08-03 — Mobile Mark CRM branding + logo/favicon
+
+**What was completed**
+- Renamed product strings from Comp AI → **Mobile Mark CRM** (auth, nav,
+  metadata, placeholders, agent copy).
+- Installed Mobile Mark signal mark + wordmark: favicons,
+  apple-touch, web manifests, `/mobile-mark-mark.png`,
+  `/mobile-mark-wordmark.png`; `packages/ui` `Logo` uses the mark;
+  auth shell left panel uses the wordmark.
+- Helper: `scripts/prepare-mobile-mark-assets.ts` (needs one-off sharp).
+
+**How and why**
+- Fork is Mobile Mark's CRM; Comp AI branding was upstream leftover.
+
+**Deviations**
+- Left LICENSE / upstream `trycompai/crm` git history notes alone.
+
+**What's next**
+- Smoke sign-in + header after Railway deploy. Sage push E2E /
+  sequences Mail.Send.
 
 ### 2026-08-03 — Map UX polish commit (viewport, fly-to, sheet)
 
