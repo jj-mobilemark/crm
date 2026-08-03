@@ -8,9 +8,11 @@ import {
 	type SageEntity,
 } from "./sage.constants";
 import {
+	parseCompanyPage,
 	parseFault,
-	parseRecords,
+	parseQueryPage,
 	parseSessionId,
+	type SageCompanyTree,
 	type SageRecord,
 } from "./sage-xml";
 
@@ -26,16 +28,30 @@ export type SageResult<T> =
 	| { outcome: "auth-failed"; reason: string }
 	| { outcome: "failed"; reason: string; retryable: boolean };
 
+/** One page of flat records (query or next). */
+export type SageRecordPage = {
+	records: SageRecord[];
+	more: boolean;
+};
+
+/** One page of hierarchical companies (query or next). */
+export type SageCompanyTreePage = {
+	companies: SageCompanyTree[];
+	more: boolean;
+};
+
 /**
  * Thin SOAP client for Sage CRM's `eware.dll` web service.
  *
  * Deliberately `fetch` + hand-built envelopes rather than a WSDL/SOAP library:
- * the WSDL is not served (a GET returns empty), the surface we use is three
- * operations (`logon` / `query` / `logoff`), and the message shapes are fixed
- * and confirmed against production. See `docs/plans/sage-crm-sync.md`.
+ * the WSDL is not served (a GET returns empty), the surface we use is
+ * `logon` / `query` / `next` / `logoff`, and the message shapes are fixed and
+ * confirmed against production. See `docs/plans/sage-crm-sync.md`.
  *
  * The session id from `logon` is cached and reused; a session-related fault
- * triggers exactly one re-logon and retry.
+ * triggers exactly one re-logon and retry. Only ONE Web Services session may
+ * be open at a time on the Sage server — callers must serialize and always
+ * `logoff` in a finally.
  */
 @Injectable()
 export class SageSoapClient {
@@ -59,12 +75,27 @@ export class SageSoapClient {
 	/**
 	 * Query an entity with a Sage predicate (DB-column syntax, e.g.
 	 * `comp_name like 'Mobile Mark%'`). Returns the top-level records only —
-	 * nested child collections are dropped (query the child entity instead).
+	 * nested child collections are dropped (use `queryCompanies` for the
+	 * hierarchical company backfill).
 	 */
 	async query(
 		entity: SageEntity,
 		predicate: string,
 	): Promise<SageResult<SageRecord[]>> {
+		const page = await this.queryPage(entity, predicate);
+		if (page.outcome !== "ok") return page;
+		return { outcome: "ok", data: page.data.records };
+	}
+
+	/**
+	 * One page of flat records plus Sage's `<more>` flag.
+	 *
+	 * Call `nextPage` while `more` is true — pagination is session-stateful.
+	 */
+	async queryPage(
+		entity: SageEntity,
+		predicate: string,
+	): Promise<SageResult<SageRecordPage>> {
 		if (!this.creds) {
 			return {
 				outcome: "not-configured",
@@ -78,7 +109,6 @@ export class SageSoapClient {
 		const first = await this.runQuery(entity, predicate, session.data);
 		if (first.outcome === "ok") return first;
 
-		// A stale session shows up as a fault, not a 401. Re-logon once and retry.
 		if (first.outcome === "failed" && first.retryable) {
 			this.sessionId = undefined;
 			const retrySession = await this.ensureSession();
@@ -87,6 +117,75 @@ export class SageSoapClient {
 		}
 
 		return first;
+	}
+
+	/**
+	 * Hierarchical company query: each company plus nested people / address /
+	 * email / phone. This is the backfill path — do NOT query `person`
+	 * separately for a company walk.
+	 */
+	async queryCompanies(
+		predicate: string,
+	): Promise<SageResult<SageCompanyTreePage>> {
+		if (!this.creds) {
+			return {
+				outcome: "not-configured",
+				reason: "Sage SOAP is not configured.",
+			};
+		}
+
+		const session = await this.ensureSession();
+		if (session.outcome !== "ok") return session;
+
+		const first = await this.runCompanyQuery(predicate, session.data);
+		if (first.outcome === "ok") return first;
+
+		if (first.outcome === "failed" && first.retryable) {
+			this.sessionId = undefined;
+			const retrySession = await this.ensureSession();
+			if (retrySession.outcome !== "ok") return retrySession;
+			return this.runCompanyQuery(predicate, retrySession.data);
+		}
+
+		return first;
+	}
+
+	/**
+	 * Next page of the open query (empty body, same session).
+	 *
+	 * Returns flat records. Prefer `nextCompanies` after `queryCompanies`.
+	 */
+	async nextPage(entity: SageEntity): Promise<SageResult<SageRecordPage>> {
+		return this.runNext((xml) => parseQueryPage(xml, entity));
+	}
+
+	/** Next page of a hierarchical company query. */
+	async nextCompanies(): Promise<SageResult<SageCompanyTreePage>> {
+		return this.runNext((xml) => parseCompanyPage(xml));
+	}
+
+	/**
+	 * Walk every page of a company query via `query` -> `next` while
+	 * `<more>true</more>`. Holds the session for the whole walk — caller must
+	 * `logoff` when done. Not for the full ~14k backfill inside a web request.
+	 */
+	async queryAllCompanies(
+		predicate: string,
+	): Promise<SageResult<SageCompanyTree[]>> {
+		const first = await this.queryCompanies(predicate);
+		if (first.outcome !== "ok") return first;
+
+		const all = [...first.data.companies];
+		let more = first.data.more;
+
+		while (more) {
+			const page = await this.nextCompanies();
+			if (page.outcome !== "ok") return page;
+			all.push(...page.data.companies);
+			more = page.data.more;
+		}
+
+		return { outcome: "ok", data: all };
 	}
 
 	/** Best-effort session teardown; failures are swallowed. */
@@ -139,7 +238,29 @@ export class SageSoapClient {
 		entity: SageEntity,
 		predicate: string,
 		sessionId: string,
-	): Promise<SageResult<SageRecord[]>> {
+	): Promise<SageResult<SageRecordPage>> {
+		const response = await this.postQuery(entity, predicate, sessionId);
+		if (response.outcome !== "ok") return response;
+		return {
+			outcome: "ok",
+			data: parseQueryPage(response.data, entity),
+		};
+	}
+
+	private async runCompanyQuery(
+		predicate: string,
+		sessionId: string,
+	): Promise<SageResult<SageCompanyTreePage>> {
+		const response = await this.postQuery("company", predicate, sessionId);
+		if (response.outcome !== "ok") return response;
+		return { outcome: "ok", data: parseCompanyPage(response.data) };
+	}
+
+	private async postQuery(
+		entity: SageEntity,
+		predicate: string,
+		sessionId: string,
+	): Promise<SageResult<string>> {
 		const body =
 			`<tem:query>` +
 			`<tem:queryString>${escapeXml(predicate)}</tem:queryString>` +
@@ -151,19 +272,49 @@ export class SageSoapClient {
 
 		const fault = parseFault(response.data);
 		if (fault) {
-			// Faults are opaque ("Query failed to run successfully."). Treat as
-			// retryable so a stale session gets one re-logon; a genuinely bad
-			// predicate then fails again and stops.
 			this.logger.warn({ message: "Sage query fault", entity, fault });
 			return { outcome: "failed", reason: fault, retryable: true };
 		}
 
-		return { outcome: "ok", data: parseRecords(response.data, entity) };
+		return { outcome: "ok", data: response.data };
+	}
+
+	private async runNext<T>(
+		parse: (xml: string) => T,
+	): Promise<SageResult<T>> {
+		if (!this.creds) {
+			return {
+				outcome: "not-configured",
+				reason: "Sage SOAP is not configured.",
+			};
+		}
+		if (!this.sessionId) {
+			return {
+				outcome: "failed",
+				reason: "No open Sage session for next().",
+				retryable: false,
+			};
+		}
+
+		const body = `<tem:next/>`;
+		const response = await this.post(
+			"next",
+			this.envelope(body, this.sessionId),
+		);
+		if (response.outcome !== "ok") return response;
+
+		const fault = parseFault(response.data);
+		if (fault) {
+			this.logger.warn({ message: "Sage next fault", fault });
+			return { outcome: "failed", reason: fault, retryable: true };
+		}
+
+		return { outcome: "ok", data: parse(response.data) };
 	}
 
 	/** POST one SOAP envelope; maps transport/HTTP problems onto SageResult. */
 	private async post(
-		action: "logon" | "query" | "logoff",
+		action: "logon" | "query" | "next" | "logoff",
 		envelope: string,
 	): Promise<SageResult<string>> {
 		if (!this.creds) {

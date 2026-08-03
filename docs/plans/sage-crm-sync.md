@@ -9,6 +9,28 @@ snapshots, and the field-mapping catalog below) so push is mechanical later.
 Scope is intentionally small first: a **bounded test slice** (the Mobile Mark
 records) so we can plan around real data before the full pull.
 
+## Guiding principle — fit Sage INTO the CRM, don't reshape the CRM
+
+We are NOT mirroring Sage's schema. Sage bends to fit the CRM's out-of-the-box
+`Company` / `Contact` / `Deal` as far as it reasonably can. Concretely:
+
+- **Add the fewest columns possible.** A Sage field earns a real local column
+  only when the UI needs to show/sort it OR a 1:1 push depends on it. Everything
+  else stays in `SageRecordSnapshot` (lossless), which is the fidelity backstop
+  for push — nothing is lost even when it is not a column.
+- **The mapping catalog (section 3) IS the 1:1 contract.** Those mapped fields
+  are the ones a local edit can push back to Sage cleanly. Keep that list tight
+  and exact rather than exhaustive.
+- **Prefer the existing shape over a truer-to-Sage one** whenever the difference
+  is cosmetic. The one real functional exception is forecasting (section 3b) — a
+  capability the CRM lacks entirely — and even there the additions are a few
+  optional columns, not a new model.
+- **No `organizationId`, no parallel Sage tables for core records.** The columns
+  added so far (`sageCrm*Id`, `sage100*`) are references, not a reshape.
+
+This reverses the earlier "adopt Sage's stage enum" decision (see 3.3): keep the
+CRM's stages, store the raw Sage stage for push.
+
 ---
 
 ## 1. SOAP access — CONFIRMED (2026-08-02, 7.0 probe)
@@ -35,14 +57,37 @@ The live endpoint works. All facts below were verified against production.
   `comp_*`, read back plain names.
 - **Cursor field**: every entity has `updateddate` (ISO local, e.g.
   `2026-07-30T16:50:58`). The full pull cursor is `<entity>_updateddate > '<last>'`.
-- **RESULTS ARE CAPPED AT ~100 PER CALL.** Two different wide queries each
-  returned exactly 100 records — Sage caps web-service query results (default
-  `maxrecords` ~100). **The full pull MUST paginate.** Practical approach: page
-  by ascending id, `<entity>_<idcol> > <lastSeenId>` (e.g.
-  `oppo_opportunityid > 0`, then `> 100`, …), 100 at a time, until a page
-  returns < 100. Combine with the `updateddate` cursor for incremental runs
-  (records ordered by id within the changed set). Do NOT assume a single query
-  returns everything — that is the biggest correctness trap here.
+- **~100 rows per page; paginate with `query` -> `next`.** A `query` returns
+  ~100 rows and a `<more>` flag; call the `next` operation (empty body, same
+  session) repeatedly while `<more>true</more>`. This is Sage's real pagination
+  — NOT a `maxrecords` cap. (Confirmed by the sibling project, section 1c.) An
+  id-paged alternative (`<idcol> > lastSeenId`) exists and is what makes a
+  serverless, resume-across-ticks cron possible — see section 6.3.
+
+### 1c. Sessions, pagination and safety — CONFIRMED in production by the sibling project
+
+A sister app has run this exact sync against the same server for ~14k companies.
+Its hard-won facts (treat as authoritative):
+
+- **One Web Services session at a time, globally.** A second `logon` KICKS the
+  first off. Every caller must serialize: `logon` -> work -> `logoff` (try/finally).
+  Our nightly cron, any manual `syncNow`, and the (deferred) push must hold a
+  single global lock so they never overlap.
+- **Bad credentials can LOCK the service account.** Never retry-spam `logon`;
+  back off hard on an auth failure. (Our client already returns `auth-failed`
+  without retrying — keep it that way.)
+- **Pagination is `query` then `next` (empty) while `<more>true</more>`**, ~100
+  rows/page. This is session-stateful: you cannot resume a `next` chain in a
+  later process. Two consequences in section 6.3.
+- **The API is SLOW: ~10-20s per page; a full company sync is ~1 hour.** This is
+  a long-running job, not a web request.
+- **`comp_deleted` exists.** Backfill filters `comp_deleted IS NULL` (see 6.1);
+  opportunities have `oppo_deleted`. This resolves how we see deletions.
+- **`getmetadata` (entityname=company|person|opportunity)** returns this
+  instance's field metadata — use it to confirm field names/extra fields.
+- **Volumes (prod, 2026-08-02): ~14,227 companies / ~26,120 contacts** — our
+  earlier "27k companies / 14k contacts" was inverted. Only ~4,750 companies
+  carry a MAS customer number (the ERP-linked subset); the rest are CRM-only.
 
 ### Entity availability
 
@@ -67,14 +112,23 @@ Two distinct error strings tell us different things:
 | `forecast` | **NO** | "not Web Service enabled". Sage's formal Forecast submissions are unreachable — forecasting must be reconstructed from `opportunity` (section 3b). |
 | `campaign` | **NO** | "not Web Service enabled". Out of scope. |
 
-### Decision that follows from the probe
+### Decision that follows from the probe (UPDATED by the sibling project)
 
-Pull each entity **flat and separately** (`company` header, then `person` by
-`pers_companyid`, then `opportunity` by `oppo_primarycompanyid`). Do NOT rely on
-the deep nested `company` response — flat person/opportunity queries give the
-same data with a far simpler parser and smaller payloads. Store the raw XML
-(or parsed JSON) per record in `SageRecordSnapshot` regardless, so no field is
-lost before it is mapped.
+**Backfill: query `company` and take the people from its NESTED children — do
+NOT query `person` separately.** The sibling project proved this at 14k
+companies: contacts arrive nested under each company, so one paged `company`
+walk yields companies + people + address + email + phone together, cohesive and
+in far fewer round trips. This flips the earlier "flat and separately" note.
+Opportunities are NOT nested — pull them with their own `opportunity` query.
+
+Consequence for our built client: `parseRecords` deliberately drops nested
+children, so it is fine for `opportunity` and for single-record/incremental
+reads, but the backfill needs a **hierarchical parser** (extract nested
+`person`/`address`/`email`/`phone` out of each company) plus the **`next`**
+pagination operation. Both are foundation gaps to add in 7.4a/7.4b (section 6).
+
+Store the raw record per entity in `SageRecordSnapshot` regardless, so no field
+is lost before it is mapped.
 
 ---
 
@@ -183,36 +237,28 @@ The local `DealStage` enum is a HubSpot-style pipeline
 `DECISION_MAKER_BOUGHT_IN`, `CONTRACT_SENT`, `CLOSED_WON`, `CLOSED_LOST`) that
 does NOT match Sage's process.
 
-**DECIDED (2026-08-02): option B — adopt Sage's stages as the local pipeline.**
-Replace the `DealStage` enum with Sage's stage set and re-key the deal board
-columns so the app mirrors how the team actually works. Keep the raw Sage
-`stage`/`status` in the snapshot regardless.
+**DECIDED (2026-08-02, REVISED per the guiding principle): keep the CRM's
+`DealStage` enum; map Sage -> local for display; store the raw Sage stage for a
+1:1 push.** This reverses the earlier "adopt Sage's stages / replace the enum"
+call — replacing the enum re-keys the deal board and every branch on the old
+values, which is exactly the over-customization we are avoiding.
 
-Active stage values (seen across two 100-row samples — but note the 100-record
-cap means history is not fully enumerated): `Investigation/Prospecting`,
-`Proposal`, `Negotiation`, `Purchasing`, `Closed Won`, `Lost`. Proposed enum:
+Active Sage values (two 100-row samples): stage `Investigation/Prospecting`,
+`Proposal`, `Negotiation`, `Purchasing`, `Closed Won`, `Lost`; status
+`In Progress`, `Won`, `Lost`, `Closed`. Map into the existing enum:
 
-```
-enum DealStage {
-  INVESTIGATION_PROSPECTING
-  PROPOSAL
-  NEGOTIATION
-  PURCHASING
-  CLOSED_WON
-  LOST
-}
-```
+- `Closed Won` / status `Won` -> `CLOSED_WON`
+- `Lost` / status `Lost`,`Closed` -> `CLOSED_LOST`
+- `Investigation/Prospecting` -> `QUALIFIED_TO_BUY`
+- `Proposal` -> `CONTRACT_SENT`
+- `Negotiation` -> `DECISION_MAKER_BOUGHT_IN`
+- `Purchasing` -> `CONTRACT_SENT`
+- unknown / blank -> `QUALIFIED_TO_BUY` (never fail the import)
 
-Because of the query cap, a rare legacy stage could exist that these samples
-missed. Keep the raw Sage `stage`/`status` in the snapshot and treat any
-unknown stage as a safe default (do not fail the import). Confirm the complete
-list against the Sage opportunity workflow definition before the migration is
-final.
-
-Impact of adopting: the `DealStage` enum in `packages/db/prisma/schema.prisma`,
-the deal-board column keys (`apps/app/components/crm/deal-stage.tsx` and the
-board page), and any code branching on the old values all change. This is a
-schema + UI change, planned deliberately.
+**For push fidelity**, keep the exact Sage stage/status so a local change maps
+back 1:1. The raw values already live in `SageRecordSnapshot`; add a small
+`Deal.sageStage String?` only if the board/UI needs to display the true Sage
+stage without a snapshot read. No enum change, no board re-key.
 
 ---
 
@@ -236,7 +282,10 @@ fully reconstruct forecasting from opportunity data — but only if we bring tho
 fields across.
 
 **DECIDED (2026-08-02): forecasting is IN the first cut** — add the fields in
-7.1, map them, and build a forecast view.
+7.1, map them, and build a forecast view. This is the deliberate exception to
+the "add the fewest columns" principle: three optional `Deal` columns for a
+capability the CRM lacks entirely, not a new model. Everything else Sage carries
+on an opportunity stays in the snapshot.
 
 **The gap:** the local `Deal` model has `amount`, `stage`, `expectedCloseDate`
 and nothing else. It has **no probability/certainty, no weighted-forecast value,
@@ -330,16 +379,17 @@ Mark records.
 
 ## 4. Open items (decide at build time; record in HANDOFF.md)
 
-1. **Owner mapping — DECIDED: static map.** Use a hardcoded
-   `sageUserId -> local User email` map in Sage config; unmapped owners fall to
-   a designated default (`Deal.ownerId` is required). **BLOCKING INPUT NEEDED:**
-   the human will supply the Sage-user -> email list. The Sage user ids appear
-   as `assigneduserid` (opportunity) and `primaryuserid` (company/person).
+1. **Owner mapping — DECIDED: static map** in `sage.mappings.ts`
+   (`SAGE_USER_EMAILS`). List was supplied 2026-08-02. Unmapped
+   `assigneduserid` → fallback User `ken@mobilemark.com` (Sage 27), else
+   earliest User by `createdAt`. Not blocking.
 2. **Deal amount source — DECIDED:** `Deal.amount` <- opportunity `total`
    (unweighted); `forecast` -> the new weighted field (section 3b).
-3. **Stage model — DECIDED: adopt Sage's stages (option B, section 3.3).**
-   Still need the FULL stage vocabulary before finalizing the enum.
-4. **Forecasting — DECIDED: in the first cut** (section 3b).
+3. **Stage model — DECIDED (revised): keep the CRM's `DealStage` enum**, map
+   Sage -> local for display, store the raw Sage stage for 1:1 push (section
+   3.3). No enum swap / board re-key (per the guiding principle).
+4. **Forecasting — DECIDED: in the first cut** (section 3b). Schema columns
+   on `Deal` are still TODO (next agent).
 5. **Which extra modules** to bring in (order of value): communications ->
    order history -> leads -> quotes/cases. Confirm with the team. (Not blocking
    the triad.)
@@ -347,7 +397,8 @@ Mark records.
    likely the same web domain (`Company.domain` is `@unique`). Matching by
    domain will collapse them; match by `sageCrmCompanyId` FIRST, fall back to
    domain only when no sageId match, and allow `domain` to be null to avoid
-   unique-constraint clashes across the 8 near-duplicates.
+   unique-constraint clashes across the 8 near-duplicates. (Handled in
+   `SagePullService`.)
 7. **Network reachability** of `crm.mobilemark.com` from the deploy environment
    (worked from this machine; confirm from Vercel/Railway; watch for IP
    allowlists).
@@ -360,18 +411,17 @@ Mark records.
 
 ## 5. Build phases
 
-**Status (2026-08-02):** 7.1 schema (minus Deal changes), 7.2 config + SOAP
-client, and 7.3 mappings + owner map are DONE and green (check-types / lint /
-test). Deferred deliberately: the `DealStage` enum swap + Deal forecasting
-fields (high blast radius on the board UI) and everything deal-related, plus the
-test-slice import route (7.4a) and the id-surfacing UI (7.4c). Next agent starts
-at 7.4a.
+**Status (2026-08-02):** 7.1 company/contact schema, 7.2 SOAP client, 7.3
+mappings, **7.4a test-slice import**, and **7.4c Sage-ID UI** are DONE.
+`Deal` forecasting columns + opportunity import are **NOT** done (next).
+Then 7.4b full pull. Exact next-step recipe lives in `HANDOFF.md` Current state.
 
 1. **7.1 Schema** (additive): `RecordSource.SAGE`; ids —
    `Company.sageCrmCompanyId`, `Contact.sageCrmContactId`,
    `Deal.sageCrmOpportunityId` (all `String? @unique`), plus
    `Company.sage100CustomerNo` + `Company.sage100ArDivisionNo` (section 3d);
-   the adopted `DealStage` enum (section 3.3) replacing the old values;
+   KEEP the existing `DealStage` enum (map Sage -> local, section 3.3) — optional
+   `Deal.sageStage String?` only if the UI needs the raw Sage stage;
    forecasting fields on `Deal` (`probability Int?`, `weightedAmount Decimal?`,
    `dealType String?` — section 3b); `SageSyncState` (per-entity cursor, mirrors
    `MailboxSync`); `SageRecordSnapshot` (`entity`, `sageId`, `payload Json`,
@@ -382,46 +432,60 @@ at 7.4a.
    `query(entity, predicate)`, `SageResult<T>` (never throws; mirrors
    `GraphApiClient`).
 3. **7.3 Mapping catalog**: `apps/api/src/sage/sage.mappings.ts` from section 3.
-4. **7.4a Test-slice import**: on-demand route/mutation that imports the 8
-   Mobile Mark companyids (+ their people + opportunities) with snapshots.
-5. **7.4c Sage-ID UI** (section 3d): `CopyButton` primitive in `packages/ui`;
-   id fields on `list()`/`byId` selects (+ contact's nested company); Sage
-   columns on the companies/contacts tables; a "Sage" section on the company +
-   contact sheets. Build right after the slice so real ids are visible.
-6. **7.4b Full pull at scale**: `sage-pull.service.ts` — the resumable,
-   throttled, two-phase (backfill -> incremental) state machine in **section 6**
-   (27k+ rows; ~100/page; parent-before-child; off-peak throttling; idempotent
-   upserts). Extends `SageSyncState` (phase/backfillId/highWater — section 6.2).
-   `sage-sync.service.ts` orchestrator with a per-tick budget; `/internal/sync/sage`
-   cron route (CRON_SECRET); `sage.router.ts` (`status` exposing phase+progress,
-   `syncNow`); register in `app.module.ts`, regenerate + commit `server.ts`.
+4. **7.4a Test-slice import** (DONE): on-demand route importing the Mobile Mark
+   companies via the hierarchical `company` query (+ nested people), write
+   snapshots, upsert Company/Contact. `next` pagination + hierarchical parser
+   landed. Opportunities wait for Deal fields. `getmetadata` still optional
+   follow-up.
+5. **7.4c Sage-ID UI** (DONE): `CopyButton` in `packages/ui`; id fields on
+   `list()`/`byId` selects (+ contact's nested company); Sage columns on the
+   companies/contacts tables (`defaultHidden`); "Sage" section on company +
+   contact sheets.
+6. **7.4b Full pull at scale**: `sage-pull.service.ts` — the two-phase
+   (backfill -> incremental), single-session, throttled design in **section 6**
+   (~14k companies/~26k contacts; `query`/`next` ~100/page; `comp_deleted IS
+   NULL`; nested-company pull; global session lock). Initial backfill as a
+   **Railway worker** (~1h, off-peak); incremental as the nightly
+   `/internal/sync/sage` cron (CRON_SECRET). Extends `SageSyncState`
+   (phase/backfillId/highWater — 6.2) + a local inactive flag for soft-deactivate
+   (6.7). `sage.router.ts` `status` (phase+progress) + `syncNow`; register in
+   `app.module.ts`, regenerate + commit `server.ts`.
 7. **Deferred (push)**: `SageOutbox` + `sage-push.service.ts` + create hooks.
 
 ---
 
 ## 6. Scale: backfill + progressive incremental sync
 
-Production Sage holds roughly **27k companies and ~14k people** (plus
-opportunities). That rules out any "one query = everything" design on two counts:
-Sage caps a query at ~100 rows, and we must not hammer a live on-prem server the
-sales team is using. The pull is therefore a **resumable, throttled, two-phase
-state machine per entity**, not a single job.
+Production Sage holds roughly **~14k companies and ~26k contacts** (sibling
+project, confirmed in prod — our earlier figure was inverted; ~4.75k companies
+carry a MAS customer number). That still rules out "one query = everything":
+pages are ~100 rows, the API is slow (~10-20s/page, ~1h for a full company
+sync), only ONE session may be open at a time, and it is a live on-prem server
+the sales team uses. So: a **two-phase (backfill -> incremental), throttled,
+single-session** pull.
 
-### 6.1 Two phases per entity
+### 6.1 Two phases (query the COMPANY, take contacts from its nested children)
 
-Each entity (`company`, then `person`, then `opportunity`) moves through:
+Backfill and incremental both walk the `company` entity and read people/address/
+email/phone from each company's nested children (see the updated decision in
+section 1). Opportunities are a separate `opportunity` walk (not nested).
 
-1. **Backfill** — page through ALL rows once, ascending by id:
-   `<idcol> > :lastId ORDER-by-id`, 100 at a time (Sage returns id-ordered).
-   After each page, persist the last id and upsert that page immediately. When a
-   page returns < 100 rows, the entity's backfill is complete.
-2. **Incremental** — thereafter, only changed rows:
-   `<updatedcol> >= :highWater AND <idcol> > :lastId`, paged the same way.
-   After a full pass, advance `highWater` to the max `updateddate` seen.
+1. **Backfill** — every non-deleted company, once:
+   - Filter: `comp_deleted IS NULL` (NOT a status filter — the sibling project
+     learned status filters silently miss Prospect/NULL/DONTSEND rows; treat
+     `status` as informational).
+   - Paginate with `query` then `next` while `<more>true</more>`, ~100/page.
+   - Per company: upsert by `sageCrmCompanyId`; upsert each nested person by
+     `sageCrmContactId` (else match local by email+company); set primary contact
+     when `primarypersonid` matches.
+2. **Incremental** — nightly, only changed:
+   `comp_updateddate > '<lastSync minus ~1h overlap>' AND comp_deleted IS NULL`,
+   same `query`/`next` paging.
 
-Use `>=` (not `>`) on the high-water and rely on idempotent upserts (unique
-`sageCrm*Id`) to absorb the overlap — an overlap re-writes a row harmlessly; a
-gap loses an update forever. Prefer overlap.
+Idempotent upserts (unique `sageCrm*Id`) absorb the ~1h overlap and Sage's
+duplicate rows across pages — overlap re-writes harmlessly; a gap loses an
+update forever, so prefer overlap. "Created/updated" counts look inflated
+because of cross-page duplicates; the unique row count is the real measure.
 
 ### 6.2 State model (extends `SageSyncState`)
 
@@ -434,15 +498,27 @@ migration, before 7.4b):
 - `highWaterUpdatedAt DateTime?` — the incremental cursor (was `cursor`).
 - optional `backfillDoneAt DateTime?` and a rough `processed Int?` for progress UI.
 
-### 6.3 Resumability and per-tick budget
+### 6.3 Single session -> a worker for backfill, cron for incremental
 
-Never hold the whole table in memory and never depend on one long request:
+The single-session rule plus `next`-based (session-stateful) pagination shapes
+the runtime. `next` cannot resume in a later process, so there are two shapes:
 
-- The cron tick has a wall-clock budget (mirror the 60s Google/Microsoft tick).
-  Process pages until the budget or a `MAX_PAGES_PER_TICK` cap is hit, then stop —
-  progress is already persisted per page, so the next tick resumes exactly where
-  it left off. A redeploy or crash mid-backfill costs at most one page.
-- Backfill spans many ticks (hundreds of pages). That is fine and expected.
+- **Initial backfill = one long-running job** (the sibling project's approach):
+  a dedicated **Railway worker** holds ONE session, pages `query`/`next` to
+  `more=false` (~1h), then `logoff`. Run it **off-peak**, once, on demand. This
+  matches Sage's design and avoids a session being repeatedly kicked.
+- **Incremental = nightly cron** (`/internal/sync/sage`, `CRON_SECRET`): the
+  changed set is small, so one session per night finishes inside a normal run.
+- **Resume-across-ticks (only if we ever chunk the backfill into a serverless
+  cron instead of a worker):** don't use `next`; page by `comp_companyid >
+  :lastId` with a fresh `logon` per tick, persisting `backfillId` each page. It
+  costs more logons but survives redeploys. Decide worker-vs-chunked at build.
+
+**A global lock is mandatory** regardless: nightly cron, manual `syncNow`, the
+backfill worker, and the deferred push must never hold two sessions at once (a
+second `logon` kicks the first). Use a `SageSyncState` `RUNNING` guard or a
+Postgres advisory lock; on an auth failure, back off hard (a bad password can
+LOCK the service account — never retry-spam `logon`).
 
 ### 6.4 Parent-before-child ordering
 
@@ -453,24 +529,24 @@ company always exists to link to. If a child still can't resolve its parent
 reconcile fix it — never drop the record. The same order applies within each
 incremental tick.
 
-### 6.5 The nested-company payload fork (decide during 7.4a)
+### 6.5 Hierarchical company pull — DECIDED (option B)
 
-A `company` query returns each company with its people/phones/emails/addresses
-NESTED (the 8 Mobile Mark companies were 368 KB). At 100 companies/page that
-page could be multiple MB and slow. Two options — measure a real 100-row page in
-7.4a before committing:
+The sibling project settled this at 14k companies: **query `company` and read
+the nested people/address/email/phone; do NOT query `person` separately.** Fewer
+round trips and guaranteed parent/child cohesion. Our built `parseRecords` drops
+nested children, so the backfill needs a hierarchical parser added (extract the
+`person`/`address`/`email`/`phone` child records under each company). Payloads
+are large (100 companies with children = several MB) but that is the accepted
+cost; the API's ~10-20s/page dominates anyway.
 
-- **(A) Flat per-entity paging** (current client): query company, person,
-  opportunity separately. Simpler parser (already built), but company pages are
-  still heavy because Sage forces the nesting, and people are fetched twice
-  (nested in company AND in the person pass).
-- **(B) Hierarchical company pull**: parse the nested children out of the company
-  pages to get companies + people + phones + emails in one pass (far fewer round
-  trips, guaranteed parent/child cohesion), then a thinner opportunity pass.
-  Needs a hierarchical parser (today `parseRecords` deliberately drops children).
+### 6.5b Dirty data — sanitize before saving
 
-Also check in 7.4a whether Sage can return companies WITHOUT children (a leaner
-query/field selection) — if so, (A) gets cheap and wins.
+Real Sage data is messy (the sibling project hit all of these): angle brackets
+in names/emails, emails stuffed into name fields, empty names, phones split as
+`areacode` + `number`. Sanitize in the mapping: strip `<>` from emails, treat an
+empty `firstname`/`name` (fallback `companyname`) as null, and keep MAS customer
+numbers as strings so leading zeros survive (our mappings already lowercase
+email, join phone, and keep ids as strings — extend with `<>` stripping).
 
 ### 6.6 Throttling — this is a live production server
 
@@ -483,14 +559,16 @@ query/field selection) — if so, (A) gets cheap and wins.
   backfill or incremental phase. Kick off / monitor via `sage.router.ts`
   `status` (expose phase + backfillId + counts) and a manual `syncNow`.
 
-### 6.7 Deletions and drift
+### 6.7 Deletions and drift (`comp_deleted` confirmed)
 
-A `updateddate >=` incremental never sees hard deletes or merges (Sage CRM
-often soft-deletes via a `deleted`/`secterr` flag). Probe for a `deleted`
-column in 7.4a; if present, map it to a local archived/inactive state instead of
-deleting. Regardless, schedule an occasional **full reconcile** (e.g. monthly:
-re-run backfill paging, compare id sets, flag locals whose Sage id has vanished)
-to catch drift the incremental cursor can't.
+`comp_deleted` / `oppo_deleted` exist, so backfill/incremental already exclude
+deletions via `... AND comp_deleted IS NULL`. But an incremental pass never sees
+a row that got deleted or merged since last run. The sibling project's answer,
+adopted here: on a FULL reconcile, local Sage ids not seen in the run get
+**verified with a single-company query and soft-deactivated — never
+hard-deleted**. That needs a local "inactive/archived" flag; `Company`/`Contact`
+have none today, so add one (or reuse `source`/a status) when 7.4b lands.
+Schedule the reconcile occasionally (e.g. monthly), not nightly.
 
 ### 6.8 Idempotency (the property everything above leans on)
 

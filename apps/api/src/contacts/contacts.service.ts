@@ -49,6 +49,9 @@ const COMPANY_SELECT = {
 	iconDarkUrl: true,
 	iconTone: true,
 	logoUrl: true,
+	sageCrmCompanyId: true,
+	sage100CustomerNo: true,
+	sage100ArDivisionNo: true,
 } as const;
 
 /** The facet value for a contact who works nowhere we know of. */
@@ -77,6 +80,8 @@ export type ContactRow = {
 	title: string | null;
 	/** Our mirrored copy, never LinkedIn's expiring CDN URL. */
 	imageUrl: string | null;
+	/** Sage CRM eware person id, when this row was pulled from Sage. */
+	sageCrmContactId: string | null;
 	company: {
 		id: string;
 		name: string;
@@ -85,6 +90,9 @@ export type ContactRow = {
 		iconDarkUrl: string | null;
 		iconTone: string | null;
 		logoUrl: string | null;
+		sageCrmCompanyId: string | null;
+		sage100CustomerNo: string | null;
+		sage100ArDivisionNo: string | null;
 	} | null;
 	owner: {
 		id: string;
@@ -145,6 +153,7 @@ export class ContactsService {
 					title: true,
 					imageUrl: true,
 					source: true,
+					sageCrmContactId: true,
 					company: { select: COMPANY_SELECT },
 					owner: { select: OWNER_SELECT },
 					lastActivityAt: true,
@@ -182,6 +191,7 @@ export class ContactsService {
 				imageUrl: true,
 				enrichmentStatus: true,
 				enrichmentError: true,
+				sageCrmContactId: true,
 				createdAt: true,
 				brief: {
 					select: {

@@ -61,6 +61,12 @@ export type CompanyRow = {
 	 */
 	queued: boolean;
 	source: RecordSource;
+	/** Sage CRM eware company id, when this row was pulled from Sage. */
+	sageCrmCompanyId: string | null;
+	/** Sage 100 customer number (keep leading zeros). */
+	sage100CustomerNo: string | null;
+	/** Sage 100 AR division. */
+	sage100ArDivisionNo: string | null;
 	owner: {
 		id: string;
 		name: string;
@@ -134,6 +140,9 @@ export class CompaniesService {
 					industry: true,
 					enrichmentStatus: true,
 					source: true,
+					sageCrmCompanyId: true,
+					sage100CustomerNo: true,
+					sage100ArDivisionNo: true,
 					owner: { select: OWNER_SELECT },
 					_count: {
 						select: {
@@ -167,6 +176,9 @@ export class CompaniesService {
 				enrichmentStatus: row.enrichmentStatus,
 				queued: queued.has(row.id),
 				source: row.source,
+				sageCrmCompanyId: row.sageCrmCompanyId,
+				sage100CustomerNo: row.sage100CustomerNo,
+				sage100ArDivisionNo: row.sage100ArDivisionNo,
 				owner: row.owner,
 				contactCount: row._count.contacts,
 				openDealCount: row._count.deals,
@@ -210,6 +222,9 @@ export class CompaniesService {
 				enrichedAt: true,
 				enrichmentError: true,
 				source: true,
+				sageCrmCompanyId: true,
+				sage100CustomerNo: true,
+				sage100ArDivisionNo: true,
 				createdAt: true,
 				owner: { select: OWNER_SELECT },
 				primaryContact: {

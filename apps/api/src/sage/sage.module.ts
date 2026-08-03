@@ -1,18 +1,18 @@
 import { Module } from "@nestjs/common";
+import { SagePullService } from "./sage-pull.service";
 import { SageSoapClient } from "./sage-soap.client";
+import { SageSyncController } from "./sage-sync.controller";
 
 /**
  * Sage CRM sync (see `docs/plans/sage-crm-sync.md`).
  *
- * Foundation only for now: the SOAP client. The pull service, the test-slice
- * import route, and the id-surfacing UI are the next steps. Reads config via the
- * global `ConfigModule`; a missing `SAGE_SOAP_*` leaves the client unconfigured
- * rather than throwing, so the feature is simply absent on a self-host that has
- * no Sage. Every piece of intelligence stays in the agent, not here — this
- * module only fetches and maps records.
+ * Pull is mechanical: SOAP -> map -> Prisma. Intelligence stays in the agent.
+ * A missing `SAGE_SOAP_*` leaves the client unconfigured rather than throwing,
+ * so the feature is simply absent on a self-host that has no Sage.
  */
 @Module({
-	providers: [SageSoapClient],
-	exports: [SageSoapClient],
+	controllers: [SageSyncController],
+	providers: [SageSoapClient, SagePullService],
+	exports: [SageSoapClient, SagePullService],
 })
 export class SageModule {}

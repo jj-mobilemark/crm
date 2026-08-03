@@ -36,6 +36,8 @@ import {
 	savingField,
 } from "@/components/crm/inline-field";
 import { OwnerCell } from "@/components/crm/owner-cell";
+import { formatSage100Id } from "@/components/crm/sage-id";
+import { SageIdValue } from "@/components/crm/sage-id-value";
 import { CompanySocials, hasCompanyLinks } from "@/components/crm/social-links";
 import { DealStageMenu } from "@/components/crm/stage-change";
 import { Timeline } from "@/components/crm/timeline/timeline";
@@ -45,6 +47,7 @@ import {
 	DetailSheetMain,
 	DetailSheetPending,
 	DetailSheetProperties,
+	DetailSheetProperty,
 	DetailSheetProse,
 	DetailSheetRail,
 	DetailSheetSection,
@@ -460,6 +463,29 @@ function CompanyOverview({
 							/>
 						</DetailSheetProperties>
 					</DetailSheetSection>
+
+					{company.sageCrmCompanyId ||
+					company.sage100CustomerNo ? (
+						<DetailSheetSection title="Sage">
+							<DetailSheetProperties columns={1}>
+								<DetailSheetProperty label="Sage CRM ID">
+									<SageIdValue
+										value={company.sageCrmCompanyId}
+										label="Sage CRM ID copied"
+									/>
+								</DetailSheetProperty>
+								<DetailSheetProperty label="Sage 100 ID">
+									<SageIdValue
+										value={formatSage100Id(
+											company.sage100ArDivisionNo,
+											company.sage100CustomerNo,
+										)}
+										label="Sage 100 ID copied"
+									/>
+								</DetailSheetProperty>
+							</DetailSheetProperties>
+						</DetailSheetSection>
+					) : null}
 
 					<DetailSheetPending
 						fields={pendingFields(company)}

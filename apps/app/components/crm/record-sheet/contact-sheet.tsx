@@ -39,6 +39,8 @@ import {
 	savingField,
 } from "@/components/crm/inline-field";
 import { OwnerCell } from "@/components/crm/owner-cell";
+import { formatSage100Id } from "@/components/crm/sage-id";
+import { SageIdValue } from "@/components/crm/sage-id-value";
 import { ContactSocials, hasContactLinks } from "@/components/crm/social-links";
 import { DealStageMenu } from "@/components/crm/stage-change";
 import { Timeline } from "@/components/crm/timeline/timeline";
@@ -425,6 +427,36 @@ function ContactOverview({ contact }: { contact: Contact }) {
 					/>
 				</DetailSheetProperties>
 			</DetailSheetSection>
+
+			{contact.sageCrmContactId ||
+			contact.company?.sageCrmCompanyId ||
+			contact.company?.sage100CustomerNo ? (
+				<DetailSheetSection title="Sage">
+					<DetailSheetProperties>
+						<DetailSheetProperty label="Sage CRM ID">
+							<SageIdValue
+								value={contact.sageCrmContactId}
+								label="Sage CRM ID copied"
+							/>
+						</DetailSheetProperty>
+						<DetailSheetProperty label="Company Sage CRM ID">
+							<SageIdValue
+								value={contact.company?.sageCrmCompanyId}
+								label="Company Sage CRM ID copied"
+							/>
+						</DetailSheetProperty>
+						<DetailSheetProperty label="Sage 100 ID">
+							<SageIdValue
+								value={formatSage100Id(
+									contact.company?.sage100ArDivisionNo,
+									contact.company?.sage100CustomerNo,
+								)}
+								label="Sage 100 ID copied"
+							/>
+						</DetailSheetProperty>
+					</DetailSheetProperties>
+				</DetailSheetSection>
+			) : null}
 
 			{contact.brief ? <Background brief={contact.brief} /> : null}
 

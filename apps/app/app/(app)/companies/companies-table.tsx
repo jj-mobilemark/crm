@@ -19,6 +19,8 @@ import {
 	isEnriching,
 } from "@/components/crm/enrichment-status";
 import { OwnerCell } from "@/components/crm/owner-cell";
+import { formatSage100Id } from "@/components/crm/sage-id";
+import { SageIdValue } from "@/components/crm/sage-id-value";
 import { usePrefetchRecord } from "@/components/crm/record-sheet/record-prefetch";
 import { useOpenRecord } from "@/components/crm/record-sheet/record-stack";
 import { useTableQuery } from "@/components/data-table/use-table-query";
@@ -140,6 +142,30 @@ const COLUMNS: DataTableColumn<CompanyRow>[] = [
 		width: "w-[14%]",
 		cell: (row) => (
 			<EnrichmentIndicator status={row.enrichmentStatus} queued={row.queued} />
+		),
+	},
+	{
+		id: "sageCrmId",
+		header: "Sage CRM ID",
+		defaultHidden: true,
+		width: "w-[10%]",
+		cell: (row) => (
+			<SageIdValue value={row.sageCrmCompanyId} label="Sage CRM ID copied" />
+		),
+	},
+	{
+		id: "sage100Id",
+		header: "Sage 100 ID",
+		defaultHidden: true,
+		width: "w-[12%]",
+		cell: (row) => (
+			<SageIdValue
+				value={formatSage100Id(
+					row.sage100ArDivisionNo,
+					row.sage100CustomerNo,
+				)}
+				label="Sage 100 ID copied"
+			/>
 		),
 	},
 ];

@@ -583,10 +583,10 @@ knows prefs + synced mail (and optionally Graph). Do not build until asked.
 ## Phase 7 — Sage CRM interface layer (separate track, own plan)
 
 Connector syncing companies/contacts/deals so this app acts as the agentic
-front-end over Sage. The dedicated plan is [docs/plans/sage-crm-sync.md](plans/sage-crm-sync.md).
-First cut is pull-only for the Company/Person/Opportunity triad; push is later.
-SOAP access + field mappings were confirmed against production on 2026-08-02
-(see that doc, section 1-3). Follow it, not this stub.
+front-end over Sage. The dedicated plan is [docs/plans/sage-crm-sync.md](sage-crm-sync.md).
+**Status (2026-08-02):** company/contact pull (Mobile Mark test slice) + Sage-ID
+UI are landed; Deal forecasting columns + opportunity import are next. Follow
+that doc + `HANDOFF.md`, not this stub.
 
 ---
 

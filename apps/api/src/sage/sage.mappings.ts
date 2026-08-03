@@ -1,4 +1,4 @@
-import type { SageRecord } from "./sage-xml";
+import type { SageCompanyTree, SageRecord } from "./sage-xml";
 
 /**
  * Sage -> local field mappings. See `docs/plans/sage-crm-sync.md` section 3.
@@ -21,6 +21,8 @@ export type MappedCompany = {
 	email: string | null;
 	phone: string | null;
 	city: string | null;
+	/** Sage primary person id, when present — used to set `primaryContactId`. */
+	primaryPersonId: string | null;
 };
 
 export type MappedContact = {
@@ -34,34 +36,66 @@ export type MappedContact = {
 	title: string | null;
 };
 
+/**
+ * Map a hierarchical company tree: company scalars plus first nested
+ * address / email / phone (Sage association is by nesting, not FK).
+ */
+export function mapCompanyTree(tree: SageCompanyTree): MappedCompany | null {
+	const merged: SageRecord = { ...tree.company };
+
+	if (tree.address) {
+		if (!merged.city && tree.address.city) merged.city = tree.address.city;
+		if (!merged.state && tree.address.state) merged.state = tree.address.state;
+		if (!merged.country && tree.address.country) {
+			merged.country = tree.address.country;
+		}
+	}
+	if (tree.email?.emailaddress && !merged.emailaddress) {
+		merged.emailaddress = tree.email.emailaddress;
+	}
+	if (tree.phone && !merged.number) {
+		if (tree.phone.areacode) merged.areacode = tree.phone.areacode;
+		if (tree.phone.number) merged.number = tree.phone.number;
+	}
+
+	return mapCompany(merged);
+}
+
 /** null when the record has no usable id — the caller must skip it. */
 export function mapCompany(record: SageRecord): MappedCompany | null {
 	const id = clean(record.companyid);
-	const name = clean(record.name);
+	// Sibling project: `name` with fallback to `companyname`.
+	const name = clean(record.name) ?? clean(record.companyname);
 	if (!id || !name) return null;
 
 	const website = clean(record.website);
+	const email = normaliseEmail(record.emailaddress);
 	return {
 		sageCrmCompanyId: id,
 		name,
 		sage100CustomerNo: clean(record.mas_customerno),
 		sage100ArDivisionNo: clean(record.mas_ardivisionno),
 		website,
-		domain: domainFrom(website) ?? domainFrom(clean(record.emailaddress)),
-		email: normaliseEmail(record.emailaddress),
+		domain: domainFrom(website) ?? domainFrom(email),
+		email,
 		phone: joinPhone(record.areacode, record.number),
 		city: clean(record.city),
+		primaryPersonId: clean(record.primarypersonid),
 	};
 }
 
-export function mapContact(record: SageRecord): MappedContact | null {
+export function mapContact(
+	record: SageRecord,
+	/** When the person is nested under a company, pass the parent's id. */
+	parentCompanyId?: string | null,
+): MappedContact | null {
 	const id = clean(record.personid);
 	const firstName = clean(record.firstname);
 	if (!id || !firstName) return null;
 
 	return {
 		sageCrmContactId: id,
-		sageCrmCompanyId: clean(record.companyid),
+		sageCrmCompanyId: clean(record.companyid) ?? clean(parentCompanyId),
 		firstName,
 		lastName: clean(record.lastname),
 		email: normaliseEmail(record.emailaddress),
@@ -130,7 +164,10 @@ function clean(value: string | null | undefined): string | null {
 
 function normaliseEmail(value: string | null | undefined): string | null {
 	const cleaned = clean(value);
-	return cleaned ? cleaned.toLowerCase() : null;
+	if (!cleaned) return null;
+	// Dirty Sage data: emails arrive wrapped in angle brackets.
+	const stripped = cleaned.replace(/^<|>$/g, "").replace(/[<>]/g, "").trim();
+	return stripped.length > 0 ? stripped.toLowerCase() : null;
 }
 
 function joinPhone(

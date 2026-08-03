@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test";
 import {
 	emailForSageUser,
 	mapCompany,
+	mapCompanyTree,
 	mapContact,
 	sage100Display,
 } from "../src/sage/sage.mappings";
@@ -15,6 +16,7 @@ describe("mapCompany", () => {
 			website: "https://www.mobilemark.com/products",
 			mas_customerno: "0000777",
 			mas_ardivisionno: "00",
+			primarypersonid: "5",
 		});
 
 		expect(mapped).not.toBeNull();
@@ -24,6 +26,15 @@ describe("mapCompany", () => {
 		expect(mapped?.sage100ArDivisionNo).toBe("00");
 		expect(mapped?.domain).toBe("mobilemark.com");
 		expect(mapped?.city).toBe("Chicago");
+		expect(mapped?.primaryPersonId).toBe("5");
+	});
+
+	it("falls back to companyname when name is blank", () => {
+		const mapped = mapCompany({
+			companyid: "1",
+			companyname: "Fallback Name",
+		});
+		expect(mapped?.name).toBe("Fallback Name");
 	});
 
 	it("falls back to the email domain when there is no website", () => {
@@ -38,6 +49,27 @@ describe("mapCompany", () => {
 	it("returns null without a usable id or name", () => {
 		expect(mapCompany({ name: "No id" })).toBeNull();
 		expect(mapCompany({ companyid: "1", name: "  " })).toBeNull();
+	});
+});
+
+describe("mapCompanyTree", () => {
+	it("merges nested address, email and phone onto the company", () => {
+		const mapped = mapCompanyTree({
+			company: {
+				companyid: "24",
+				name: "MOBILE MARK INC",
+				website: "https://www.mobilemark.com",
+			},
+			people: [],
+			address: { city: "Itasca", state: "IL" },
+			email: { emailaddress: "info@mobilemark.com" },
+			phone: { areacode: "847", number: "671-6690" },
+		});
+
+		expect(mapped?.city).toBe("Itasca");
+		expect(mapped?.email).toBe("info@mobilemark.com");
+		expect(mapped?.phone).toBe("847 671-6690");
+		expect(mapped?.domain).toBe("mobilemark.com");
 	});
 });
 
@@ -61,6 +93,20 @@ describe("mapContact", () => {
 		expect(mapped?.email).toBe("linda@example.com");
 		expect(mapped?.phone).toBe("312 555-1000");
 		expect(mapped?.title).toBe("Managing Director");
+	});
+
+	it("strips angle brackets from dirty Sage emails", () => {
+		const mapped = mapContact({
+			personid: "5",
+			firstname: "Linda",
+			emailaddress: "<Linda@Example.COM>",
+		});
+		expect(mapped?.email).toBe("linda@example.com");
+	});
+
+	it("uses the parent company id when the nested person has none", () => {
+		const mapped = mapContact({ personid: "5", firstname: "Linda" }, "24");
+		expect(mapped?.sageCrmCompanyId).toBe("24");
 	});
 
 	it("returns null without a usable id or first name", () => {

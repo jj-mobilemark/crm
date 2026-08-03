@@ -23,123 +23,254 @@ it before stopping. The rules for maintaining it live in `AGENTS.md`
 
 ## Current state (keep this section up to date)
 
-- **Git layout (NEW)**: this is now its own repo — **`origin` is
-  `jj-mobilemark/crm`** (a fork, created 2026-08-02), **`upstream` is
-  `trycompai/crm`** (the original open-source project, read-only for this
-  account). `main` on `origin` is the real working branch: it was fast-forwarded
-  straight to `m365-expansion`'s tip (`8d025d2`), so it carries every phase
-  done so far, not just what upstream has. `m365-expansion` still exists on
-  `origin` too (same commit, kept for history) — new work can go straight on
-  `main` from here, no more juggling two branches for local vs. upstream. The
-  pre-upstream-merge snapshot of all local work is commit `421e556` if it's
-  ever needed. To pull a future upstream release:
-  `git fetch upstream && git merge upstream/main` (while on `main`), verify,
-  then `git push origin main`.
-- **Upstream delta absorbed**: the new release restyled ~40 `packages/ui`
-  components + `globals.css`, split the company overview, added a favicon
-  resolver, and added row-hover prefetch. This is cosmetic/mechanical and did
-  not touch the Microsoft module. **Visual pass still needed** on the
-  Microsoft settings panel and sign-in page against the new design system.
-- **Verification**: `check-types` 10/10, `lint` 7/7, `test` 111 pass / 0 fail
-  (api; agent 116).
-- **Runs locally**: Bun 1.3.12 monorepo; Postgres via `docker compose up -d`;
-  `bun run dev` serves app on :3000 and API on :3001. Setup details in
-  `docs/local-setup.md`. **API `dev` script no longer runs `nestjs-trpc watch`
-  alongside `bun --watch`** (that combo was killing `:3001`). After router
-  edits: `bun run --filter=api trpc:generate`.
-- **Auth**: email + password (fallback), allow-list
-  `ALLOWED_SIGN_IN=mobilemark.com`. **Microsoft SSO works end-to-end** for
-  `jjohnson@mobilemark.com`: `account` row `providerId=microsoft`,
-  `refreshToken` present, scope includes `Mail.Read` + `Calendars.Read`
-  (short names). Google OAuth still optional / unconfigured.
-  `MICROSOFT_*` + `CRON_SECRET` set in root `.env` (secrets never recorded here).
-- **Settings**: full Microsoft 365 card via `microsoft.status` (Check now,
-  auto-create, purge, revoke). Google card only when Google is configured and
-  Microsoft is not.
-- **Smoke-test contacts (local DB only)**: Jordan Johnson ·
-  `jordan@ten18.tech` · Ten18 Tech; also Nicole Zandier · `nicolez@dsdinc.com`
-  · DSD Inc.
-- **Active plan**: `docs/plans/m365-expansion.md` (Phases 0–7).
-- **Phase 0**: DONE. **Phase 1**: DONE. **Phase 2**: DONE (mail + calendar
-  meeting smoke confirmed by human). **Phase 3**: DONE. **Phase 4**: DONE
-  (human confirmed the Screening Room smoke — stranger mail → row → approve
-  creates a contact + backfill, reject-with-suppress holds the domain out).
-  **Phase 5**: DONE (code + smoke). Agent wrote a cited suggestion; human
-  accepted it → TASK created → task cleared (happy path). Phase 5 DoD
-  checked in the plan.
-- **Phase 6**: DEFERRED by human. Outlook contacts import low value vs
-  Screening-from-mail; meeting prep already wired in
-  `outlook-calendar-sync.service.ts` (`prepareForMeeting` →
-  `meetingSoon`); Teams digest not needed yet.
-- **Phase 7 (Sage CRM)**: FOUNDATION LANDED (2026-08-02). Dedicated plan
-  `docs/plans/sage-crm-sync.md`. Done this session (green: check-types 10/10,
-  lint 7/7, test 127 pass): additive schema + migration `add_sage_sync`
-  (`Company.sageCrmCompanyId`/`sage100CustomerNo`/`sage100ArDivisionNo`,
-  `Contact.sageCrmContactId`, `RecordSource.SAGE`, models `SageSyncState` +
-  `SageRecordSnapshot`); `SAGE_SOAP_*` in `.env.example` + `env.validation.ts`;
-  the `apps/api/src/sage/` module — `SageSoapClient` (logon/session/query/logoff,
-  raw fetch, `SageResult`, `fast-xml-parser`), `sage-xml.ts`, `sage.mappings.ts`
-  (company/person maps + the static owner map from the team), `sage.config.ts`
-  capability helper; registered `SageModule` in `app.module.ts`; unit tests
-  `test/sage-xml.spec.ts` + `test/sage-mappings.spec.ts` (16 tests).
-- **Phase 7 DEFERRED on purpose**: the `DealStage` enum swap + Deal forecasting
-  fields (high blast radius on the deal board UI) and ALL deal import; the
-  test-slice import route (7.4a); the id-surfacing UI (7.4c). SOAP client is
-  built but not yet wired to any pull/route — nothing calls it in prod yet.
-  Module availability probed: `company`/`person`/`opportunity`/`communication`/
-  `lead` are Web-Service enabled; `forecast` + `campaign` are NOT;
-  `case`/`quotes`/`orders`/`user` returned "Query failed" (likely enabled, wrong
-  id column — re-probe). **Forecasting is opportunity-driven** (fields
-  `forecast`/`total`/`certainty`/`targetclose`/`type` on the opportunity); the
-  formal `forecast` entity is not syncable. Local `Deal` lacks
-  probability/weighted-amount/type and any forecast view — flagged as the
-  headline feature gap for a "Sage interface layer".
-- **Phase 7 decisions (2026-08-02)**: forecasting IS in the first cut (add
-  `Deal.probability`/weighted amount/`dealType` + a forecast view); ADOPT
-  Sage's opportunity stages as the local pipeline (replace `DealStage` enum +
-  re-key the board — values: Investigation/Prospecting, Proposal, Negotiation,
-  Purchasing, Closed Won, Lost); owner mapping is a STATIC Sage-user->email map
-  (**BLOCKING: human to supply the list**); `Deal.amount` <- `total`,
-  `forecast` -> weighted field.
-- **Phase 7 gotcha**: Sage SOAP `query` is CAPPED at ~100 records/call. The full
-  pull MUST paginate (page by ascending id, `> lastSeenId`, 100/page). Two wide
-  queries each returned exactly 100 — do not assume one call returns everything.
-- **Phase 7 Sage-ID UI (planned, section 3d)**: two id systems per company —
-  Sage CRM id (`companyid`/`personid`/`opportunityid`) and Sage 100 customer no
-  (`ardivisionno`+`customerno`, shown `00-0000777`). New Company cols
-  `sageCrmCompanyId`/`sage100CustomerNo`/`sage100ArDivisionNo`; Contact
-  `sageCrmContactId` (its Sage 100 id = parent company's, shown via relation,
-  not stored). Surface both in the companies/contacts tables (copyable,
-  default-hidden columns) and in a "Sage" section on the company + contact
-  sheets; needs a new `CopyButton` primitive in `packages/ui` (none exists).
-- **Next step (Phase 7)**: build 7.4a — the Mobile Mark test-slice import that
-  uses `SageSoapClient` to pull the 8 companies + their people (+ opportunities
-  once deals land), write `SageRecordSnapshot`, and upsert Company/Contact via
-  `sage.mappings.ts` (direct Prisma, `source = SAGE`, match by `sageCrm*Id`
-  then natural key). Expose it behind a `CRON_SECRET`-guarded internal route
-  (mirror `microsoft-sync.controller.ts`; REST, so no tRPC codegen). Then 7.4c
-  (Sage-ID UI) and, in a dedicated deals session, the `DealStage` enum swap +
-  forecasting fields + opportunity import. Remember: Sage query caps at ~100
-  rows — the full pull (7.4b) must paginate by ascending id.
-- **Phase 7 scale note (NEW)**: production Sage has ~27k companies / ~14k people
-  (+ opportunities). 7.4b is a resumable, throttled, two-phase (backfill ->
-  incremental) state machine — see `docs/plans/sage-crm-sync.md` **section 6**.
-  Key points: page 100/tick with a wall-clock budget (resume across ticks);
-  companies-before-people-before-opportunities; `updateddate >=` high-water with
-  idempotent upserts (overlap safe, gaps not); run backfill OFF-PEAK (it is the
-  live on-prem server the sales team uses); extend `SageSyncState` with
-  phase/backfillId/highWater; measure a nested-company 100-row page in 7.4a to
-  pick flat vs hierarchical paging; probe for a `deleted` column + plan a
-  monthly reconcile for drift.
-- **Dev servers**: prefer two direct processes — `bun run src/main.ts` in
-  `apps/api` and `bun run dev` in `apps/app` (+ `bun run dev` in
-  `apps/agent` for sweeps). After followups router changes, **restart the API**
-  (plain `bun run src/main.ts` does not hot-reload new tRPC procedures).
-  Root `bun run dev` / turbo can still die silently (see prior note).
-  Shell tip: `$CRON_SECRET` is in `.env`, not exported — load it for curl:
-  `Authorization: Bearer $(grep '^CRON_SECRET=' .env | cut -d= -f2- | tr -d \"\\'\")`.
+- **Git**: `origin` = `jj-mobilemark/crm` (fork); `upstream` = `trycompai/crm`
+  (read-only). Work on `main`. Pre-upstream-merge snapshot: `421e556`.
+  **7.4a + 7.4c code is UNCOMMITTED** (see `git status`: sage pull/controller,
+  copy-button, table/sheet UI, HANDOFF, plan). Commit before the next phase
+  unless the human says otherwise.
+- **Upstream delta absorbed**: ~40 `packages/ui` restyles + favicon + prefetch.
+  **Visual pass still needed** on Microsoft settings + sign-in.
+- **Verification**: `check-types` api/app/ui green; Sage unit tests 24 pass;
+  live Mobile Mark smoke OK. After person-email fix: **94 emails / 26 blank**.
+- **Runs locally**: Postgres via `docker compose up -d`. Prefer
+  `bun run src/main.ts` in `apps/api` (**restart after Sage edits** — no hot
+  reload) + `bun run dev` in `apps/app`. Re-run test slice:
+  `curl -X POST -H "Authorization: Bearer $(grep '^CRON_SECRET=' .env | cut -d= -f2- | tr -d \"\\'\")" http://localhost:3001/internal/sync/sage`.
+- **Auth / env**: allow-list `ALLOWED_SIGN_IN=mobilemark.com`; Microsoft SSO
+  works. `MICROSOFT_*` + `CRON_SECRET` + `SAGE_SOAP_*` in root `.env` (never
+  record secrets here).
+- **Sage test slice in DB**: 8 companies (Sage CRM ids 24, 4139, 4143, 4145,
+  4146, 4153, 4214, 9677) + 120 contacts. Company **24** = MOBILE MARK INC,
+  Sage 100 `00-0000777`, **4 opportunities in Sage (not imported yet)**.
+  Dirty first names (`*`); near-dupes leave `domain` null except one
+  `mobilemark.com` claim.
+- **Active plan**: `docs/plans/sage-crm-sync.md` (canonical). Stub:
+  `docs/plans/m365-expansion.md` Phase 7.
+- **Phases 0–5**: DONE. **Phase 6**: DEFERRED by human.
+- **Phase 7 DONE**: 7.1 company/contact schema + snapshots; 7.2 SOAP client;
+  7.3 mappings + `SAGE_USER_EMAILS`; 7.4a test-slice import; 7.4c Sage-ID UI.
+- **Phase 7 key files**:
+  - `apps/api/src/sage/sage-soap.client.ts` — logon/query/next/logoff
+  - `apps/api/src/sage/sage-xml.ts` — flat + hierarchical (`enrichPerson`)
+  - `apps/api/src/sage/sage.mappings.ts` — maps + owner emails
+  - `apps/api/src/sage/sage-pull.service.ts` — `importTestSlice()`
+  - `apps/api/src/sage/sage-sync.controller.ts` — `/internal/sync/sage`
+  - `packages/ui/src/components/copy-button.tsx`
+  - `apps/app/components/crm/sage-id.ts` + `sage-id-value.tsx`
+- **Phase 7 NOT done**: `Deal` still has **no** `sageCrmOpportunityId` /
+  forecasting columns (schema.prisma `Deal` is stock). No `mapOpportunity`.
+  No opportunity pull. No forecast view UI. No 7.4b full pull.
+- **Guiding principle**: fit Sage INTO existing models; fewest columns;
+  snapshot = lossless backstop; **KEEP** `DealStage` enum (map per §3.3).
+- **Decisions already made**: owner map static (in `sage.mappings.ts`);
+  `amount` ← `total`, weighted ← `forecast`; forecasting IN as optional Deal
+  columns; stages map §3.3.
+- **Gotchas**: `query`→`next` while `<more>`; ONE session globally; never
+  retry-spam logon; person emails nested under person (do not steal into
+  company).
+- **Next step (ONE path — do this, no fork)**: Deal schema + opportunity
+  import for the test slice. Plan: `docs/plans/sage-crm-sync.md` §§3.3, 3b.
+  1. Additive Prisma migration on `Deal`: `sageCrmOpportunityId String?
+     @unique`, `probability Int?`, `weightedAmount Decimal?`, `dealType
+     String?`, optional `sageStage`/`sageStatus` String? for push.
+  2. Add `mapOpportunity` + stage mapper in `sage.mappings.ts` (§3.3 table).
+  3. Extend `importTestSlice` to query `opportunity` with
+     `oppo_primarycompanyid` in slice ids (or `= 24` first) AND
+     `oppo_deleted IS NULL`; upsert Deal + `SageRecordSnapshot`.
+  4. **Fallback owner** when `assigneduserid` unmapped: User with email
+     `ken@mobilemark.com` (Sage id 27); else earliest User by `createdAt`.
+     Never null `ownerId`.
+  5. Smoke: re-run `/internal/sync/sage`; expect ~4 deals on company 24.
+  Later: forecast view UI; then 7.4b (plan §6).
+- **Scale note (7.4b later)**: ~14k companies / ~26k contacts;
+  `comp_deleted IS NULL`; need `SageSyncState` phase fields + global lock +
+  soft-deactivate.
 
 ## Work log (newest first)
+
+### 2026-08-02 — Handoff tightened for next agent (agent: Grok via Cursor)
+
+**Plan / phase**: docs only — `HANDOFF.md` Current state + plan open items.
+
+**What was completed**
+
+- Replaced ambiguous "deals OR 7.4b" next step with a single 5-step Deal +
+  opportunity-import recipe (schema fields, mapOpportunity, pull filter,
+  fallback owner `ken@mobilemark.com`, smoke).
+- Noted **uncommitted** 7.4a/7.4c file set; listed key Sage files; recorded that
+  `Deal` still lacks forecasting columns.
+- Cleared stale "BLOCKING: supply owner map" in plan §4 (map is in
+  `sage.mappings.ts`); set fallback owner rule.
+- Updated `m365-expansion.md` Phase 7 stub status.
+
+**How and why**
+
+- Human asked whether the next agent could continue with no questions. Gaps
+  were: forked next step, missing default-owner decision, stale blocking note,
+  no mention that work is uncommitted / Deal schema untouched.
+
+**Deviations**
+
+- None.
+
+**What's next**
+
+- Unchanged: Deal schema + opportunity import (Current state recipe).
+
+### 2026-08-02 — Phase 7.4c Sage-ID UI + person-email parse fix (agent: Grok via Cursor)
+
+**Plan / phase**: `docs/plans/sage-crm-sync.md` — 7.4c (+ eyeball of 7.4a data).
+
+**What was completed**
+
+- Eyeballed Mobile Mark import: 8 companies, Sage 100 on 24 (`00-0000777`) and
+  4139 (`00-MME`); dirty first names (`*`); **0/120 emails** exposed a parser
+  bug (person nested email/phone were dropped / stolen by company walk).
+- Fixed hierarchical parse: direct-child collection only + `enrichPerson` for
+  nested email/phone (`sage-xml.ts`). Re-import → **94 emails / 26 blank**.
+- `CopyButton` in `packages/ui/src/components/copy-button.tsx` (Carbon Copy +
+  sonner toast, stops row-click propagation).
+- API: Sage id fields on `companies.list` / `companies.byId` and
+  `contacts.list` / `contacts.byId` (+ nested company Sage 100 on contacts)
+  (`companies.service.ts`, `contacts.service.ts`).
+- UI: default-hidden Sage CRM ID + Sage 100 ID columns on
+  `companies-table.tsx` / `contacts-table.tsx`; "Sage" section on
+  `company-sheet.tsx` / `contact-sheet.tsx` (read-only + copy). Helpers:
+  `sage-id.ts`, `sage-id-value.tsx`.
+
+**How and why**
+
+- Handoff next was 7.4c once real ids existed. Eyeball first caught the email
+  gap; fixed before shipping UI so sheets show useful contact data too.
+
+**Deviations**
+
+- None vs plan section 3d. Opportunities still deferred with Deal fields.
+
+**What's next**
+
+- **ONE path**: Deal schema + opportunity import (company 24 has 4 opps).
+  Exact 5-step recipe in Current state above and plan §§3.3 / 3b. Do not start
+  7.4b until deals land. Work is still uncommitted — commit first if asked.
+
+### 2026-08-02 — Phase 7.4a Mobile Mark test-slice import (agent: Grok via Cursor)
+
+**Plan / phase**: `docs/plans/sage-crm-sync.md` — 7.4a.
+
+**What was completed**
+
+- Hierarchical company parse + `<more>` flag in `apps/api/src/sage/sage-xml.ts`
+  (`parseCompanyTrees`, `parseCompanyPage`, `parseMore`).
+- SOAP client: `queryCompanies` / `nextCompanies` / `queryAllCompanies` + `next`
+  op in `apps/api/src/sage/sage-soap.client.ts`.
+- Mappings: `mapCompanyTree`, `companyname` fallback, `<>` email sanitize,
+  nested parent company id for people (`sage.mappings.ts`).
+- `SagePullService.importTestSlice` — upsert Company/Contact by `sageCrm*Id`
+  (else domain/email link), write `SageRecordSnapshot`, set primary contact,
+  in-process session lock + always `logoff`
+  (`apps/api/src/sage/sage-pull.service.ts`).
+- `POST/GET /internal/sync/sage` (`CRON_SECRET`) —
+  `apps/api/src/sage/sage-sync.controller.ts`; wired in `sage.module.ts`.
+- Unit tests: 24 pass (`test/sage-xml.spec.ts`, `test/sage-mappings.spec.ts`).
+- Live smoke against prod Sage: 8 companies, 120 contacts, 128 snapshots, 16
+  skipped (people missing firstname), ~7s.
+
+**How and why**
+
+- Handoff next step was 7.4a. Sibling knowledge: pull `company` hierarchically,
+  paginate with `next`, never hold two sessions. Kept opportunities out — Deal
+  forecasting columns are still deferred. Domain uniqueness: near-duplicate
+  Mobile Mark rows get `domain: null` when the web domain is already taken.
+
+**Deviations**
+
+- Skipped `getmetadata` (plan mentioned it; not required for the upsert path —
+  optional follow-up).
+- Skipped opportunity import (depends on deferred Deal fields), as handoff
+  already noted.
+
+**What's next**
+
+- **7.4c Sage-ID UI** (plan section 3d): `CopyButton` in `packages/ui`; expose
+  ids on company/contact list + byId; default-hidden table columns; "Sage"
+  section on company + contact sheets. Real Mobile Mark ids are in the DB now.
+- Then Deal forecasting columns + opportunity import; then 7.4b full pull.
+
+### 2026-08-02 — Phase 7 principle: fit Sage into the CRM, don't reshape it (agent: Opus via Cursor)
+
+**Plan / phase**: `docs/plans/sage-crm-sync.md` — new "Guiding principle" +
+section 3.3 (no code).
+
+**What was completed**
+
+- Added a guiding principle to the plan: Sage bends to the CRM's out-of-the-box
+  shape; add the fewest columns (only for UI need or 1:1 push); the raw snapshot
+  is the lossless backstop; the mapping catalog is the 1:1 push contract.
+- REVERSED the earlier "adopt Sage's stages / replace `DealStage` enum + re-key
+  the board" decision. Now: keep the CRM enum, map Sage->local for display,
+  store the raw Sage stage for exact push (optional `Deal.sageStage` only if the
+  UI needs it). Updated section 3.3, the 7.1 build bullet, and open item #3.
+- Reaffirmed forecasting's 3 `Deal` columns as the one deliberate exception (a
+  capability the CRM lacks), not a reshape.
+
+**How and why**
+
+- The human clarified they don't want a big new contacts/companies shape — fit
+  Sage into what the CRM gives us, keep only the fields that push back 1:1. The
+  external-id + Sage 100 columns already added are references, not a reshape, so
+  they stand; the enum swap was the one over-customization to drop.
+
+**Deviations**
+
+- Reverses the 2026-08-02 stage decision (documented above). No other change.
+
+**What's next**
+
+- Unchanged: 7.4a test-slice import (nested `company` pull + `getmetadata`),
+  then 7.4b per section 6.
+
+### 2026-08-02 — Phase 7 plan corrected from sibling-project knowledge (agent: Opus via Cursor)
+
+**Plan / phase**: `docs/plans/sage-crm-sync.md` — sections 1c + 6 (no code).
+
+**What was completed**
+
+- Folded a knowledge dump from the team's other Sage-sync app (proven in prod at
+  ~14k companies) into the plan. Corrections/confirmations:
+  - Volumes INVERTED: ~14k companies / ~26k contacts (not 27k/14k); ~4.75k
+    companies have a MAS customer number.
+  - Pagination is `query` -> `next` while `<more>true</more>` (~100/page), not a
+    `maxrecords` cap. Session-stateful, so it can't resume in a later process.
+  - ONE Web Services session at a time (2nd logon kicks 1st) -> global lock
+    mandatory. Bad password can LOCK the service account -> back off, no
+    retry-spam. API ~10-20s/page, ~1h full sync.
+  - Backfill = query `company`, take people from NESTED children (do NOT query
+    `person` separately) — resolved the flat-vs-hierarchical fork to
+    hierarchical. Filter `comp_deleted IS NULL` (status filters miss rows).
+    `comp_deleted`/`oppo_deleted` exist; reconcile = soft-deactivate, never
+    hard-delete. `getmetadata` for field discovery.
+  - Opportunity create (push, later): unprefixed field names on `add`,
+    `description` max 50 chars.
+- New runtime shape in section 6.3: initial backfill as a Railway worker holding
+  one session (~1h, off-peak); incremental as nightly cron.
+
+**How and why**
+
+- The sibling app already solved this against the same server; adopting its
+  hard-won constraints avoids us re-learning the session/pagination/lockout
+  traps the expensive way.
+
+**Deviations / impact on the built foundation**
+
+- The client built earlier now has KNOWN GAPS for the full pull: no `next`
+  operation, `parseRecords` drops nested children (need a hierarchical parser),
+  and no `<>` email sanitize. All fine for the small test slice; must be added
+  for 7.4b. Documented in the plan and current-state.
+
+**What's next**
+
+- 7.4a test-slice import using the nested `company` pull + `getmetadata`; then
+  7.4b per the revised section 6 (worker backfill + nightly incremental).
 
 ### 2026-08-02 — Phase 7 foundation built: schema + SOAP client + mappings (agent: Opus via Cursor)
 
