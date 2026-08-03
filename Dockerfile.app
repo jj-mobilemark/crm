@@ -19,4 +19,4 @@ RUN bun install --frozen-lockfile \
 ENV NODE_ENV=production
 EXPOSE 3000
 
-CMD ["bun", "run", "--filter", "app", "start"]
+CMD ["bun", "run", "--cwd", "apps/app", "start"]

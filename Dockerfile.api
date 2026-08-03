@@ -14,7 +14,10 @@ ENV DATABASE_URL="postgresql://postgres:postgres@127.0.0.1:5432/crm?schema=publi
 RUN bun install --frozen-lockfile \
 	&& bunx turbo run build --filter=api
 
+COPY scripts/railway-api-start.sh /app/scripts/railway-api-start.sh
+RUN chmod +x /app/scripts/railway-api-start.sh
+
 ENV NODE_ENV=production
 EXPOSE 3001
 
-CMD ["sh", "-c", "bun run db:deploy && bun run --filter api start"]
+CMD ["/app/scripts/railway-api-start.sh"]
