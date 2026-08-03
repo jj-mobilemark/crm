@@ -78,6 +78,7 @@ describe("mapCompanyTree", () => {
 		});
 
 		expect(mapped?.city).toBe("Itasca");
+		expect(mapped?.stateCode).toBe("IL");
 		expect(mapped?.email).toBe("info@mobilemark.com");
 		expect(mapped?.phone).toBe("847 671-6690");
 		expect(mapped?.domain).toBe("mobilemark.com");

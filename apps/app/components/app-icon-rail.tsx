@@ -4,6 +4,7 @@ import Building from "@carbon/icons-react/es/Building";
 import type { CarbonIconType } from "@carbon/icons-react/es/CarbonIcon";
 import Dashboard from "@carbon/icons-react/es/Dashboard";
 import EmailNew from "@carbon/icons-react/es/EmailNew";
+import Map from "@carbon/icons-react/es/Map";
 import Partnership from "@carbon/icons-react/es/Partnership";
 import Settings from "@carbon/icons-react/es/Settings";
 import Task from "@carbon/icons-react/es/Task";
@@ -38,6 +39,7 @@ type RailItem = {
 const ITEMS: RailItem[] = [
 	{ title: "Overview", href: "/", icon: Dashboard, match: "exact" },
 	{ title: "Companies", href: "/companies", icon: Building, match: "prefix" },
+	{ title: "Map", href: "/map", icon: Map, match: "prefix" },
 	{
 		title: "Contacts",
 		href: "/contacts",

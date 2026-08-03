@@ -199,6 +199,14 @@ model Company {
   country     String?
   countryCode String?
 
+  /// City-level map pin from Nominatim (or GeocodeCache). Cleared when the
+  /// address fields change so the next geocode pass can re-resolve.
+  latitude         Float?
+  longitude        Float?
+  /// Normalised `city|stateCode|countryCode` used to look up GeocodeCache.
+  geocodePlaceKey  String?
+  geocodedAt       DateTime?
+
   // Contact details and socials.
   phone       String?
   email       String?
@@ -261,7 +269,28 @@ model Company {
   @@index([ownerId])
   @@index([name])
   @@index([lastActivityAt])
+  @@index([geocodePlaceKey])
   @@map("company")
+}
+
+/// Cached Nominatim (or other) result for a normalised place key. One row per
+/// unique city/state/country so ~14k companies share a few thousand lookups.
+model GeocodeCache {
+  placeKey  String               @id
+  latitude  Float?
+  longitude Float?
+  status    GeocodeCacheStatus
+  /// Display label Nominatim returned, when status is ok.
+  rawLabel  String?
+  queriedAt DateTime             @default(now())
+
+  @@map("geocodeCache")
+}
+
+enum GeocodeCacheStatus {
+  ok
+  failed
+  skipped
 }
 
 /// The raw Context.dev payload, kept so re-deriving a field costs nothing and

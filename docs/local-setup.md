@@ -114,3 +114,16 @@ The repo shipped Claude Code / Codex config. It now works across harnesses:
 Each key in `.env` unlocks one more thing the agent can do; the app runs fine
 with none of them. See `.env.example` for the annotated list
 (`PERPLEXITY_API_KEY`, `RAPIDAPI_KEY`, `CONTEXT_DEV_API_KEY`, `REDIS_URL`, …).
+
+## Companies map (`/map`)
+
+Nav item **Map** shows companies on a Leaflet map (city-level). Coordinates
+come from Nominatim via a one-shot script — pins stay empty until you run it
+after `db:deploy` (or after a Sage location backfill):
+
+```bash
+cd apps/api && bun run scripts/geocode-companies.ts --dry-run
+cd apps/api && bun run scripts/geocode-companies.ts
+```
+
+Details: `docs/plans/companies-map.md`.

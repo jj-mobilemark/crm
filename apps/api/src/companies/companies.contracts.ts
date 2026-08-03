@@ -25,6 +25,26 @@ export const companyListInput = listInput.extend({
 export type CompanyListInput = z.infer<typeof companyListInput>;
 
 /**
+ * Unpaginated company rows for the map page. Caps at MAP_LIST_MAX so a bad
+ * filter cannot dump the whole table by accident.
+ */
+export const companyMapListInput = z.object({
+	q: z.string().default(""),
+	/** A user id, `"me"`, `"unassigned"`, or `"all"`. */
+	owner: z.string().default("all"),
+	/** `"all"` | `"linked"` (has Sage CRM id) | `"unlinked"`. */
+	sage: z.enum(["all", "linked", "unlinked"]).default("all"),
+	/** `"all"` | `"yes"` (has lat/lng) | `"no"`. */
+	hasLocation: z.enum(["all", "yes", "no"]).default("all"),
+	sort: z.enum(["name", "city", "owner"]).default("name"),
+	dir: z.enum(["asc", "desc"]).default("asc"),
+});
+
+export type CompanyMapListInput = z.infer<typeof companyMapListInput>;
+
+export const MAP_LIST_MAX = 25_000;
+
+/**
  * Creating a company asks for the three things a human actually knows. The
  * logo, description, industry, address and socials are the agent's job.
  */

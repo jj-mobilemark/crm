@@ -24,10 +24,25 @@ it before stopping. The rules for maintaining it live in `AGENTS.md`
 ## Current state (keep this section up to date)
 
 - **Git**: `origin` = `jj-mobilemark/crm` (fork); `upstream` = `trycompai/crm`
-  (read-only). Work on `main` (pipeline pulse + agent committed/pushed).
-- **Active plan**: `docs/plans/pipeline-pulse.md` — **DONE**. Next focus:
-  Sage push E2E smoke (`HANDOFF-SAGE-SYNC.md`), sequences Entra **Mail.Send**.
-  M365 0–5 DONE / 6 DEFERRED.
+  (read-only). Work on `main` — companies map + Dockerfile API_URL fix on
+  `origin/main`.
+- **Active plan**: `docs/plans/companies-map.md` — **DONE**. Next: deploy
+  migration on Railway, full geocode pass, smoke `/map`, then Sage push E2E /
+  sequences Mail.Send.
+- **Companies map (DONE 2026-08-03)**: `/map` split list + Leaflet
+  (shadcn-map); `companies.mapList`; Company lat/lng + `GeocodeCache`;
+  Nominatim script `apps/api/scripts/geocode-companies.ts`; Sage pull writes
+  state/country and clears coords on location change. Migration
+  `20260803150000_add_company_geocode` applied locally. Sample geocode
+  (`--limit=15`) updated 341 companies; ~3811 unique places still need a
+  full run.
+- **Prod DB**: Railway Postgres restored 1:1 from local Docker `crm` dump
+  (2026-08-03) — ~14.2k companies / ~24.8k contacts / 525 deals / ~39.5k
+  Sage snapshots. Temporary TCP proxy removed after restore.
+- **Prod auth URLs**: `API_URL` / `BETTER_AUTH_URL` =
+  `https://api.mobilemarksalestool.com`; `APP_URL` =
+  `https://crm.mobilemarksalestool.com`. Browser bundle verified to point at
+  the real API (not localhost).
 - **Pipeline pulse + agent (DONE, 2026-08-03)**: `DealFieldChange` log; overview
   strip/movers/feed/stuck; fourth `AgentRecordKind` `pipeline`;
   `AgentConversation.pipelineScope`; bridge `x-crm-pipeline` → JWT;
@@ -41,25 +56,107 @@ it before stopping. The rules for maintaining it live in `AGENTS.md`
 - **Deal/task priority + Tasks page**: nullable `Priority` on Deal/Activity;
   `/tasks` page. Migration `20260803110000_add_priority`.
 - **Email sequences**: `/sequences` + Nest tick; needs Entra **Mail.Send**.
-- **Verification**: check-types app + api + db + agent green; agent-session +
-  agent-transcript + deal-change tests green.
+- **Verification**: check-types app + api + db + ui green for map work.
 - **Auth / env**: allow-list `ALLOWED_SIGN_IN=mobilemark.com`; Microsoft SSO
   works. `MICROSOFT_*` + `CRON_SECRET` + `SAGE_SOAP_*` + `AGENT_BRIDGE_SECRET`
   in root `.env` (never record secrets here).
 - **Local CRM data**: Sage backfill data — do not re-run `bun run db:seed`
   casually.
-- **Key files (pipeline agent)**:
-  - `docs/plans/pipeline-pulse.md`
-  - `packages/db/src/pipeline-pulse.ts` — shared pulse query
-  - `apps/app/lib/agent-record.ts` — `pipeline` kind
-  - `apps/agent/agent/tools/read_pipeline_pulse.ts`
-  - `apps/agent/agent/lib/preamble.ts` — `pipelinePreamble`
-  - `apps/app/components/crm/agent-panel.tsx` — `PipelineAgentPanel`
-  - `apps/app/app/(app)/dashboard-summary.tsx` — mounts panel
+- **Key files (companies map)**:
+  - `docs/plans/companies-map.md`
+  - `apps/app/app/(app)/map/`
+  - `apps/api/src/companies/companies.contracts.ts` (`mapList`)
+  - `apps/api/scripts/geocode-companies.ts`
+  - `packages/ui/src/components/map.tsx`
 
 ---
 
 ## Work log
+
+### 2026-08-03 — Companies map page (`/map`)
+
+**What was completed**
+- Schema + migration `20260803150000_add_company_geocode`: Company lat/lng /
+  place key / geocodedAt; `GeocodeCache`.
+- Sage pull persists `stateCode`/`country`/`countryCode`; clears coords when
+  location changes. Human company update clears coords on address edits.
+- Nominatim geocoder + `apps/api/scripts/geocode-companies.ts` (sample
+  `--limit=15` → 341 companies updated).
+- tRPC `companies.mapList` with owner/sage/location filters.
+- shadcn-map in `packages/ui`; `/map` split list + clustered pins; nav rail
+  item; preview + link to company sheet. Plan: `docs/plans/companies-map.md`.
+
+**How and why**
+- City-level pins are enough with current Sage fields; unique place-key cache
+  keeps Nominatim under usage limits. Split view matches filter/sort needs.
+
+**Deviations**
+- Restored core shadcn components that `ui:add @shadcn-map/map --overwrite`
+  rewrote (button/input/etc.); kept only map + leaflet CSS + new deps.
+- Map marker icons use inline SVG (not lucide) so the app package stays free
+  of a direct leaflet/lucide dependency.
+
+**What's next**
+1. Apply migration on Railway if not auto; run full
+   `bun run scripts/geocode-companies.ts` (~3811 unique places, ~1 req/s).
+2. Smoke `/map`: filters, colors, Open company sheet.
+3. Other tracks: Sage push E2E (`HANDOFF-SAGE-SYNC.md`), sequences Mail.Send.
+
+### 2026-08-03 — Fix prod Microsoft login (localhost API_URL in bundle)
+
+**What was completed**
+- Diagnosed freeze: browser called `http://localhost:3001/api/auth/sign-in/social`
+  (CORS) because Next inlined the localhost default at build time.
+- Corrected Railway vars on **app** + **api**:
+  `API_URL`/`BETTER_AUTH_URL` → `https://api.mobilemarksalestool.com`
+  (was wrongly `api.crm.…` / `*.up.railway.app`); `APP_URL` →
+  `https://crm.mobilemarksalestool.com`.
+- Fixed `Dockerfile.app` to `ARG`/`ENV` `API_URL`/`APP_URL` so Docker builds
+  receive Railway vars; added Railway/CI fail-fast in
+  `apps/app/next.config.ts` if API still looks like localhost.
+- Redeployed via `railway up --service app`; verified baked bundle contains
+  `https://api.mobilemarksalestool.com` and CORS preflight returns
+  `Access-Control-Allow-Origin: https://crm.mobilemarksalestool.com`.
+
+**How and why**
+- `NEXT_PUBLIC_API_URL` is build-time; Railway Dockerfile builds do not inject
+  service vars unless declared as `ARG`. Env-only redeploy kept the bad bundle.
+
+**Deviations**
+- Deployed the Dockerfile/next.config fix with `railway up` before committing
+  to git — commit still needed.
+
+**What's next**
+1. Hard-refresh prod sign-in and try Microsoft again. Entra redirect must be
+   `https://api.mobilemarksalestool.com/api/auth/callback/microsoft`.
+2. Commit/push `Dockerfile.app` + `apps/app/next.config.ts`.
+3. Sage push E2E / sequences Mail.Send as before.
+
+### 2026-08-03 — Local Docker Postgres → Railway prod 1:1 restore
+
+**What was completed**
+- Confirmed Railway CLI logged in as `jjohnson@mobilemark.com`; project
+  `MM-CRM` linked to `production` (Postgres + api + app online).
+- Dumped local `crm-postgres` (`pg_dump -Fc`, ~8.7 MB) from Docker.
+- Opened a temporary Railway TCP proxy on Postgres `:5432`, restored with
+  `pg_restore --clean --if-exists --no-owner --no-acl`, verified row counts
+  match local (14252 companies / 24773 contacts / 525 deals / 39550
+  sageRecordSnapshot), then deleted the TCP proxy (no public proxies left).
+
+**How and why**
+- Prod was schema-only (~9.8 MB, zero business rows) after deploy; local held
+  the Sage backfill. One-shot dump/restore is the fastest 1:1 copy without
+  re-running the SOAP backfill against production.
+
+**Deviations**
+- Used a temporary TCP proxy because prod had no `DATABASE_PUBLIC_URL` and
+  local SSH key is passphrase-protected (non-interactive `railway ssh` failed).
+
+**What's next**
+1. Smoke-check prod UI (companies/deals/overview) at
+   https://crm.mobilemarksalestool.com — re-sign-in if session cookies differ
+   (`BETTER_AUTH_SECRET` / OAuth redirect URIs may not match local tokens).
+2. Sage push E2E smoke (`HANDOFF-SAGE-SYNC.md`); sequences Entra **Mail.Send**.
 
 ### 2026-08-03 — Commit/push pipeline pulse + agent; docs refreshed
 

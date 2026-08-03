@@ -14,6 +14,7 @@ import {
 	companyCreateInput,
 	companyIdInput,
 	companyListInput,
+	companyMapListInput,
 	companyOptionsInput,
 	companyUpdateArgs,
 	setPrimaryContactInput,
@@ -30,6 +31,14 @@ export class CompaniesRouter {
 	@Query({ input: companyListInput })
 	async list(@Input() input: z.infer<typeof companyListInput>) {
 		return this.companies.list(input);
+	}
+
+	@Query({ input: companyMapListInput })
+	async mapList(
+		@Ctx() ctx: AuthedTrpcContext,
+		@Input() input: z.infer<typeof companyMapListInput>,
+	) {
+		return this.companies.mapList(input, ctx.user.id);
 	}
 
 	@Query({ input: companyIdInput })

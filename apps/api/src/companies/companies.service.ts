@@ -30,8 +30,10 @@ import {
 import type {
 	CompanyCreateInput,
 	CompanyListInput,
+	CompanyMapListInput,
 	CompanyUpdateInput,
 } from "./companies.contracts";
+import { MAP_LIST_MAX } from "./companies.contracts";
 import { normalizeDomain } from "./domain";
 import { FaviconService } from "./favicon.service";
 
@@ -107,6 +109,36 @@ const SORTABLE: Record<
 	// A real column, so this is an index scan. Never-touched rows sort last in
 	// both directions, because "no activity" is not "the oldest activity".
 	lastActivity: (dir) => ({ lastActivityAt: { sort: dir, nulls: "last" } }),
+};
+
+/** One row of the companies map page (list + markers). */
+export type CompanyMapRow = {
+	id: string;
+	name: string;
+	domain: string | null;
+	city: string | null;
+	stateCode: string | null;
+	country: string | null;
+	latitude: number | null;
+	longitude: number | null;
+	sageCrmCompanyId: string | null;
+	owner: {
+		id: string;
+		name: string;
+		email: string;
+		image: string | null;
+	} | null;
+	/** True when the signed-in user owns this company. */
+	isMine: boolean;
+};
+
+const MAP_SORTABLE: Record<
+	CompanyMapListInput["sort"],
+	(dir: Prisma.SortOrder) => Prisma.CompanyOrderByWithRelationInput
+> = {
+	name: (dir) => ({ name: dir }),
+	city: (dir) => ({ city: { sort: dir, nulls: "last" } }),
+	owner: (dir) => ({ owner: { name: dir } }),
 };
 
 @Injectable()
@@ -192,6 +224,58 @@ export class CompaniesService {
 			})),
 			total,
 			facetCounts,
+		};
+	}
+
+	/**
+	 * Unpaginated lightweight rows for `/map`. Caps at MAP_LIST_MAX.
+	 *
+	 * `owner: "me"` resolves against the signed-in user id.
+	 */
+	async mapList(
+		input: CompanyMapListInput,
+		userId: string,
+	): Promise<{ rows: CompanyMapRow[]; total: number }> {
+		const where = this.buildMapWhere(input, userId);
+		const total = await this.db.company.count({ where });
+		if (total > MAP_LIST_MAX) {
+			throw new BadRequestException(
+				`Too many companies match (${total}). Narrow the filters (max ${MAP_LIST_MAX}).`,
+			);
+		}
+
+		const rows = await this.db.company.findMany({
+			where,
+			orderBy: MAP_SORTABLE[input.sort](input.dir),
+			select: {
+				id: true,
+				name: true,
+				domain: true,
+				city: true,
+				stateCode: true,
+				country: true,
+				latitude: true,
+				longitude: true,
+				sageCrmCompanyId: true,
+				owner: { select: OWNER_SELECT },
+			},
+		});
+
+		return {
+			total,
+			rows: rows.map((row) => ({
+				id: row.id,
+				name: row.name,
+				domain: row.domain,
+				city: row.city,
+				stateCode: row.stateCode,
+				country: row.country,
+				latitude: row.latitude,
+				longitude: row.longitude,
+				sageCrmCompanyId: row.sageCrmCompanyId,
+				owner: row.owner,
+				isMine: row.owner?.id === userId,
+			})),
 		};
 	}
 
@@ -371,6 +455,16 @@ export class CompaniesService {
 			data.stateCode = blankToNull(input.stateCode);
 		}
 		if (input.country !== undefined) data.country = blankToNull(input.country);
+		if (
+			input.city !== undefined ||
+			input.stateCode !== undefined ||
+			input.country !== undefined
+		) {
+			data.latitude = null;
+			data.longitude = null;
+			data.geocodePlaceKey = null;
+			data.geocodedAt = null;
+		}
 		if (input.phone !== undefined) data.phone = blankToNull(input.phone);
 		if (input.email !== undefined) data.email = blankToNull(input.email);
 		if (input.linkedinUrl !== undefined) {
@@ -560,6 +654,41 @@ export class CompaniesService {
 
 		if (input.source !== FACET_ALL) {
 			where.source = input.source as RecordSource;
+		}
+
+		return where;
+	}
+
+	private buildMapWhere(
+		input: CompanyMapListInput,
+		userId: string,
+	): Prisma.CompanyWhereInput {
+		const owner =
+			input.owner === "me" ? userId : input.owner;
+		const where: Prisma.CompanyWhereInput = {
+			...this.searchFilter(input.q),
+			...ownerFilter(owner),
+		};
+
+		if (input.sage === "linked") {
+			where.sageCrmCompanyId = { not: null };
+		} else if (input.sage === "unlinked") {
+			where.sageCrmCompanyId = null;
+		}
+
+		if (input.hasLocation === "yes") {
+			where.latitude = { not: null };
+			where.longitude = { not: null };
+		} else if (input.hasLocation === "no") {
+			// Avoid clobbering searchFilter's OR — nest under AND instead.
+			where.AND = [
+				...(Array.isArray(where.AND)
+					? where.AND
+					: where.AND
+						? [where.AND]
+						: []),
+				{ OR: [{ latitude: null }, { longitude: null }] },
+			];
 		}
 
 		return where;

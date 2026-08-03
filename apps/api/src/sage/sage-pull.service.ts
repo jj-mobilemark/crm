@@ -1156,7 +1156,15 @@ export class SagePullService {
 
 		const existing = await this.db.company.findUnique({
 			where: { sageCrmCompanyId: mapped.sageCrmCompanyId },
-			select: { id: true, domain: true, sagePushedAt: true },
+			select: {
+				id: true,
+				domain: true,
+				sagePushedAt: true,
+				city: true,
+				stateCode: true,
+				country: true,
+				countryCode: true,
+			},
 		});
 
 		if (existing) {
@@ -1172,6 +1180,11 @@ export class SagePullService {
 				existing.domain,
 				takenDomains,
 			);
+			const locationChanged =
+				existing.city !== mapped.city ||
+				existing.stateCode !== mapped.stateCode ||
+				existing.country !== mapped.country ||
+				existing.countryCode !== mapped.countryCode;
 			await this.db.company.update({
 				where: { id: existing.id },
 				data: {
@@ -1180,9 +1193,20 @@ export class SagePullService {
 					email: mapped.email,
 					phone: mapped.phone,
 					city: mapped.city,
+					stateCode: mapped.stateCode,
+					country: mapped.country,
+					countryCode: mapped.countryCode,
 					sage100CustomerNo: mapped.sage100CustomerNo,
 					sage100ArDivisionNo: mapped.sage100ArDivisionNo,
 					sageUpdatedAt: mapped.sageUpdatedAt,
+					...(locationChanged
+						? {
+								latitude: null,
+								longitude: null,
+								geocodePlaceKey: null,
+								geocodedAt: null,
+							}
+						: {}),
 					...ownerData,
 					...(domain && !existing.domain ? { domain } : {}),
 				},
@@ -1209,9 +1233,16 @@ export class SagePullService {
 						email: mapped.email,
 						phone: mapped.phone,
 						city: mapped.city,
+						stateCode: mapped.stateCode,
+						country: mapped.country,
+						countryCode: mapped.countryCode,
 						sage100CustomerNo: mapped.sage100CustomerNo,
 						sage100ArDivisionNo: mapped.sage100ArDivisionNo,
 						sageUpdatedAt: mapped.sageUpdatedAt,
+						latitude: null,
+						longitude: null,
+						geocodePlaceKey: null,
+						geocodedAt: null,
 						source: RecordSource.SAGE,
 						...ownerData,
 					},
@@ -1236,6 +1267,9 @@ export class SagePullService {
 				email: mapped.email,
 				phone: mapped.phone,
 				city: mapped.city,
+				stateCode: mapped.stateCode,
+				country: mapped.country,
+				countryCode: mapped.countryCode,
 				sageCrmCompanyId: mapped.sageCrmCompanyId,
 				sage100CustomerNo: mapped.sage100CustomerNo,
 				sage100ArDivisionNo: mapped.sage100ArDivisionNo,

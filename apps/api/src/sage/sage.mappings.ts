@@ -23,6 +23,9 @@ export type MappedCompany = {
 	email: string | null;
 	phone: string | null;
 	city: string | null;
+	stateCode: string | null;
+	country: string | null;
+	countryCode: string | null;
 	/** Sage primary person id, when present — used to set `primaryContactId`. */
 	primaryPersonId: string | null;
 	/**
@@ -82,6 +85,7 @@ export function mapCompany(record: SageRecord): MappedCompany | null {
 
 	const website = clean(record.website);
 	const email = normaliseEmail(record.emailaddress);
+	const { country, countryCode } = mapCountryFields(record.country);
 	return {
 		sageCrmCompanyId: id,
 		name,
@@ -92,6 +96,9 @@ export function mapCompany(record: SageRecord): MappedCompany | null {
 		email,
 		phone: joinPhone(record.areacode, record.number),
 		city: clean(record.city),
+		stateCode: mapStateCode(record.state),
+		country,
+		countryCode,
 		primaryPersonId: clean(record.primarypersonid),
 		accountManagerName: clean(record.acctmgr),
 		sageUpdatedAt: parseSageDate(record.updateddate),
@@ -562,6 +569,46 @@ function clean(value: string | null | undefined): string | null {
 	if (value === undefined || value === null) return null;
 	const trimmed = value.trim();
 	return trimmed.length > 0 ? trimmed : null;
+}
+
+/** Two-letter US/CA style codes uppercased; longer labels kept as-is. */
+function mapStateCode(value: string | null | undefined): string | null {
+	const cleaned = clean(value);
+	if (!cleaned) return null;
+	if (cleaned.length === 2) return cleaned.toUpperCase();
+	return cleaned;
+}
+
+/**
+ * Normalise Sage country strings into display name + ISO-ish code when we can.
+ * Unknown values keep the raw label and leave countryCode null.
+ */
+function mapCountryFields(value: string | null | undefined): {
+	country: string | null;
+	countryCode: string | null;
+} {
+	const cleaned = clean(value);
+	if (!cleaned) return { country: null, countryCode: null };
+
+	const upper = cleaned.toUpperCase();
+	if (
+		upper === "US" ||
+		upper === "USA" ||
+		upper === "UNITED STATES" ||
+		upper === "UNITED STATES OF AMERICA"
+	) {
+		return { country: "United States", countryCode: "US" };
+	}
+	if (upper === "CA" || upper === "CAN" || upper === "CANADA") {
+		return { country: "Canada", countryCode: "CA" };
+	}
+	if (upper === "MX" || upper === "MEX" || upper === "MEXICO") {
+		return { country: "Mexico", countryCode: "MX" };
+	}
+	if (cleaned.length === 2) {
+		return { country: cleaned, countryCode: upper };
+	}
+	return { country: cleaned, countryCode: null };
 }
 
 function normaliseEmail(value: string | null | undefined): string | null {
