@@ -584,9 +584,10 @@ knows prefs + synced mail (and optionally Graph). Do not build until asked.
 
 Connector syncing companies/contacts/deals so this app acts as the agentic
 front-end over Sage. The dedicated plan is [docs/plans/sage-crm-sync.md](sage-crm-sync.md).
-**Status (2026-08-02):** company/contact pull (Mobile Mark test slice) + Sage-ID
-UI are landed; Deal forecasting columns + opportunity import are next. Follow
-that doc + `HANDOFF.md`, not this stub.
+**Status (2026-08-02):** test-slice pull (companies, contacts, **deals**) +
+company/contact Sage-ID UI are landed. **Next: forecast view UI** (plan §3b).
+Follow [docs/plans/sage-crm-sync.md](sage-crm-sync.md) + `HANDOFF.md`, not this
+stub.
 
 ---
 

@@ -1,3 +1,4 @@
+import { DealStage } from "@crm/db";
 import type { SageCompanyTree, SageRecord } from "./sage-xml";
 
 /**
@@ -104,6 +105,97 @@ export function mapContact(
 	};
 }
 
+export type MappedOpportunity = {
+	sageCrmOpportunityId: string;
+	sageCrmCompanyId: string;
+	/** Sage primary person id — linked via `DealContact` when the contact exists. */
+	sageCrmPrimaryPersonId: string | null;
+	name: string;
+	/** Unweighted total — Sage `total`. */
+	amount: string | null;
+	/** Weighted forecast — Sage `forecast`. */
+	weightedAmount: string | null;
+	probability: number | null;
+	currency: string;
+	stage: DealStage;
+	sageStage: string | null;
+	sageStatus: string | null;
+	dealType: string | null;
+	expectedCloseDate: Date | null;
+	closedAt: Date | null;
+	/** Sage `assigneduserid` — resolve via `emailForSageUser` + fallback. */
+	sageAssignedUserId: string | null;
+};
+
+/**
+ * Map a flat Sage opportunity onto local Deal fields (plan §3.3 / §3b).
+ *
+ * null when there is no usable id, description, or primary company.
+ */
+export function mapOpportunity(record: SageRecord): MappedOpportunity | null {
+	const id = clean(record.opportunityid);
+	const name = clean(record.description);
+	const companyId = clean(record.primarycompanyid);
+	if (!id || !name || !companyId) return null;
+
+	const sageStage = clean(record.stage);
+	const sageStatus = clean(record.status);
+
+	return {
+		sageCrmOpportunityId: id,
+		sageCrmCompanyId: companyId,
+		sageCrmPrimaryPersonId: clean(record.primarypersonid),
+		name,
+		amount: parseDecimal(record.total),
+		weightedAmount: parseDecimal(record.forecast),
+		probability: parseCertainty(record.certainty),
+		currency: clean(record.currency) ?? "USD",
+		stage: mapSageDealStage(sageStage, sageStatus),
+		sageStage,
+		sageStatus,
+		dealType: clean(record.type),
+		expectedCloseDate: parseSageDate(record.targetclose),
+		closedAt: parseSageDate(record.closed),
+		sageAssignedUserId: clean(record.assigneduserid),
+	};
+}
+
+/**
+ * Sage stage/status -> existing `DealStage` enum (plan §3.3).
+ *
+ * Keep the CRM pipeline; store raw Sage values separately for push. Unknown /
+ * blank never fails the import — defaults to `QUALIFIED_TO_BUY`.
+ */
+export function mapSageDealStage(
+	sageStage: string | null | undefined,
+	sageStatus: string | null | undefined,
+): DealStage {
+	const stage = clean(sageStage)?.toLowerCase() ?? "";
+	const status = clean(sageStatus)?.toLowerCase() ?? "";
+
+	if (stage === "closed won" || status === "won") {
+		return DealStage.CLOSED_WON;
+	}
+	if (
+		stage === "lost" ||
+		status === "lost" ||
+		(status === "closed" && stage !== "closed won")
+	) {
+		return DealStage.CLOSED_LOST;
+	}
+	if (stage === "investigation/prospecting") {
+		return DealStage.QUALIFIED_TO_BUY;
+	}
+	if (stage === "proposal" || stage === "purchasing") {
+		return DealStage.CONTRACT_SENT;
+	}
+	if (stage === "negotiation") {
+		return DealStage.DECISION_MAKER_BOUGHT_IN;
+	}
+
+	return DealStage.QUALIFIED_TO_BUY;
+}
+
 /**
  * Sage 100 customer key shown to reps, e.g. "00-0000777".
  *
@@ -197,4 +289,30 @@ function domainFrom(value: string | null | undefined): string | null {
 
 	if (!host?.includes(".")) return null;
 	return host;
+}
+
+/** Decimal string for Prisma, or null when blank / not a number. */
+function parseDecimal(value: string | null | undefined): string | null {
+	const cleaned = clean(value);
+	if (!cleaned) return null;
+	const n = Number(cleaned);
+	if (!Number.isFinite(n)) return null;
+	return cleaned;
+}
+
+/** Sage certainty % — integer 0–100, or null. */
+function parseCertainty(value: string | null | undefined): number | null {
+	const cleaned = clean(value);
+	if (!cleaned) return null;
+	const n = Number.parseInt(cleaned, 10);
+	if (!Number.isFinite(n)) return null;
+	return Math.min(100, Math.max(0, n));
+}
+
+/** Sage ISO-ish datetime (`2026-07-30T16:50:58`) -> Date, or null. */
+function parseSageDate(value: string | null | undefined): Date | null {
+	const cleaned = clean(value);
+	if (!cleaned) return null;
+	const date = new Date(cleaned);
+	return Number.isNaN(date.getTime()) ? null : date;
 }

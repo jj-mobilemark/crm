@@ -544,6 +544,20 @@ model Deal {
   closedAt          DateTime?
   closedReason      String?
 
+  /// Sage CRM opportunity id (eware `opportunityid`). Join key for the Sage
+  /// pull; unique so a re-pull updates rather than duplicates. Opportunities
+  /// are Sage CRM only — no Sage 100 id.
+  sageCrmOpportunityId String? @unique
+  /// Sage certainty % (0–100). Forecasting lives on the opportunity in Sage.
+  probability Int?
+  /// Sage `forecast` — weighted revenue. Paired with `amount` <- `total`.
+  weightedAmount Decimal? @db.Decimal(14, 2)
+  /// Sage opportunity `type` (e.g. Key Opportunity / New Business).
+  dealType String?
+  /// Raw Sage stage/status for 1:1 push and board display without a snapshot read.
+  sageStage  String?
+  sageStatus String?
+
   /// Denormalised max(activity.createdAt), written with the activity.
   ///
   /// A real column because it is a sortable column on every list, and ordering

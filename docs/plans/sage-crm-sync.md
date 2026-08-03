@@ -223,7 +223,7 @@ to be exposed later, add `sage100ContactCode` then.
 | `stage` | `stage` + `status` | map to `DealStage` (see below) |
 | `expectedCloseDate` | `targetclose` | |
 | `closedAt` | `closed` | |
-| `ownerId` | `assigneduserid` | **REQUIRED locally, but unmappable via SOAP** (no `user` entity). See open items — needs a fallback owner. |
+| `ownerId` | `assigneduserid` | REQUIRED locally. Resolve via `SAGE_USER_EMAILS`; unmapped → `ken@mobilemark.com`, else earliest User. Never null. |
 
 **Stage mapping (`DealStage`).** Sage stage/status vocabulary enumerated from a
 100-opportunity sample:
@@ -287,18 +287,10 @@ the "add the fewest columns" principle: three optional `Deal` columns for a
 capability the CRM lacks entirely, not a new model. Everything else Sage carries
 on an opportunity stays in the snapshot.
 
-**The gap:** the local `Deal` model has `amount`, `stage`, `expectedCloseDate`
-and nothing else. It has **no probability/certainty, no weighted-forecast value,
-no deal type, and no pipeline/forecast reporting**. As-is, this app cannot show
-the team their forecast — the single thing they rely on Sage for. To be a real
-interface improvement layer, `Deal` needs (all additive):
-
-- `probability Int?` (<- `certainty`)
-- `weightedAmount` / `forecastAmount Decimal?` (<- `forecast`; or derive
-  `amount * probability`)
-- `dealType String?` (<- opportunity `type`)
-- and the UI needs a **forecast view**: pipeline by close month, weighted vs
-  unweighted, per rep — none of which exists today.
+**The gap (remaining):** Deal columns and opportunity import are landed for the
+test slice. The app still has **no forecast view** — pipeline by close month,
+weighted vs unweighted, per rep. That UI is the next build step (see
+`HANDOFF.md`). Without it, reps cannot see the forecast they rely on Sage for.
 
 For **bidirectional** later: reps forecasting in THIS app means writing
 `stage`, `certainty`, `forecast`, `targetclose` back onto the Sage opportunity
@@ -388,8 +380,9 @@ Mark records.
 3. **Stage model — DECIDED (revised): keep the CRM's `DealStage` enum**, map
    Sage -> local for display, store the raw Sage stage for 1:1 push (section
    3.3). No enum swap / board re-key (per the guiding principle).
-4. **Forecasting — DECIDED: in the first cut** (section 3b). Schema columns
-   on `Deal` are still TODO (next agent).
+4. **Forecasting — DECIDED: in the first cut** (section 3b). Deal columns +
+   opportunity import are DONE. Remaining: **forecast view UI** (see
+   `HANDOFF.md` Current state recipe).
 5. **Which extra modules** to bring in (order of value): communications ->
    order history -> leads -> quotes/cases. Confirm with the team. (Not blocking
    the triad.)
@@ -411,36 +404,31 @@ Mark records.
 
 ## 5. Build phases
 
-**Status (2026-08-02):** 7.1 company/contact schema, 7.2 SOAP client, 7.3
-mappings, **7.4a test-slice import**, and **7.4c Sage-ID UI** are DONE.
-`Deal` forecasting columns + opportunity import are **NOT** done (next).
-Then 7.4b full pull. Exact next-step recipe lives in `HANDOFF.md` Current state.
+**Status (2026-08-02):** 7.1 (incl. Deal forecasting + `sageStage`/`sageStatus`),
+7.2 SOAP client, 7.3 mappings (incl. opportunity), **7.4a test-slice**
+(companies + people + opportunities), and **7.4c Sage-ID UI** (company/contact)
+are DONE. **Next: forecast view UI** (section 3b) — recipe in `HANDOFF.md`.
+Then optional deal Sage-ID UI; then **7.4b** full pull.
 
-1. **7.1 Schema** (additive): `RecordSource.SAGE`; ids —
+1. **7.1 Schema** (DONE): `RecordSource.SAGE`; ids —
    `Company.sageCrmCompanyId`, `Contact.sageCrmContactId`,
    `Deal.sageCrmOpportunityId` (all `String? @unique`), plus
    `Company.sage100CustomerNo` + `Company.sage100ArDivisionNo` (section 3d);
-   KEEP the existing `DealStage` enum (map Sage -> local, section 3.3) — optional
-   `Deal.sageStage String?` only if the UI needs the raw Sage stage;
-   forecasting fields on `Deal` (`probability Int?`, `weightedAmount Decimal?`,
-   `dealType String?` — section 3b); `SageSyncState` (per-entity cursor, mirrors
-   `MailboxSync`); `SageRecordSnapshot` (`entity`, `sageId`, `payload Json`,
-   `@@unique([entity, sageId])`). Migration `add_sage_sync`.
-2. **7.2 Config + client**: `SAGE_SOAP_*` already in `.env` (add to
-   `.env.example` + `env.validation.ts`, all-or-none capability helper).
-   `apps/api/src/sage/sage-soap.client.ts`: logon/session cache + re-logon,
-   `query(entity, predicate)`, `SageResult<T>` (never throws; mirrors
-   `GraphApiClient`).
-3. **7.3 Mapping catalog**: `apps/api/src/sage/sage.mappings.ts` from section 3.
-4. **7.4a Test-slice import** (DONE): on-demand route importing the Mobile Mark
-   companies via the hierarchical `company` query (+ nested people), write
-   snapshots, upsert Company/Contact. `next` pagination + hierarchical parser
-   landed. Opportunities wait for Deal fields. `getmetadata` still optional
-   follow-up.
-5. **7.4c Sage-ID UI** (DONE): `CopyButton` in `packages/ui`; id fields on
-   `list()`/`byId` selects (+ contact's nested company); Sage columns on the
-   companies/contacts tables (`defaultHidden`); "Sage" section on company +
-   contact sheets.
+   KEEP the existing `DealStage` enum (map Sage -> local, section 3.3);
+   `Deal.sageStage` / `Deal.sageStatus`; forecasting fields
+   (`probability`, `weightedAmount`, `dealType`); `SageSyncState`;
+   `SageRecordSnapshot`. Migrations `add_sage_sync` +
+   `add_deal_sage_fields`.
+2. **7.2 Config + client** (DONE): `SAGE_SOAP_*`; logon/query/next/logoff;
+   `queryAllCompanies` / `queryAllRecords`.
+3. **7.3 Mapping catalog** (DONE): `sage.mappings.ts` from section 3
+   (company, contact, opportunity + stage mapper + owner emails).
+4. **7.4a Test-slice import** (DONE): Mobile Mark companies (hierarchical) +
+   nested people + opportunities (`oppo_primarycompanyid IN (…) AND
+   oppo_deleted IS NULL`); snapshots; upserts; `DealContact` from
+   `primarypersonid`.
+5. **7.4c Sage-ID UI** (DONE for company/contact): `CopyButton`; id fields on
+   list/byId; table columns + sheet sections. Deal Sage-ID optional follow-on.
 6. **7.4b Full pull at scale**: `sage-pull.service.ts` — the two-phase
    (backfill -> incremental), single-session, throttled design in **section 6**
    (~14k companies/~26k contacts; `query`/`next` ~100/page; `comp_deleted IS

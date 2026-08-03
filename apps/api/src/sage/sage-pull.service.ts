@@ -1,4 +1,4 @@
-import { type Db, RecordSource } from "@crm/db";
+import { type Db, DealStage, RecordSource } from "@crm/db";
 import { Injectable, Logger } from "@nestjs/common";
 import { InjectDatabase } from "../database/database.constants";
 import { SageSoapClient } from "./sage-soap.client";
@@ -7,12 +7,18 @@ import {
 	SAGE_TEST_OPPORTUNITY_COMPANY_ID,
 } from "./sage.constants";
 import {
+	emailForSageUser,
 	mapCompanyTree,
 	mapContact,
+	mapOpportunity,
 	type MappedCompany,
 	type MappedContact,
+	type MappedOpportunity,
 } from "./sage.mappings";
 import type { SageCompanyTree } from "./sage-xml";
+
+/** Fallback owner when Sage assigneduserid is unmapped (Ken — Sage id 27). */
+const FALLBACK_OWNER_EMAIL = "ken@mobilemark.com";
 
 export type SageTestSliceSummary = {
 	outcome: "ok" | "not-configured" | "auth-failed" | "failed" | "busy";
@@ -20,6 +26,8 @@ export type SageTestSliceSummary = {
 	companiesFetched: number;
 	companiesUpserted: number;
 	contactsUpserted: number;
+	dealsUpserted: number;
+	dealContactsLinked: number;
 	snapshotsWritten: number;
 	skipped: number;
 };
@@ -42,10 +50,10 @@ export class SagePullService {
 	) {}
 
 	/**
-	 * Import the Mobile Mark test companies (and nested people).
+	 * Import the Mobile Mark test companies, nested people, and opportunities.
 	 *
-	 * Bounded predicate — ~8 companies, one session, always logoff. Opportunities
-	 * wait for the Deal forecasting fields (deferred).
+	 * Bounded predicate — ~8 companies / ~4 deals on company 24, one session,
+	 * always logoff.
 	 */
 	async importTestSlice(): Promise<SageTestSliceSummary> {
 		if (this.running) {
@@ -64,6 +72,8 @@ export class SagePullService {
 			companiesFetched: 0,
 			companiesUpserted: 0,
 			contactsUpserted: 0,
+			dealsUpserted: 0,
+			dealContactsLinked: 0,
 			snapshotsWritten: 0,
 			skipped: 0,
 		};
@@ -99,6 +109,7 @@ export class SagePullService {
 			// Domains already claimed by ANY company — used to avoid unique
 			// collisions across the near-duplicate Mobile Mark rows.
 			const takenDomains = await this.loadTakenDomains();
+			const companyBySageId = new Map<string, string>();
 
 			for (const tree of trees) {
 				const result = await this.upsertCompanyTree(tree, takenDomains);
@@ -106,13 +117,32 @@ export class SagePullService {
 				summary.contactsUpserted += result.contacts;
 				summary.snapshotsWritten += result.snapshots;
 				summary.skipped += result.skipped;
+				if (result.localCompanyId && result.sageCrmCompanyId) {
+					companyBySageId.set(
+						result.sageCrmCompanyId,
+						result.localCompanyId,
+					);
+				}
 			}
+
+			const oppResult = await this.importOpportunities(companyBySageId);
+			if (oppResult.outcome !== "ok") {
+				summary.outcome = oppResult.outcome;
+				summary.reason = oppResult.reason;
+				return summary;
+			}
+			summary.dealsUpserted = oppResult.dealsUpserted;
+			summary.dealContactsLinked = oppResult.dealContactsLinked;
+			summary.snapshotsWritten += oppResult.snapshotsWritten;
+			summary.skipped += oppResult.skipped;
 
 			this.logger.log({
 				message: "Sage test-slice import finished",
 				companiesFetched: summary.companiesFetched,
 				companiesUpserted: summary.companiesUpserted,
 				contactsUpserted: summary.contactsUpserted,
+				dealsUpserted: summary.dealsUpserted,
+				dealContactsLinked: summary.dealContactsLinked,
 				snapshotsWritten: summary.snapshotsWritten,
 				skipped: summary.skipped,
 			});
@@ -132,6 +162,209 @@ export class SagePullService {
 			await this.soap.logoff();
 			this.running = false;
 		}
+	}
+
+	private async importOpportunities(
+		companyBySageId: Map<string, string>,
+	): Promise<{
+		outcome: SageTestSliceSummary["outcome"];
+		reason?: string;
+		dealsUpserted: number;
+		dealContactsLinked: number;
+		snapshotsWritten: number;
+		skipped: number;
+	}> {
+		const empty = {
+			outcome: "ok" as const,
+			dealsUpserted: 0,
+			dealContactsLinked: 0,
+			snapshotsWritten: 0,
+			skipped: 0,
+		};
+
+		const sageCompanyIds = [...companyBySageId.keys()];
+		if (sageCompanyIds.length === 0) return empty;
+
+		// Prefer the full slice; always include company 24.
+		const idList = sageCompanyIds.includes(SAGE_TEST_OPPORTUNITY_COMPANY_ID)
+			? sageCompanyIds
+			: [...sageCompanyIds, SAGE_TEST_OPPORTUNITY_COMPANY_ID];
+		const predicate =
+			`oppo_primarycompanyid IN (${idList.join(",")})` +
+			` AND oppo_deleted IS NULL`;
+
+		const fetched = await this.soap.queryAllRecords(
+			"opportunity",
+			predicate,
+		);
+		if (fetched.outcome !== "ok") {
+			return {
+				...empty,
+				outcome: fetched.outcome,
+				reason: fetched.reason,
+			};
+		}
+
+		const fallbackOwnerId = await this.resolveFallbackOwnerId();
+		if (!fallbackOwnerId) {
+			this.logger.warn({
+				message:
+					"No local User for deal owner fallback — skipping opportunities",
+			});
+			return { ...empty, skipped: fetched.data.length };
+		}
+
+		let dealsUpserted = 0;
+		let dealContactsLinked = 0;
+		let snapshotsWritten = 0;
+		let skipped = 0;
+
+		for (const record of fetched.data) {
+			const mapped = mapOpportunity(record);
+			if (!mapped) {
+				skipped += 1;
+				continue;
+			}
+
+			snapshotsWritten += await this.writeSnapshot(
+				"opportunity",
+				mapped.sageCrmOpportunityId,
+				record,
+			);
+
+			const companyId = companyBySageId.get(mapped.sageCrmCompanyId);
+			if (!companyId) {
+				skipped += 1;
+				continue;
+			}
+
+			const ownerId =
+				(await this.resolveOwnerId(mapped.sageAssignedUserId)) ??
+				fallbackOwnerId;
+
+			const dealId = await this.upsertDeal(mapped, companyId, ownerId);
+			if (!dealId) {
+				skipped += 1;
+				continue;
+			}
+			dealsUpserted += 1;
+
+			if (mapped.sageCrmPrimaryPersonId) {
+				const linked = await this.linkPrimaryDealContact(
+					dealId,
+					mapped.sageCrmPrimaryPersonId,
+				);
+				if (linked) dealContactsLinked += 1;
+			}
+		}
+
+		return {
+			outcome: "ok",
+			dealsUpserted,
+			dealContactsLinked,
+			snapshotsWritten,
+			skipped,
+		};
+	}
+
+	private async upsertDeal(
+		mapped: MappedOpportunity,
+		companyId: string,
+		ownerId: string,
+	): Promise<string | null> {
+		const existing = await this.db.deal.findUnique({
+			where: { sageCrmOpportunityId: mapped.sageCrmOpportunityId },
+			select: { id: true, stage: true },
+		});
+
+		const fields = {
+			name: mapped.name,
+			companyId,
+			ownerId,
+			amount: mapped.amount,
+			weightedAmount: mapped.weightedAmount,
+			probability: mapped.probability,
+			currency: mapped.currency,
+			stage: mapped.stage,
+			sageStage: mapped.sageStage,
+			sageStatus: mapped.sageStatus,
+			dealType: mapped.dealType,
+			expectedCloseDate: mapped.expectedCloseDate,
+			closedAt: mapped.closedAt,
+		};
+
+		if (existing) {
+			const stageChanged = existing.stage !== mapped.stage;
+			await this.db.deal.update({
+				where: { id: existing.id },
+				data: {
+					...fields,
+					...(stageChanged
+						? { stageChangedAt: new Date() }
+						: {}),
+				},
+			});
+			return existing.id;
+		}
+
+		const created = await this.db.deal.create({
+			data: {
+				...fields,
+				sageCrmOpportunityId: mapped.sageCrmOpportunityId,
+				stageChangedAt: new Date(),
+				closedAt:
+					mapped.closedAt ??
+					(isClosedStage(mapped.stage) ? new Date() : null),
+			},
+			select: { id: true },
+		});
+		return created.id;
+	}
+
+	private async linkPrimaryDealContact(
+		dealId: string,
+		sageCrmContactId: string,
+	): Promise<boolean> {
+		const contact = await this.db.contact.findUnique({
+			where: { sageCrmContactId },
+			select: { id: true },
+		});
+		if (!contact) return false;
+
+		await this.db.dealContact.createMany({
+			data: [{ dealId, contactId: contact.id, role: "primary" }],
+			skipDuplicates: true,
+		});
+		return true;
+	}
+
+	private async resolveOwnerId(
+		sageUserId: string | null,
+	): Promise<string | null> {
+		const email = emailForSageUser(sageUserId);
+		if (!email) return null;
+		const user = await this.db.user.findFirst({
+			where: { email },
+			select: { id: true },
+		});
+		return user?.id ?? null;
+	}
+
+	/**
+	 * Never leave `ownerId` null. Prefer Ken; else earliest User by createdAt.
+	 */
+	private async resolveFallbackOwnerId(): Promise<string | null> {
+		const ken = await this.db.user.findFirst({
+			where: { email: FALLBACK_OWNER_EMAIL },
+			select: { id: true },
+		});
+		if (ken) return ken.id;
+
+		const earliest = await this.db.user.findFirst({
+			orderBy: { createdAt: "asc" },
+			select: { id: true },
+		});
+		return earliest?.id ?? null;
 	}
 
 	private async loadTakenDomains(): Promise<Set<string>> {
@@ -154,10 +387,19 @@ export class SagePullService {
 		contacts: number;
 		snapshots: number;
 		skipped: number;
+		localCompanyId: string | null;
+		sageCrmCompanyId: string | null;
 	}> {
 		const mapped = mapCompanyTree(tree);
 		if (!mapped) {
-			return { company: false, contacts: 0, snapshots: 0, skipped: 1 };
+			return {
+				company: false,
+				contacts: 0,
+				snapshots: 0,
+				skipped: 1,
+				localCompanyId: null,
+				sageCrmCompanyId: null,
+			};
 		}
 
 		let snapshots = 0;
@@ -171,7 +413,14 @@ export class SagePullService {
 
 		const companyId = await this.upsertCompany(mapped, takenDomains);
 		if (!companyId) {
-			return { company: false, contacts: 0, snapshots, skipped: 1 };
+			return {
+				company: false,
+				contacts: 0,
+				snapshots,
+				skipped: 1,
+				localCompanyId: null,
+				sageCrmCompanyId: mapped.sageCrmCompanyId,
+			};
 		}
 
 		let contacts = 0;
@@ -210,7 +459,14 @@ export class SagePullService {
 			}
 		}
 
-		return { company: true, contacts, snapshots, skipped };
+		return {
+			company: true,
+			contacts,
+			snapshots,
+			skipped,
+			localCompanyId: companyId,
+			sageCrmCompanyId: mapped.sageCrmCompanyId,
+		};
 	}
 
 	private async upsertCompany(
@@ -396,7 +652,7 @@ export class SagePullService {
 	}
 
 	private async writeSnapshot(
-		entity: "company" | "person",
+		entity: "company" | "person" | "opportunity",
 		sageId: string,
 		payload: unknown,
 	): Promise<number> {
@@ -419,9 +675,17 @@ function emptySummary(
 		companiesFetched: 0,
 		companiesUpserted: 0,
 		contactsUpserted: 0,
+		dealsUpserted: 0,
+		dealContactsLinked: 0,
 		snapshotsWritten: 0,
 		skipped: 0,
 	};
+}
+
+function isClosedStage(stage: DealStage): boolean {
+	return (
+		stage === DealStage.CLOSED_WON || stage === DealStage.CLOSED_LOST
+	);
 }
 
 /**

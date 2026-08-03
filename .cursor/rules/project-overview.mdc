@@ -50,9 +50,10 @@ surface on top, syncing bidirectionally (pull first, push later).
   Google/Microsoft modules) — the "intelligence never in the API" rule still
   holds.
 - **Forecasting is opportunity-driven in Sage** (stage + certainty% + forecast
-  amount + target close), not a separate record. The local `Deal` model does
-  not yet carry probability/weighted-amount/type or a forecast view — treat
-  that as a first-class gap, not an afterthought.
+  amount + target close), not a separate record. Local `Deal` now carries
+  `probability` / `weightedAmount` / `dealType` / `sageStage` / `sageStatus`
+  and the test slice imports opportunities — the remaining gap is the
+  **forecast view UI** (see `HANDOFF.md` and plan §3b).
 
 ## Where to read more
 

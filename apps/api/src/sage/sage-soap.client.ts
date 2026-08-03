@@ -188,6 +188,31 @@ export class SageSoapClient {
 		return { outcome: "ok", data: all };
 	}
 
+	/**
+	 * Walk every page of a flat-entity query (`opportunity`, etc.) via
+	 * `query` -> `next` while `<more>true</more>`. Same session rules as
+	 * `queryAllCompanies`.
+	 */
+	async queryAllRecords(
+		entity: SageEntity,
+		predicate: string,
+	): Promise<SageResult<SageRecord[]>> {
+		const first = await this.queryPage(entity, predicate);
+		if (first.outcome !== "ok") return first;
+
+		const all = [...first.data.records];
+		let more = first.data.more;
+
+		while (more) {
+			const page = await this.nextPage(entity);
+			if (page.outcome !== "ok") return page;
+			all.push(...page.data.records);
+			more = page.data.more;
+		}
+
+		return { outcome: "ok", data: all };
+	}
+
 	/** Best-effort session teardown; failures are swallowed. */
 	async logoff(): Promise<void> {
 		if (!this.creds || !this.sessionId) return;

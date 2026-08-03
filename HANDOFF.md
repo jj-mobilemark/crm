@@ -25,13 +25,12 @@ it before stopping. The rules for maintaining it live in `AGENTS.md`
 
 - **Git**: `origin` = `jj-mobilemark/crm` (fork); `upstream` = `trycompai/crm`
   (read-only). Work on `main`. Pre-upstream-merge snapshot: `421e556`.
-  **7.4a + 7.4c code is UNCOMMITTED** (see `git status`: sage pull/controller,
-  copy-button, table/sheet UI, HANDOFF, plan). Commit before the next phase
-  unless the human says otherwise.
+  Latest Sage commits: `9a0d06c` (7.4a/7.4c), then Deal+opportunity import
+  (see tip). Working tree should be clean after that commit.
 - **Upstream delta absorbed**: ~40 `packages/ui` restyles + favicon + prefetch.
   **Visual pass still needed** on Microsoft settings + sign-in.
-- **Verification**: `check-types` api/app/ui green; Sage unit tests 24 pass;
-  live Mobile Mark smoke OK. After person-email fix: **94 emails / 26 blank**.
+- **Verification**: `check-types` api/db green; Sage unit tests **29** pass;
+  live smoke OK — `dealsUpserted: 4`, `dealContactsLinked: 4` on company 24.
 - **Runs locally**: Postgres via `docker compose up -d`. Prefer
   `bun run src/main.ts` in `apps/api` (**restart after Sage edits** — no hot
   reload) + `bun run dev` in `apps/app`. Re-run test slice:
@@ -39,54 +38,124 @@ it before stopping. The rules for maintaining it live in `AGENTS.md`
 - **Auth / env**: allow-list `ALLOWED_SIGN_IN=mobilemark.com`; Microsoft SSO
   works. `MICROSOFT_*` + `CRON_SECRET` + `SAGE_SOAP_*` in root `.env` (never
   record secrets here).
-- **Sage test slice in DB**: 8 companies (Sage CRM ids 24, 4139, 4143, 4145,
-  4146, 4153, 4214, 9677) + 120 contacts. Company **24** = MOBILE MARK INC,
-  Sage 100 `00-0000777`, **4 opportunities in Sage (not imported yet)**.
-  Dirty first names (`*`); near-dupes leave `domain` null except one
-  `mobilemark.com` claim.
+- **Sage test slice in DB**: 8 companies + 120 contacts + **4 deals** on
+  company 24 (ids `1`, `2`, `383`, `557`). Stages:
+  `CLOSED_WON` / `CLOSED_LOST` / blank→`QUALIFIED_TO_BUY`. Each deal linked
+  via `DealContact` role `primary`. Opp `383`: `weightedAmount` 81008.4,
+  probability 100, `amount` null (Sage `total` blank; snapshot has raw).
 - **Active plan**: `docs/plans/sage-crm-sync.md` (canonical). Stub:
   `docs/plans/m365-expansion.md` Phase 7.
 - **Phases 0–5**: DONE. **Phase 6**: DEFERRED by human.
-- **Phase 7 DONE**: 7.1 company/contact schema + snapshots; 7.2 SOAP client;
-  7.3 mappings + `SAGE_USER_EMAILS`; 7.4a test-slice import; 7.4c Sage-ID UI.
+- **Phase 7 DONE**: 7.1 (+ Deal forecasting cols + `sageStage`/`sageStatus`);
+  7.2 SOAP; 7.3 maps incl. `mapOpportunity` / `mapSageDealStage`; 7.4a
+  companies + people + opportunities; 7.4c company/contact Sage-ID UI.
 - **Phase 7 key files**:
-  - `apps/api/src/sage/sage-soap.client.ts` — logon/query/next/logoff
+  - `apps/api/src/sage/sage-soap.client.ts` — + `queryAllRecords`
   - `apps/api/src/sage/sage-xml.ts` — flat + hierarchical (`enrichPerson`)
-  - `apps/api/src/sage/sage.mappings.ts` — maps + owner emails
-  - `apps/api/src/sage/sage-pull.service.ts` — `importTestSlice()`
+  - `apps/api/src/sage/sage.mappings.ts` — company/contact/opportunity
+  - `apps/api/src/sage/sage-pull.service.ts` — `importTestSlice()` (deals too)
   - `apps/api/src/sage/sage-sync.controller.ts` — `/internal/sync/sage`
-  - `packages/ui/src/components/copy-button.tsx`
-  - `apps/app/components/crm/sage-id.ts` + `sage-id-value.tsx`
-- **Phase 7 NOT done**: `Deal` still has **no** `sageCrmOpportunityId` /
-  forecasting columns (schema.prisma `Deal` is stock). No `mapOpportunity`.
-  No opportunity pull. No forecast view UI. No 7.4b full pull.
+  - `packages/db/prisma/migrations/20260802200000_add_deal_sage_fields/`
+  - Existing UI to extend: `apps/app/app/(app)/sales-dashboard.tsx`,
+    `apps/app/app/(app)/deals/deals-table.tsx`,
+    `apps/api/src/deals/deals.service.ts` (list/byId do **not** yet select
+    forecast columns).
+- **Phase 7 NOT done**: **forecast view UI** (headline gap); optional deal
+  Sage-ID on sheets/tables; 7.4b full pull.
 - **Guiding principle**: fit Sage INTO existing models; fewest columns;
   snapshot = lossless backstop; **KEEP** `DealStage` enum (map per §3.3).
-- **Decisions already made**: owner map static (in `sage.mappings.ts`);
-  `amount` ← `total`, weighted ← `forecast`; forecasting IN as optional Deal
-  columns; stages map §3.3.
+- **Decisions already made**: owner map static; fallback
+  `ken@mobilemark.com` then earliest User; `amount` ← `total`,
+  `weightedAmount` ← `forecast`; `sageStage`/`sageStatus` IN; `DealContact`
+  from `primarypersonid` when contact exists.
 - **Gotchas**: `query`→`next` while `<more>`; ONE session globally; never
-  retry-spam logon; person emails nested under person (do not steal into
-  company).
-- **Next step (ONE path — do this, no fork)**: Deal schema + opportunity
-  import for the test slice. Plan: `docs/plans/sage-crm-sync.md` §§3.3, 3b.
-  1. Additive Prisma migration on `Deal`: `sageCrmOpportunityId String?
-     @unique`, `probability Int?`, `weightedAmount Decimal?`, `dealType
-     String?`, optional `sageStage`/`sageStatus` String? for push.
-  2. Add `mapOpportunity` + stage mapper in `sage.mappings.ts` (§3.3 table).
-  3. Extend `importTestSlice` to query `opportunity` with
-     `oppo_primarycompanyid` in slice ids (or `= 24` first) AND
-     `oppo_deleted IS NULL`; upsert Deal + `SageRecordSnapshot`.
-  4. **Fallback owner** when `assigneduserid` unmapped: User with email
-     `ken@mobilemark.com` (Sage id 27); else earliest User by `createdAt`.
-     Never null `ownerId`.
-  5. Smoke: re-run `/internal/sync/sage`; expect ~4 deals on company 24.
-  Later: forecast view UI; then 7.4b (plan §6).
+  retry-spam logon; person emails nested under person; API has **no hot
+  reload** — restart after Sage edits.
+- **Next step (ONE path — do this, no fork)**: Forecast view UI.
+  Plan: `docs/plans/sage-crm-sync.md` §3b. Skills: `shadcn`, `nestjs-trpc`,
+  `no-use-effect`, `docs/design.md` (`packages/ui` only).
+  1. **API**: expose `probability`, `weightedAmount`, `dealType`,
+     `sageStage`, `sageStatus`, `sageCrmOpportunityId` on `deals.list` /
+     `deals.byId` (and any dashboard aggregate used). Money stays cents via
+     `toCents` (`apps/api/src/crm/values.ts`). Add a small forecast query if
+     needed (open deals grouped by `expectedCloseDate` month + `ownerId`;
+     sum `weightedAmount` and `amount`).
+  2. **UI**: a forecast surface for reps — by close month, weighted vs
+     unweighted, per rep. Prefer extending the existing sales dashboard /
+     deals area over a parallel nav item unless the design clearly needs one.
+     Show certainty % and deal type on the deal sheet/table where useful.
+  3. **Optional same pass**: Sage CRM ID copy on deal sheet (mirror 7.4c;
+     deals have no Sage 100 id).
+  4. Smoke: open `/deals` and the forecast surface; company-24 deals should
+     show weighted totals (esp. opp `383` ≈ $81k weighted).
+  Later: 7.4b full pull (plan §6) — `SageSyncState` phase fields + global
+  lock + soft-deactivate. Not before forecast UI unless human says so.
 - **Scale note (7.4b later)**: ~14k companies / ~26k contacts;
   `comp_deleted IS NULL`; need `SageSyncState` phase fields + global lock +
   soft-deactivate.
 
 ## Work log (newest first)
+
+### 2026-08-02 — Commit Deal import + handoff for forecast UI (agent: Grok via Cursor)
+
+**Plan / phase**: docs + commit — prep next agent for forecast view (§3b).
+
+**What was completed**
+
+- Committed Deal schema + opportunity test-slice import (migration,
+  `mapOpportunity`, pull, tests, HANDOFF).
+- Refreshed Current state with a single forecast-UI recipe (API fields →
+  dashboard/table → optional deal Sage-ID → smoke).
+- Updated `docs/plans/sage-crm-sync.md` §4/§5 status, Phase 7 stub in
+  `docs/plans/m365-expansion.md`, and `.cursor/rules/project-overview.mdc`
+  (Deal columns landed; gap is the forecast view).
+
+**How and why**
+
+- Human asked to commit then prep docs so the next agent can continue without
+  re-discovering status.
+
+**Deviations**
+
+- None.
+
+**What's next**
+
+- Unchanged recipe: Forecast view UI (Current state).
+
+### 2026-08-02 — Deal schema + opportunity test-slice import (agent: Grok via Cursor)
+
+**Plan / phase**: `docs/plans/sage-crm-sync.md` §§3.3, 3b — Deal fields +
+opportunity pull.
+
+**What was completed**
+
+- Committed prior 7.4a/7.4c work as `9a0d06c`.
+- Additive Prisma migration `20260802200000_add_deal_sage_fields`:
+  `sageCrmOpportunityId`, `probability`, `weightedAmount`, `dealType`,
+  `sageStage`, `sageStatus` on `Deal`.
+- `mapOpportunity` + `mapSageDealStage` in `sage.mappings.ts`; unit tests
+  (29 Sage tests green).
+- `queryAllRecords` on SOAP client; `importTestSlice` pulls opportunities for
+  slice company ids (`oppo_deleted IS NULL`), upserts Deal + snapshot, links
+  `DealContact` when `primarypersonid` resolves; owner fallback Ken then
+  earliest User.
+- Live smoke: `dealsUpserted: 4`, `dealContactsLinked: 4` on company 24.
+
+**How and why**
+
+- Included `sageStage`/`sageStatus` now (cheap with the migration; needed for
+  push/board without snapshot reads). Named the weighted column
+  `weightedAmount`. Linked primary person via `DealContact` when present.
+
+**Deviations**
+
+- Opp `383` has blank Sage `total` → local `amount` null while
+  `weightedAmount` is set. Snapshot retains the raw row.
+
+**What's next**
+
+- Forecast view UI (plan §3b).
 
 ### 2026-08-02 — Handoff tightened for next agent (agent: Grok via Cursor)
 
