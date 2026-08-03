@@ -28,7 +28,7 @@ import {
 } from "@crm/ui/lib/format";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import Link from "next/link";
-import { useQueryState } from "nuqs";
+import { useQueryStates } from "nuqs";
 import type { CSSProperties } from "react";
 import { toast } from "sonner";
 import {
@@ -66,15 +66,21 @@ export function DashboardSummary() {
 	const cache = useCrmCache();
 	const openRecord = useOpenRecord();
 
-	// Read, not written, here: the toggle in the page header owns the setter, and
-	// both sides agree because the value lives in the URL rather than in a
-	// provider threaded between them.
-	const [scope] = useQueryState("scope", overviewParsers.scope);
+	// Read, not written, here: the header controls own the setters, and both
+	// sides agree because the values live in the URL rather than in a provider.
+	const [params] = useQueryStates(overviewParsers);
+	const { scope, range, from, to } = params;
+
+	const summaryInput = {
+		scope,
+		range,
+		...(range === "custom" && from && to ? { from, to } : {}),
+	};
 
 	const summaryQuery = useQuery({
-		...trpc.dashboard.summary.queryOptions({ scope }),
-		// Switching scope keeps the previous numbers on screen while the new ones
-		// load, the same way the tables hold their rows while paging.
+		...trpc.dashboard.summary.queryOptions(summaryInput),
+		// Switching scope/range keeps the previous numbers on screen while the
+		// new ones load, the same way the tables hold their rows while paging.
 		placeholderData: (previous) => previous,
 	});
 
@@ -98,7 +104,11 @@ export function DashboardSummary() {
 	const { biggestOpen, overdueTasks, recentActivity } = summary;
 
 	const mine = scope === "me";
-	const largestOpenCents = biggestOpen[0]?.amountCents ?? 0;
+	const dealDisplayCents = (deal: (typeof biggestOpen)[number]) =>
+		deal.amountCents ?? deal.weightedAmountCents ?? 0;
+	const largestOpenCents = biggestOpen[0]
+		? dealDisplayCents(biggestOpen[0])
+		: 0;
 
 	const openColumns: SimpleTableColumn[] = [
 		{ header: "Deal" },
@@ -176,17 +186,21 @@ export function DashboardSummary() {
 											<ValueMeter
 												share={
 													largestOpenCents > 0
-														? ((deal.amountCents ?? 0) / largestOpenCents) * 100
+														? (dealDisplayCents(deal) / largestOpenCents) * 100
 														: 0
 												}
 												color={dealStageColor(deal.stage)}
 											/>
 										</TableCell>
 										<TableCell className={`${CELL} text-right tabular-nums`}>
-											{deal.amountCents === null ? (
+											{deal.amountCents === null &&
+											deal.weightedAmountCents === null ? (
 												<EmptyCellValue />
 											) : (
-												formatMoneyCompact(deal.amountCents, deal.currency)
+												formatMoneyCompact(
+													dealDisplayCents(deal),
+													deal.currency,
+												)
 											)}
 										</TableCell>
 									</SimpleTableRow>

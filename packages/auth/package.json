@@ -5,6 +5,7 @@
 	"type": "module",
 	"exports": {
 		".": "./src/index.ts",
+		"./admins": "./src/admins.ts",
 		"./client": "./src/client.ts",
 		"./scopes": "./src/scopes.ts",
 		"./workspace": "./src/workspace.ts"

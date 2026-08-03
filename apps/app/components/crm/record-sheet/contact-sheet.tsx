@@ -42,7 +42,7 @@ import { OwnerCell } from "@/components/crm/owner-cell";
 import { formatSage100Id } from "@/components/crm/sage-id";
 import { SageIdValue } from "@/components/crm/sage-id-value";
 import { ContactSocials, hasContactLinks } from "@/components/crm/social-links";
-import { DealStageMenu } from "@/components/crm/stage-change";
+import { OwnedDealStageMenu } from "@/components/crm/owned-deal-stage-menu";
 import { Timeline } from "@/components/crm/timeline/timeline";
 import {
 	DetailSheetBody,
@@ -702,7 +702,11 @@ function ContactDeals({ contact }: { contact: Contact }) {
 						{deal.role ?? <EmptyCellValue />}
 					</TableCell>
 					<TableCell className="px-3 py-2.5">
-						<DealStageMenu dealId={deal.id} stage={deal.stage} />
+						<OwnedDealStageMenu
+							dealId={deal.id}
+							stage={deal.stage}
+							ownerId={deal.owner.id}
+						/>
 					</TableCell>
 					<TableCell className="px-3 py-2.5 text-right">
 						<DealAmount

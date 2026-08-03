@@ -78,13 +78,28 @@ export function DealStageMenu({
 	dealId,
 	stage,
 	variant = "inline",
+	disabled = false,
 }: {
 	dealId: string;
 	stage: DealStage;
 	variant?: "inline" | "control";
+	/** Owner-only lock — shows the stage without opening the menu. */
+	disabled?: boolean;
 }) {
 	const [, setCloseParams] = useQueryStates(closeReasonParams);
 	const setStage = useStageMutation();
+
+	if (disabled) {
+		return variant === "control" ? (
+			<Button variant="outline" size="sm" disabled>
+				<DealStageIndicator stage={stage} className="text-foreground" />
+			</Button>
+		) : (
+			<span className="flex min-w-0 items-center text-left">
+				<DealStageIndicator stage={stage} />
+			</span>
+		);
+	}
 
 	return (
 		<DropdownMenu>

@@ -1,4 +1,8 @@
-import { createLoader, parseAsStringLiteral } from "nuqs/server";
+import {
+	createLoader,
+	parseAsString,
+	parseAsStringLiteral,
+} from "nuqs/server";
 
 /**
  * The overview URL. Shared by the page's server-side prefetch and the client
@@ -14,10 +18,31 @@ export const OVERVIEW_SCOPES = ["me", "everyone"] as const;
 
 export type OverviewScope = (typeof OVERVIEW_SCOPES)[number];
 
+/**
+ * Kept in step with `DASHBOARD_RANGES` in the API's dashboard contracts.
+ *
+ * Closed-won / win-rate only — open pipeline and forecast ignore this.
+ */
+export const OVERVIEW_RANGES = [
+	"today",
+	"this_week",
+	"this_month",
+	"this_year",
+	"past_30",
+	"custom",
+] as const;
+
+export type OverviewRange = (typeof OVERVIEW_RANGES)[number];
+
 export const overviewParsers = {
 	// A literal parser, not a plain string: `?scope=nonsense` then falls back to
 	// the default rather than reaching the API as an unhandled value.
 	scope: parseAsStringLiteral(OVERVIEW_SCOPES).withDefault("me"),
+	range: parseAsStringLiteral(OVERVIEW_RANGES).withDefault("this_year"),
+	/** `YYYY-MM-DD` — only sent when `range=custom`. */
+	from: parseAsString,
+	/** `YYYY-MM-DD` — only sent when `range=custom`. */
+	to: parseAsString,
 };
 
 export const loadOverviewSearchParams = createLoader(overviewParsers);

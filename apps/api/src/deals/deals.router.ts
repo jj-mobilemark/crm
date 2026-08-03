@@ -35,13 +35,25 @@ export class DealsRouter {
 	}
 
 	@Mutation({ input: dealCreateInput })
-	async create(@Input() input: z.infer<typeof dealCreateInput>) {
-		return this.deals.create(input);
+	async create(
+		@Ctx() ctx: AuthedTrpcContext,
+		@Input() input: z.infer<typeof dealCreateInput>,
+	) {
+		return this.deals.create(input, {
+			id: ctx.user.id,
+			email: ctx.user.email,
+		});
 	}
 
 	@Mutation({ input: dealUpdateArgs })
-	async update(@Input() input: z.infer<typeof dealUpdateArgs>) {
-		return this.deals.update(input.id, input.data);
+	async update(
+		@Ctx() ctx: AuthedTrpcContext,
+		@Input() input: z.infer<typeof dealUpdateArgs>,
+	) {
+		return this.deals.update(input.id, input.data, {
+			id: ctx.user.id,
+			email: ctx.user.email,
+		});
 	}
 
 	/** Moves the deal and writes the `STAGE_CHANGE` activity in one transaction. */
@@ -50,6 +62,9 @@ export class DealsRouter {
 		@Ctx() ctx: AuthedTrpcContext,
 		@Input() input: z.infer<typeof setStageInput>,
 	) {
-		return this.deals.setStage(input, ctx.user.id);
+		return this.deals.setStage(input, {
+			id: ctx.user.id,
+			email: ctx.user.email,
+		});
 	}
 }

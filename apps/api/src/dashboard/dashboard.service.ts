@@ -1,4 +1,4 @@
-import { ActivityType, type Db, DealStage } from "@crm/db";
+import { ActivityType, type Db, DealStage, type Prisma } from "@crm/db";
 import { Injectable } from "@nestjs/common";
 import { toCents } from "../crm/values";
 import { InjectDatabase } from "../database/database.constants";
@@ -12,30 +12,202 @@ const OWNER_SELECT = {
 	image: true,
 } as const;
 
-/** Months in the trend chart, the current one included. */
-const TREND_MONTHS = 6;
+/** Cap so a multi-year custom range does not draw fifty x-axis ticks. */
+const TREND_MONTHS_MAX = 24;
 
-/**
- * Window behind the rolling rates — win rate, average deal size, cycle time.
- *
- * A quarter is long enough that one good week does not swing it and short
- * enough that it still describes how the rep is selling now.
- */
-const RATE_WINDOW_DAYS = 90;
+/** Floor when the selected range is shorter than one month (Today / This week). */
+const TREND_MONTHS_MIN = 1;
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 /** "Feb". The chart has room for three letters, not "February". */
 const MONTH_LABEL = new Intl.DateTimeFormat("en-US", { month: "short" });
 
+/**
+ * Dollars for a KPI or chart point.
+ *
+ * Sage often leaves `total` (`amount`) at null/0 and puts revenue in `forecast`
+ * (`weightedAmount`). `??` alone is not enough: Postgres `SUM` of zeros is `0`,
+ * not null, and `0 ?? weighted` keeps the zero — which is why Open pipeline
+ * stayed at $0 beside a $13M weighted forecast.
+ */
+function dealMoneyCents(
+	amount: Prisma.Decimal | null | undefined,
+	weightedAmount: Prisma.Decimal | null | undefined,
+): number {
+	const amountCents = toCents(amount ?? null);
+	const weightedCents = toCents(weightedAmount ?? null);
+	if (amountCents !== null && amountCents !== 0) return amountCents;
+	if (weightedCents !== null && weightedCents !== 0) return weightedCents;
+	return amountCents ?? weightedCents ?? 0;
+}
+
+/**
+ * Month buckets for the trend chart — aligned to the selected closed-won range,
+ * not a fixed trailing six months.
+ */
+function trendWindow(rangeStart: Date, rangeEnd: Date): {
+	start: Date;
+	count: number;
+} {
+	const endMonth = monthStart(rangeEnd, 0);
+	let start = monthStart(rangeStart, 0);
+	let count = monthKey(endMonth) - monthKey(start) + 1;
+	if (count > TREND_MONTHS_MAX) {
+		start = monthStart(endMonth, -(TREND_MONTHS_MAX - 1));
+		count = TREND_MONTHS_MAX;
+	}
+	return { start, count: Math.max(TREND_MONTHS_MIN, count) };
+}
+
 /** Local month boundary, `offset` months from the one `from` falls in. */
 function monthStart(from: Date, offset: number): Date {
 	return new Date(from.getFullYear(), from.getMonth() + offset, 1);
 }
 
+/** Local calendar day at 00:00. */
+function dayStart(from: Date): Date {
+	return new Date(from.getFullYear(), from.getMonth(), from.getDate());
+}
+
+/** Monday 00:00 of the week that contains `from` (ISO week, Mon–Sun). */
+function weekStart(from: Date): Date {
+	const day = dayStart(from);
+	const weekday = day.getDay(); // 0 Sun … 6 Sat
+	const daysFromMonday = weekday === 0 ? 6 : weekday - 1;
+	day.setDate(day.getDate() - daysFromMonday);
+	return day;
+}
+
+/** Parse a `YYYY-MM-DD` as a local calendar day (not UTC midnight). */
+function parseDay(day: string): Date {
+	const parts = day.split("-").map(Number);
+	const year = parts[0] ?? 0;
+	const month = parts[1] ?? 1;
+	const date = parts[2] ?? 1;
+	return new Date(year, month - 1, date);
+}
+
+/** Exclusive end: the day after `day` at 00:00, so `closedAt < end` is inclusive. */
+function dayAfter(day: Date): Date {
+	return new Date(day.getFullYear(), day.getMonth(), day.getDate() + 1);
+}
+
 /** Months since year zero — subtract two to get a bucket index. */
 function monthKey(date: Date): number {
 	return date.getFullYear() * 12 + date.getMonth();
+}
+
+type ResolvedRange = {
+	preset: DashboardSummaryInput["range"];
+	label: string;
+	/** Inclusive start of the closed-won / performance window. */
+	start: Date;
+	/** Exclusive end of the window (usually "now", or the day after `to`). */
+	end: Date;
+	previousStart: Date;
+	previousEnd: Date;
+	windowDays: number;
+};
+
+/**
+ * Closed-won and win-rate window from the overview URL.
+ *
+ * Open pipeline and forecast ignore this. A short preset (Today) still gets a
+ * previous period of the same length so the delta label stays comparable.
+ */
+function resolveRange(
+	input: DashboardSummaryInput,
+	now: Date,
+): ResolvedRange {
+	const end = now;
+
+	if (input.range === "custom" && input.from && input.to && input.from <= input.to) {
+		const start = parseDay(input.from);
+		const toDay = parseDay(input.to);
+		const customEnd = dayAfter(toDay);
+		// Cap at now so a future `to` does not invent closed deals.
+		const resolvedEnd = customEnd.getTime() > now.getTime() ? now : customEnd;
+		const duration = Math.max(resolvedEnd.getTime() - start.getTime(), DAY_MS);
+		return {
+			preset: "custom",
+			label: "Custom",
+			start,
+			end: resolvedEnd,
+			previousStart: new Date(start.getTime() - duration),
+			previousEnd: start,
+			windowDays: Math.max(1, Math.ceil(duration / DAY_MS)),
+		};
+	}
+
+	if (input.range === "today") {
+		const start = dayStart(now);
+		const duration = Math.max(end.getTime() - start.getTime(), DAY_MS);
+		return {
+			preset: "today",
+			label: "Today",
+			start,
+			end,
+			previousStart: new Date(start.getTime() - duration),
+			previousEnd: start,
+			windowDays: 1,
+		};
+	}
+
+	if (input.range === "this_week") {
+		const start = weekStart(now);
+		const duration = Math.max(end.getTime() - start.getTime(), DAY_MS);
+		return {
+			preset: "this_week",
+			label: "This week",
+			start,
+			end,
+			previousStart: new Date(start.getTime() - duration),
+			previousEnd: start,
+			windowDays: Math.max(1, Math.ceil(duration / DAY_MS)),
+		};
+	}
+
+	if (input.range === "past_30") {
+		const start = new Date(now.getTime() - 30 * DAY_MS);
+		return {
+			preset: "past_30",
+			label: "Past 30 days",
+			start,
+			end,
+			previousStart: new Date(start.getTime() - 30 * DAY_MS),
+			previousEnd: start,
+			windowDays: 30,
+		};
+	}
+
+	if (input.range === "this_month") {
+		const start = monthStart(now, 0);
+		const duration = Math.max(end.getTime() - start.getTime(), DAY_MS);
+		return {
+			preset: "this_month",
+			label: "This month",
+			start,
+			end,
+			previousStart: monthStart(now, -1),
+			previousEnd: start,
+			windowDays: Math.max(1, Math.ceil(duration / DAY_MS)),
+		};
+	}
+
+	// this_year (default), and custom missing days — 1 Jan through now.
+	const start = new Date(now.getFullYear(), 0, 1);
+	const duration = Math.max(end.getTime() - start.getTime(), DAY_MS);
+	const previousStart = new Date(now.getFullYear() - 1, 0, 1);
+	return {
+		preset: "this_year",
+		label: "Since the 1st of the year",
+		start,
+		end,
+		previousStart,
+		previousEnd: new Date(previousStart.getTime() + duration),
+		windowDays: Math.max(1, Math.ceil(duration / DAY_MS)),
+	};
 }
 
 @Injectable()
@@ -49,26 +221,39 @@ export class DashboardService {
 	 * The open pipeline spans all history, so it is aggregated in Postgres — the
 	 * alternative is a page that gets slower every quarter. Everything derived
 	 * from closed and newly created deals comes off one bounded read of the last
-	 * six months and is folded up here: that window does not grow with history,
-	 * it is a single index scan instead of a dozen aggregates, and it keeps the
-	 * KPI strip and the chart underneath it on exactly the same month boundaries
-	 * rather than letting SQL's idea of a month drift from JavaScript's.
+	 * six months (and the selected range, when it reaches further back) and is
+	 * folded up here: that window does not grow with history, it is a single
+	 * index scan instead of a dozen aggregates, and it keeps the KPI strip and
+	 * the chart underneath it on exactly the same month boundaries rather than
+	 * letting SQL's idea of a month drift from JavaScript's.
 	 */
 	async summary(actingUserId: string, input: DashboardSummaryInput) {
 		const mine = input.scope === "me";
 		const owned = mine ? { ownerId: actingUserId } : {};
 
 		const now = new Date();
+		const range = resolveRange(input, now);
 		const startOfMonth = monthStart(now, 0);
 		const startOfNextMonth = monthStart(now, 1);
-		const startOfPrevMonth = monthStart(now, -1);
-		const trendStart = monthStart(now, -(TREND_MONTHS - 1));
-		const rateStart = new Date(now.getTime() - RATE_WINDOW_DAYS * DAY_MS);
+		const { start: trendStart, count: trendMonths } = trendWindow(
+			range.start,
+			range.end,
+		);
+		// Recent-deals read must cover the trend chart, the selected range, and
+		// the prior comparable window — whichever starts earliest.
+		const recentStart = new Date(
+			Math.min(
+				trendStart.getTime(),
+				range.start.getTime(),
+				range.previousStart.getTime(),
+			),
+		);
 
 		const [
 			openByStage,
 			recentDeals,
 			closingThisMonthTotals,
+			openForecastDeals,
 			biggestOpen,
 			overdueTasks,
 			recentActivity,
@@ -77,21 +262,21 @@ export class DashboardService {
 				by: ["stage"],
 				where: { ...owned, stage: { in: [...OPEN_DEAL_STAGES] } },
 				_count: { _all: true },
-				_sum: { amount: true },
+				_sum: { amount: true, weightedAmount: true },
 			}),
-			// One read covers the trend chart, this month vs. last, and the
-			// 90-day rates. `amount` is the only wide column and there are four
-			// of them, so this stays cheap even for a busy team.
+			// One read covers the trend chart, the selected range vs. prior, and
+			// the win-rate window. Money columns stay narrow.
 			this.db.deal.findMany({
 				where: {
 					...owned,
 					OR: [
-						{ createdAt: { gte: trendStart } },
-						{ closedAt: { gte: trendStart } },
+						{ createdAt: { gte: recentStart } },
+						{ closedAt: { gte: recentStart } },
 					],
 				},
 				select: {
 					amount: true,
+					weightedAmount: true,
 					stage: true,
 					createdAt: true,
 					closedAt: true,
@@ -106,11 +291,24 @@ export class DashboardService {
 					expectedCloseDate: { gte: startOfMonth, lt: startOfNextMonth },
 				},
 				_count: { _all: true },
-				_sum: { amount: true },
+				_sum: { amount: true, weightedAmount: true },
+			}),
+			// Open pipeline for the forecast view: group by close month + owner
+			// in JS so month buckets follow the server calendar (same as closing
+			// facets). Narrow select — only money, date, and owner identity.
+			this.db.deal.findMany({
+				where: { ...owned, stage: { in: [...OPEN_DEAL_STAGES] } },
+				select: {
+					amount: true,
+					weightedAmount: true,
+					expectedCloseDate: true,
+					owner: { select: OWNER_SELECT },
+				},
 			}),
 			this.db.deal.findMany({
 				where: { ...owned, stage: { in: [...OPEN_DEAL_STAGES] } },
 				orderBy: [
+					{ weightedAmount: { sort: "desc", nulls: "last" } },
 					{ amount: { sort: "desc", nulls: "last" } },
 					{ expectedCloseDate: "asc" },
 				],
@@ -120,6 +318,7 @@ export class DashboardService {
 					name: true,
 					stage: true,
 					amount: true,
+					weightedAmount: true,
 					currency: true,
 					expectedCloseDate: true,
 					stageChangedAt: true,
@@ -169,26 +368,29 @@ export class DashboardService {
 			return {
 				stage: stage as DealStage,
 				count: group?._count._all ?? 0,
-				valueCents: toCents(group?._sum.amount ?? null) ?? 0,
+				valueCents: dealMoneyCents(
+					group?._sum.amount,
+					group?._sum.weightedAmount,
+				),
 			};
 		});
 
 		const firstBucket = monthKey(trendStart);
-		const trend = Array.from({ length: TREND_MONTHS }, (_, index) => ({
+		const trend = Array.from({ length: trendMonths }, (_, index) => ({
 			month: MONTH_LABEL.format(monthStart(trendStart, index)),
 			won: 0,
 			created: 0,
 		}));
 
-		const wonThisMonth = { count: 0, valueCents: 0 };
-		const wonPrevMonth = { count: 0, valueCents: 0 };
+		const wonInRange = { count: 0, valueCents: 0 };
+		const wonPrevRange = { count: 0, valueCents: 0 };
 		let wins = 0;
 		let losses = 0;
 		let wonCents = 0;
 		let cycleDays = 0;
 
 		for (const deal of recentDeals) {
-			const cents = toCents(deal.amount) ?? 0;
+			const cents = dealMoneyCents(deal.amount, deal.weightedAmount);
 
 			// A deal closed inside the window but opened before it lands in no
 			// created bucket — the index is negative, and the lookup misses.
@@ -203,16 +405,21 @@ export class DashboardService {
 				const closed = trend[monthKey(closedAt) - firstBucket];
 				if (closed) closed.won += cents;
 
-				if (closedAt >= startOfMonth && closedAt < startOfNextMonth) {
-					wonThisMonth.count += 1;
-					wonThisMonth.valueCents += cents;
-				} else if (closedAt >= startOfPrevMonth && closedAt < startOfMonth) {
-					wonPrevMonth.count += 1;
-					wonPrevMonth.valueCents += cents;
+				if (closedAt >= range.start && closedAt < range.end) {
+					wonInRange.count += 1;
+					wonInRange.valueCents += cents;
+				} else if (
+					closedAt >= range.previousStart &&
+					closedAt < range.previousEnd
+				) {
+					wonPrevRange.count += 1;
+					wonPrevRange.valueCents += cents;
 				}
 			}
 
-			if (closedAt < rateStart) continue;
+			// Win rate uses the same selected window as Closed won — not a fixed
+			// 90 days — so flipping the range control moves both numbers together.
+			if (closedAt < range.start || closedAt >= range.end) continue;
 			if (won) {
 				wins += 1;
 				wonCents += cents;
@@ -227,34 +434,58 @@ export class DashboardService {
 
 		const decided = wins + losses;
 
+		const forecast = buildForecast(openForecastDeals, now);
+
 		return {
 			scope: input.scope,
+			range: {
+				preset: range.preset,
+				label: range.label,
+				start: range.start.toISOString(),
+				end: range.end.toISOString(),
+				windowDays: range.windowDays,
+			},
 			pipeline: {
 				stages,
 				totalCents: stages.reduce((total, s) => total + s.valueCents, 0),
 				totalDeals: stages.reduce((total, s) => total + s.count, 0),
 			},
-			wonThisMonth,
-			wonPrevMonth,
-			/** Rolling rates over `windowDays`. `null` where nothing has closed. */
+			/** Closed won inside the selected range (field name kept for callers). */
+			wonThisMonth: wonInRange,
+			/** Closed won in the prior comparable window. */
+			wonPrevMonth: wonPrevRange,
+			/** Rates over the selected range. `null` where nothing has closed. */
 			performance: {
-				windowDays: RATE_WINDOW_DAYS,
+				windowDays: range.windowDays,
 				wins,
 				losses,
 				winRate: decided === 0 ? null : wins / decided,
 				avgDealCents: wins === 0 ? null : Math.round(wonCents / wins),
 				avgCycleDays: wins === 0 ? null : Math.round(cycleDays / wins),
 			},
-			/** Six months of closed-won value against new pipeline created. */
+			/** Closed-won vs created, month buckets spanning the selected range. */
 			trend,
 			closingThisMonthTotal: {
 				count: closingThisMonthTotals._count._all,
 				valueCents: toCents(closingThisMonthTotals._sum.amount) ?? 0,
+				weightedCents: toCents(closingThisMonthTotals._sum.weightedAmount) ?? 0,
 			},
+			/**
+			 * Sage-style forecast: open deals by expected-close month, with
+			 * unweighted (`amount`) and weighted (`weightedAmount`) totals.
+			 */
+			forecast,
 			biggestOpen: biggestOpen.map(
-				({ amount, expectedCloseDate, stageChangedAt, ...deal }) => ({
+				({
+					amount,
+					weightedAmount,
+					expectedCloseDate,
+					stageChangedAt,
+					...deal
+				}) => ({
 					...deal,
 					amountCents: toCents(amount),
+					weightedAmountCents: toCents(weightedAmount),
 					expectedCloseDate: expectedCloseDate?.toISOString() ?? null,
 					stageChangedAt: stageChangedAt.toISOString(),
 				}),
@@ -270,4 +501,113 @@ export class DashboardService {
 			})),
 		};
 	}
+}
+
+type ForecastDeal = {
+	amount: Prisma.Decimal | null;
+	weightedAmount: Prisma.Decimal | null;
+	expectedCloseDate: Date | null;
+	owner: { id: string; name: string; email: string; image: string | null };
+};
+
+/** Month label with year — forecast spans more than one calendar year. */
+const FORECAST_MONTH_LABEL = new Intl.DateTimeFormat("en-US", {
+	month: "short",
+	year: "numeric",
+});
+
+/**
+ * Bucket open deals by expected-close month (server calendar) and by owner.
+ *
+ * Months sort chronologically; deals with no close date land in a trailing
+ * "No date" bucket. Overdue months stay visible — a forecast that hides past
+ * targets is not useful.
+ */
+function buildForecast(deals: ForecastDeal[], now: Date) {
+	const monthBuckets = new Map<
+		string,
+		{
+			key: string;
+			label: string;
+			sort: number;
+			amountCents: number;
+			weightedCents: number;
+			dealCount: number;
+		}
+	>();
+	const ownerBuckets = new Map<
+		string,
+		{
+			owner: ForecastDeal["owner"];
+			amountCents: number;
+			weightedCents: number;
+			dealCount: number;
+		}
+	>();
+
+	let amountCents = 0;
+	let weightedCents = 0;
+
+	for (const deal of deals) {
+		const amount = toCents(deal.amount) ?? 0;
+		const weighted = toCents(deal.weightedAmount) ?? 0;
+		amountCents += amount;
+		weightedCents += weighted;
+
+		const close = deal.expectedCloseDate;
+		const key = close
+			? `${close.getFullYear()}-${String(close.getMonth() + 1).padStart(2, "0")}`
+			: "none";
+		const label = close
+			? FORECAST_MONTH_LABEL.format(
+					new Date(close.getFullYear(), close.getMonth(), 1),
+				)
+			: "No date";
+		const sort = close ? monthKey(close) : Number.POSITIVE_INFINITY;
+
+		const month = monthBuckets.get(key) ?? {
+			key,
+			label,
+			sort,
+			amountCents: 0,
+			weightedCents: 0,
+			dealCount: 0,
+		};
+		month.amountCents += amount;
+		month.weightedCents += weighted;
+		month.dealCount += 1;
+		monthBuckets.set(key, month);
+
+		const owner = ownerBuckets.get(deal.owner.id) ?? {
+			owner: deal.owner,
+			amountCents: 0,
+			weightedCents: 0,
+			dealCount: 0,
+		};
+		owner.amountCents += amount;
+		owner.weightedCents += weighted;
+		owner.dealCount += 1;
+		ownerBuckets.set(deal.owner.id, owner);
+	}
+
+	const thisMonthKey = monthKey(now);
+
+	return {
+		totals: {
+			amountCents,
+			weightedCents,
+			dealCount: deals.length,
+		},
+		months: [...monthBuckets.values()]
+			.sort((a, b) => a.sort - b.sort)
+			.map(({ sort, ...month }) => ({
+				...month,
+				/** Past the current month and still open — the rep's overdue book. */
+				overdue: sort < thisMonthKey,
+			})),
+		byOwner: [...ownerBuckets.values()].sort(
+			(a, b) =>
+				b.weightedCents - a.weightedCents || b.amountCents - a.amountCents,
+		),
+	};
 }

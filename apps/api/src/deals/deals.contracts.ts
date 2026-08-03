@@ -30,6 +30,8 @@ export const dealListInput = listInput.extend({
 	stage: z.string().default("all"),
 	/** A `ClosingWindow`, or `"all"`. */
 	closing: z.string().default("all"),
+	/** A company id, or `"all"`. Deals always have a company — no `"none"`. */
+	company: z.string().default("all"),
 });
 
 export type DealListInput = z.infer<typeof dealListInput>;
@@ -62,6 +64,8 @@ const dealUpdateInput = z.object({
 	amountCents: z.number().int().min(0).nullable().optional(),
 	currency: z.string().length(3).optional(),
 	expectedCloseDate: z.string().nullable().optional(),
+	/** Certainty % 0–100 (Sage `certainty`). Null clears it. */
+	probability: z.number().int().min(0).max(100).nullable().optional(),
 });
 
 export type DealUpdateInput = z.infer<typeof dealUpdateInput>;

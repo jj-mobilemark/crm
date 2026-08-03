@@ -61,6 +61,7 @@ export function InlineField({
 	render,
 	provenance,
 	suggestion,
+	readOnly = false,
 }: {
 	label: string;
 	value: string | null;
@@ -84,6 +85,8 @@ export function InlineField({
 	 * is a lie with a nice font.
 	 */
 	suggestion?: React.ReactNode;
+	/** Owner-only / permission lock — shows the value with no edit affordance. */
+	readOnly?: boolean;
 }) {
 	const id = useId();
 	const [editing, setEditing] = useState(false);
@@ -101,6 +104,23 @@ export function InlineField({
 	const shown = saving ? draft.trim() : (value ?? "");
 
 	const sourced = Boolean(provenance) && !editing && shown !== "";
+
+	if (readOnly) {
+		return (
+			<div className={ROW}>
+				<span className={LABEL}>{label}</span>
+				<div className="min-w-0 px-2 text-sm">
+					{shown ? (
+						<span className="truncate">{render ? render(shown) : shown}</span>
+					) : (
+						<span className="text-muted-foreground">
+							{placeholder ?? <EmptyCellValue />}
+						</span>
+					)}
+				</div>
+			</div>
+		);
+	}
 
 	/**
 	 * A single element, never a fragment.
@@ -207,6 +227,7 @@ export function InlineDateField({
 	onSave,
 	saving = false,
 	placeholder = "—",
+	readOnly = false,
 }: {
 	label: string;
 	/** An ISO timestamp or a day string; only the day is read. */
@@ -214,8 +235,25 @@ export function InlineDateField({
 	onSave: (next: string) => void;
 	saving?: boolean;
 	placeholder?: string;
+	readOnly?: boolean;
 }) {
 	const id = useId();
+
+	if (readOnly) {
+		const day = value?.slice(0, 10) ?? null;
+		return (
+			<div className={ROW}>
+				<span className={LABEL}>{label}</span>
+				<div className="min-w-0 px-2 text-sm">
+					{day ? (
+						<span className="truncate">{day}</span>
+					) : (
+						<span className="text-muted-foreground">{placeholder}</span>
+					)}
+				</div>
+			</div>
+		);
+	}
 
 	return (
 		<div className={ROW}>
@@ -243,14 +281,32 @@ export function InlineSelectField({
 	options,
 	onSave,
 	placeholder = "None",
+	readOnly = false,
 }: {
 	label: string;
 	value: string;
 	options: { value: string; label: string }[];
 	onSave: (next: string) => void;
 	placeholder?: string;
+	readOnly?: boolean;
 }) {
 	const id = useId();
+
+	if (readOnly) {
+		const selected = options.find((option) => option.value === value);
+		return (
+			<div className={ROW}>
+				<span className={LABEL}>{label}</span>
+				<div className="min-w-0 px-2 text-sm">
+					{selected ? (
+						<span className="truncate">{selected.label}</span>
+					) : (
+						<span className="text-muted-foreground">{placeholder}</span>
+					)}
+				</div>
+			</div>
+		);
+	}
 
 	return (
 		<div className={ROW}>

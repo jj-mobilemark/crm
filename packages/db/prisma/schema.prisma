@@ -218,6 +218,16 @@ model Company {
   sage100CustomerNo   String?
   sage100ArDivisionNo String?
 
+  /// Set when a Sage reconcile no longer sees this company (deleted/merged in
+  /// Sage). We never hard-delete a Sage-sourced row — soft-deactivate instead.
+  sageDeactivatedAt DateTime?
+  /// Push echo-guard (design only for now). `sagePushedAt` is when we last
+  /// pushed a local edit to Sage; `sageUpdatedAt` is the Sage `updateddate` we
+  /// last pulled. On a pull, a Sage change at/before `sagePushedAt` is our own
+  /// write coming back and is skipped.
+  sagePushedAt  DateTime?
+  sageUpdatedAt DateTime?
+
   /// Denormalised max(activity.createdAt), written with the activity.
   ///
   /// A real column because it is a sortable column on every list, and ordering
@@ -303,6 +313,11 @@ model Contact {
   /// updates rather than duplicates. A contact has no Sage 100 id of its own —
   /// its Sage 100 customer key is the parent company's, shown via the relation.
   sageCrmContactId String? @unique
+
+  /// Soft-deactivate + push echo-guard — see the matching fields on `Company`.
+  sageDeactivatedAt DateTime?
+  sagePushedAt      DateTime?
+  sageUpdatedAt     DateTime?
 
   /// Denormalised max(activity.createdAt), written with the activity.
   ///
@@ -558,6 +573,11 @@ model Deal {
   sageStage  String?
   sageStatus String?
 
+  /// Soft-deactivate + push echo-guard — see the matching fields on `Company`.
+  sageDeactivatedAt DateTime?
+  sagePushedAt      DateTime?
+  sageUpdatedAt     DateTime?
+
   /// Denormalised max(activity.createdAt), written with the activity.
   ///
   /// A real column because it is a sortable column on every list, and ordering
@@ -707,11 +727,26 @@ model SageSyncState {
   /// The high-water `updateddate` seen for this entity; the incremental pull
   /// asks Sage for rows changed after it. Sage caps a query at ~100 rows, so
   /// the pull pages by ascending id within each changed set.
+  ///
+  /// Kept for back-compat; `highWaterUpdatedAt` is the typed replacement.
   cursor       String?
   lastSyncedAt DateTime?
   lastError    String?
   /// Set by the rate-limit handler; the cron skips this entity until it passes.
   retryAfter   DateTime?
+
+  /// "backfill" until the first full walk finishes, then "incremental".
+  phase String @default("backfill")
+  /// Last id fetched during the id-paged backfill — the resume checkpoint.
+  /// A crash restarts from `<idcol> > backfillId`, so a page is never re-walked.
+  backfillId String?
+  /// The incremental cursor: rows with `updateddate` after this are re-pulled
+  /// (with an overlap). Supersedes the free-text `cursor`.
+  highWaterUpdatedAt DateTime?
+  /// Rough running count for a progress readout — not load-bearing.
+  processed Int?
+  /// When the full backfill completed and the entity flipped to incremental.
+  backfillDoneAt DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

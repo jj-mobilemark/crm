@@ -58,7 +58,9 @@ export class SageSyncController {
 			throw new ForbiddenException();
 		}
 
-		return this.pull.importTestSlice();
+		// Test slice until the one-shot backfill flips the phase, then nightly
+		// incremental — see `SagePullService.runScheduled`.
+		return this.pull.runScheduled();
 	}
 }
 

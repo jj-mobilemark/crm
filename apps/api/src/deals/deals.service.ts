@@ -1,4 +1,9 @@
 import {
+	canEditOwnedRecord,
+	canReassignOwner,
+	isCrmAdmin,
+} from "@crm/auth";
+import {
 	ActivityType,
 	type Db,
 	type DealStage,
@@ -7,6 +12,7 @@ import {
 } from "@crm/db";
 import {
 	BadRequestException,
+	ForbiddenException,
 	Injectable,
 	Logger,
 	NotFoundException,
@@ -23,10 +29,12 @@ import {
 	resolveOrderBy,
 } from "../trpc/list-input";
 import {
+	certaintyForStage,
 	CLOSED_DEAL_STAGES,
 	isClosedStage,
 	LOSING_DEAL_STAGES,
 	OPEN_DEAL_STAGES,
+	weightedFromAmount,
 } from "./deal-stage";
 import type {
 	ClosingWindow,
@@ -36,6 +44,9 @@ import type {
 	SetStageInput,
 } from "./deals.contracts";
 import { CLOSING_WINDOWS } from "./deals.contracts";
+
+/** Signed-in actor for ownership checks (id + email for admin list). */
+export type DealActor = { id: string; email: string };
 
 const OWNER_SELECT = {
 	id: true,
@@ -98,6 +109,12 @@ export class DealsService {
 					currency: true,
 					expectedCloseDate: true,
 					closedAt: true,
+					sageCrmOpportunityId: true,
+					probability: true,
+					weightedAmount: true,
+					dealType: true,
+					sageStage: true,
+					sageStatus: true,
 					company: { select: COMPANY_SELECT },
 					owner: { select: OWNER_SELECT },
 					lastActivityAt: true,
@@ -111,7 +128,7 @@ export class DealsService {
 			// number at all.
 			this.db.deal.aggregate({
 				where: { ...where, stage: { in: [...OPEN_DEAL_STAGES] } },
-				_sum: { amount: true },
+				_sum: { amount: true, weightedAmount: true },
 			}),
 		]);
 
@@ -119,6 +136,7 @@ export class DealsService {
 			rows: rows.map(
 				({
 					amount,
+					weightedAmount,
 					expectedCloseDate,
 					closedAt,
 					lastActivityAt,
@@ -127,6 +145,7 @@ export class DealsService {
 				}) => ({
 					...row,
 					amountCents: toCents(amount),
+					weightedAmountCents: toCents(weightedAmount),
 					expectedCloseDate: expectedCloseDate?.toISOString() ?? null,
 					closedAt: closedAt?.toISOString() ?? null,
 					lastActivityAt: lastActivityAt?.toISOString() ?? null,
@@ -137,7 +156,12 @@ export class DealsService {
 			facetCounts,
 			/** Open pipeline value across everything matching the filters. */
 			openValueCents: toCents(openValue._sum.amount),
-		} satisfies ListResult<unknown> & { openValueCents: number | null };
+			/** Sage-weighted open pipeline (`forecast`) for the same filter set. */
+			openWeightedCents: toCents(openValue._sum.weightedAmount),
+		} satisfies ListResult<unknown> & {
+			openValueCents: number | null;
+			openWeightedCents: number | null;
+		};
 	}
 
 	async byId(id: string) {
@@ -153,6 +177,12 @@ export class DealsService {
 				expectedCloseDate: true,
 				closedAt: true,
 				closedReason: true,
+				sageCrmOpportunityId: true,
+				probability: true,
+				weightedAmount: true,
+				dealType: true,
+				sageStage: true,
+				sageStatus: true,
 				createdAt: true,
 				company: { select: { ...COMPANY_SELECT, industry: true } },
 				owner: { select: OWNER_SELECT },
@@ -177,11 +207,12 @@ export class DealsService {
 			throw new NotFoundException(`No deal with id ${id}.`);
 		}
 
-		const { contacts, amount, ...rest } = deal;
+		const { contacts, amount, weightedAmount, ...rest } = deal;
 
 		return {
 			...rest,
 			amountCents: toCents(amount),
+			weightedAmountCents: toCents(weightedAmount),
 			stageChangedAt: deal.stageChangedAt.toISOString(),
 			expectedCloseDate: deal.expectedCloseDate?.toISOString() ?? null,
 			closedAt: deal.closedAt?.toISOString() ?? null,
@@ -190,21 +221,28 @@ export class DealsService {
 		};
 	}
 
-	async create(input: DealCreateInput) {
+	async create(input: DealCreateInput, actor: DealActor) {
 		const stage = input.stage ?? "DEMO_BOOKED";
 		const closed = isClosedStage(stage);
 		const now = new Date();
+		// You own what you create. Admins may assign someone else at create.
+		const ownerId = isCrmAdmin(actor.email) ? input.ownerId : actor.id;
+		const probability = certaintyForStage(stage);
+		const amount = fromCents(input.amountCents);
+		const weightedAmount = weightedFromAmount(amount, probability);
 
 		try {
 			const deal = await this.db.deal.create({
 				data: {
 					name: input.name.trim(),
 					companyId: input.companyId,
-					ownerId: input.ownerId,
+					ownerId,
 					stage,
 					stageChangedAt: now,
 					closedAt: closed ? now : null,
-					amount: fromCents(input.amountCents),
+					amount,
+					probability,
+					weightedAmount,
 					currency: input.currency ?? "USD",
 					expectedCloseDate: parseDate(input.expectedCloseDate),
 				},
@@ -219,7 +257,31 @@ export class DealsService {
 		}
 	}
 
-	async update(id: string, input: DealUpdateInput) {
+	async update(id: string, input: DealUpdateInput, actor: DealActor) {
+		const existing = await this.db.deal.findUnique({
+			where: { id },
+			select: {
+				id: true,
+				ownerId: true,
+				amount: true,
+				probability: true,
+			},
+		});
+
+		if (!existing) {
+			throw new NotFoundException(`No deal with id ${id}.`);
+		}
+
+		this.assertCanEdit(actor, existing.ownerId);
+
+		if (input.ownerId !== undefined && input.ownerId !== existing.ownerId) {
+			if (!canReassignOwner(actor.email)) {
+				throw new ForbiddenException(
+					"Only an admin can reassign a deal's owner.",
+				);
+			}
+		}
+
 		const data: Prisma.DealUpdateInput = {};
 
 		if (input.name !== undefined) data.name = input.name.trim();
@@ -229,12 +291,31 @@ export class DealsService {
 		if (input.ownerId !== undefined) {
 			data.owner = { connect: { id: input.ownerId } };
 		}
-		if (input.amountCents !== undefined) {
-			data.amount = fromCents(input.amountCents);
-		}
 		if (input.currency !== undefined) data.currency = input.currency;
 		if (input.expectedCloseDate !== undefined) {
 			data.expectedCloseDate = parseDate(input.expectedCloseDate);
+		}
+
+		const nextAmount =
+			input.amountCents !== undefined
+				? fromCents(input.amountCents)
+				: existing.amount === null
+					? null
+					: existing.amount.toNumber();
+		const nextProbability =
+			input.probability !== undefined
+				? input.probability
+				: existing.probability;
+
+		if (input.amountCents !== undefined) {
+			data.amount = nextAmount;
+		}
+		if (input.probability !== undefined) {
+			data.probability = nextProbability;
+		}
+		// Keep weighted in step when amount or certainty changes.
+		if (input.amountCents !== undefined || input.probability !== undefined) {
+			data.weightedAmount = weightedFromAmount(nextAmount, nextProbability);
 		}
 
 		try {
@@ -254,16 +335,27 @@ export class DealsService {
 	 * One transaction, because a stage change with no timeline entry is a deal
 	 * nobody can explain a week later — and a timeline entry for a change that
 	 * did not commit is worse.
+	 *
+	 * Certainty follows the stage (`STAGE_CERTAINTY`); weighted is recomputed
+	 * from amount × certainty when amount is set.
 	 */
-	async setStage(input: SetStageInput, actingUserId: string) {
+	async setStage(input: SetStageInput, actor: DealActor) {
 		const deal = await this.db.deal.findUnique({
 			where: { id: input.id },
-			select: { id: true, stage: true, companyId: true },
+			select: {
+				id: true,
+				stage: true,
+				companyId: true,
+				ownerId: true,
+				amount: true,
+			},
 		});
 
 		if (!deal) {
 			throw new NotFoundException(`No deal with id ${input.id}.`);
 		}
+
+		this.assertCanEdit(actor, deal.ownerId);
 
 		if (deal.stage === input.stage) {
 			return { id: deal.id, stage: deal.stage, changed: false };
@@ -278,6 +370,9 @@ export class DealsService {
 
 		const now = new Date();
 		const closed = isClosedStage(input.stage);
+		const probability = certaintyForStage(input.stage);
+		const amount = deal.amount === null ? null : deal.amount.toNumber();
+		const weightedAmount = weightedFromAmount(amount, probability);
 
 		const [updated] = await this.db.$transaction([
 			this.db.deal.update({
@@ -287,8 +382,10 @@ export class DealsService {
 					stageChangedAt: now,
 					closedAt: closed ? now : null,
 					closedReason: closed ? (closedReason ?? null) : null,
+					probability,
+					weightedAmount,
 				},
-				select: { id: true, stage: true },
+				select: { id: true, stage: true, probability: true },
 			}),
 			this.db.activity.create({
 				data: {
@@ -300,7 +397,7 @@ export class DealsService {
 					// the company timeline without a join.
 					companyId: deal.companyId,
 					dealId: deal.id,
-					createdById: actingUserId,
+					createdById: actor.id,
 					meta: { from: deal.stage, to: input.stage },
 				},
 			}),
@@ -316,9 +413,25 @@ export class DealsService {
 			dealId: deal.id,
 			from: deal.stage,
 			to: input.stage,
+			probability,
 		});
 
 		return { ...updated, changed: true };
+	}
+
+	private assertCanEdit(actor: DealActor, ownerId: string) {
+		if (
+			canEditOwnedRecord({
+				actingUserId: actor.id,
+				actingEmail: actor.email,
+				ownerId,
+			})
+		) {
+			return;
+		}
+		throw new ForbiddenException(
+			"Only the deal's owner (or an admin) can change this deal.",
+		);
 	}
 
 	private searchFilter(q: string): Prisma.DealWhereInput {
@@ -358,6 +471,10 @@ export class DealsService {
 
 		if (input.closing !== FACET_ALL) {
 			Object.assign(where, closingFilter(input.closing as ClosingWindow));
+		}
+
+		if (input.company !== FACET_ALL) {
+			where.companyId = input.company;
 		}
 
 		return where;

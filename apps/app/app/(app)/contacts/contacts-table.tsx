@@ -10,6 +10,7 @@ import { EmptyCellValue } from "@crm/ui/components/empty-cell";
 import { initialsFromName, relativeTimeFromIso } from "@crm/ui/lib/format";
 import { useQuery } from "@tanstack/react-query";
 import { CompanyCell } from "@/components/crm/company-cell";
+import { CompanyPicker } from "@/components/crm/company-picker";
 import { contactName } from "@/components/crm/contact-name";
 import { OwnerCell } from "@/components/crm/owner-cell";
 import { formatSage100Id } from "@/components/crm/sage-id";
@@ -79,6 +80,7 @@ const COLUMNS: DataTableColumn<ContactRow>[] = [
 		sortable: true,
 		width: "w-[16%]",
 		hideBelow: "md",
+		defaultHidden: true,
 		cell: (row) => <OwnerCell owner={row.owner} />,
 	},
 	{
@@ -124,7 +126,6 @@ const COLUMNS: DataTableColumn<ContactRow>[] = [
 		id: "sage100Id",
 		header: "Sage 100 ID",
 		label: "Sage 100 ID (company)",
-		defaultHidden: true,
 		width: "w-[12%]",
 		cell: (row) => (
 			<SageIdValue
@@ -149,7 +150,6 @@ export function ContactsTable() {
 		placeholderData: (previous) => previous,
 	});
 	const users = useQuery(trpc.users.list.queryOptions());
-	const companies = useQuery(trpc.companies.options.queryOptions({ q: "" }));
 
 	const facetCounts = contacts.data?.facetCounts;
 
@@ -168,13 +168,19 @@ export function ContactsTable() {
 		{
 			id: "company",
 			label: "Company",
-			options: [
-				{ value: "none", label: "No company" },
-				...(companies.data ?? []).map((company) => ({
-					value: company.id,
-					label: company.name,
-				})),
-			].filter((option) => (facetCounts?.company?.[option.value] ?? 0) > 0),
+			// Options unused — searchable picker queries companies.options itself.
+			options: [],
+			render: ({ value, onChange, label }) => (
+				<CompanyPicker
+					allowAll
+					allLabel={label}
+					value={value}
+					onChange={onChange}
+					variant="filter"
+					includeNone
+					noneLabel="No company"
+				/>
+			),
 		},
 	];
 

@@ -8,7 +8,14 @@ import {
 } from "@crm/ui/components/card";
 import type { ChartConfig } from "@crm/ui/components/chart";
 import { DashboardRow, StatGroup } from "@crm/ui/components/dashboard";
+import { EmptyCellValue } from "@crm/ui/components/empty-cell";
+import {
+	SimpleTable,
+	type SimpleTableColumn,
+	SimpleTableRow,
+} from "@crm/ui/components/simple-table";
 import { StatCard, type StatDelta } from "@crm/ui/components/stat-card";
+import { TableCell } from "@crm/ui/components/table";
 import {
 	formatCount,
 	formatMoney,
@@ -18,10 +25,19 @@ import {
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { dealStageColor, dealStageLabel } from "@/components/crm/deal-stage";
+import { OwnerCell } from "@/components/crm/owner-cell";
 import { AreaTrend, DonutStat } from "@/components/dashboard-charts";
 import type { RouterOutputs } from "@/lib/trpc/types";
 
 type Summary = RouterOutputs["dashboard"]["summary"];
+
+const EMPTY_FORECAST: Summary["forecast"] = {
+	totals: { amountCents: 0, weightedCents: 0, dealCount: 0 },
+	months: [],
+	byOwner: [],
+};
+
+const CELL = "px-3 py-2.5 align-middle";
 
 /**
  * Won is the outcome, created is the input that produces it six weeks later.
@@ -66,6 +82,11 @@ export function SalesDashboard({ summary }: { summary: Summary }) {
 		trend,
 		closingThisMonthTotal,
 	} = summary;
+	// Stale dehydrated/cached summaries (pre-forecast API) omit this field —
+	// fall back so the overview still paints while the query refetches.
+	const forecast = summary.forecast ?? EMPTY_FORECAST;
+	const rangeLabel = summary.range?.label ?? "Year to date";
+	const closingWeightedCents = closingThisMonthTotal.weightedCents ?? 0;
 
 	const hasTrend = trend.some((point) => point.won > 0 || point.created > 0);
 
@@ -79,23 +100,45 @@ export function SalesDashboard({ summary }: { summary: Summary }) {
 		}))
 		.filter((slice) => slice.value > 0);
 
+	const showOwnerBreakdown =
+		summary.scope === "everyone" && forecast.byOwner.length > 1;
+
+	const monthColumns: SimpleTableColumn[] = [
+		{ header: "Close month" },
+		{ header: "Deals", width: "w-16", align: "right" },
+		{ header: "Amount", width: "w-24", align: "right" },
+		{ header: "Weighted", width: "w-24", align: "right" },
+	];
+
+	const ownerColumns: SimpleTableColumn[] = [
+		{ header: "Rep" },
+		{ header: "Deals", width: "w-16", align: "right" },
+		{ header: "Amount", width: "w-24", align: "right" },
+		{ header: "Weighted", width: "w-24", align: "right" },
+	];
+
 	return (
 		<div className="flex flex-col gap-6">
 			<StatGroup>
 				<StatCard
-					label="Closed won this month"
+					label="Closed won"
 					value={formatMoneyCompact(wonThisMonth.valueCents)}
 					delta={changeDelta(
 						wonThisMonth.valueCents,
 						wonPrevMonth.valueCents,
-						"vs. last month",
+						"vs. prior period",
 					)}
-					description={`${formatCount(wonThisMonth.count, "deal")} · ${formatMoneyCompact(wonPrevMonth.valueCents)} last month`}
+					description={`${rangeLabel} · ${formatCount(wonThisMonth.count, "deal")} · ${formatMoneyCompact(wonPrevMonth.valueCents)} prior`}
+				/>
+				<StatCard
+					label="Weighted forecast"
+					value={formatMoneyCompact(forecast.totals.weightedCents)}
+					description={`${formatCount(forecast.totals.dealCount, "open deal")} · ${formatMoneyCompact(forecast.totals.amountCents)} unweighted`}
 				/>
 				<StatCard
 					label="Open pipeline"
 					value={formatMoneyCompact(pipeline.totalCents)}
-					description={`${formatCount(pipeline.totalDeals, "deal")} in progress · ${formatMoneyCompact(closingThisMonthTotal.valueCents)} due this month`}
+					description={`${formatCount(pipeline.totalDeals, "deal")} in progress · ${formatMoneyCompact(closingWeightedCents)} weighted due this month`}
 				/>
 				<StatCard
 					label={`Win rate (${performance.windowDays}d)`}
@@ -110,25 +153,12 @@ export function SalesDashboard({ summary }: { summary: Summary }) {
 							: `${performance.wins} won · ${performance.losses} lost`
 					}
 				/>
-				<StatCard
-					label={`Average deal (${performance.windowDays}d)`}
-					value={
-						performance.avgDealCents === null
-							? "—"
-							: formatMoneyCompact(performance.avgDealCents)
-					}
-					description={
-						performance.avgCycleDays === null
-							? "No wins to measure"
-							: `${performance.avgCycleDays}-day average cycle`
-					}
-				/>
 			</StatGroup>
 
 			<DashboardRow split="hero">
 				<ChartPanel
 					title="Closed won vs. new pipeline"
-					description="Last six months, by the month a deal closed or was created"
+					description={`${rangeLabel} · by the month a deal closed or was created`}
 				>
 					{hasTrend ? (
 						<div className="flex flex-1 flex-col justify-center py-4">
@@ -201,6 +231,111 @@ export function SalesDashboard({ summary }: { summary: Summary }) {
 					)}
 				</ChartPanel>
 			</DashboardRow>
+
+			{/*
+			 * Forecast by close month — the Sage view reps rely on. Weighted is
+			 * certainty × amount (`weightedAmount`); amount is the unweighted total.
+			 */}
+			<div
+				className={
+					showOwnerBreakdown
+						? "grid gap-6 @3xl/page-content:grid-cols-2"
+						: undefined
+				}
+			>
+				<Card className="min-w-0">
+					<CardHeader>
+						<CardTitle>Forecast by close month</CardTitle>
+						<CardDescription>
+							Open deals by expected close — weighted vs unweighted
+						</CardDescription>
+					</CardHeader>
+					{forecast.months.length === 0 ? (
+						<EmptyChart label="Nothing open to forecast" />
+					) : (
+						<SimpleTable variant="panel" columns={monthColumns}>
+							{forecast.months.map((month) => (
+								<SimpleTableRow key={month.key}>
+									<TableCell className={CELL}>
+										<span className="flex min-w-0 items-center gap-2">
+											<span className="truncate font-medium">
+												{month.label}
+											</span>
+											{month.overdue ? (
+												<span className="shrink-0 text-muted-foreground text-xs">
+													Overdue
+												</span>
+											) : null}
+										</span>
+									</TableCell>
+									<TableCell
+										className={`${CELL} text-right text-muted-foreground tabular-nums`}
+									>
+										{month.dealCount}
+									</TableCell>
+									<TableCell className={`${CELL} text-right tabular-nums`}>
+										{month.amountCents === 0 ? (
+											<EmptyCellValue />
+										) : (
+											formatMoneyCompact(month.amountCents)
+										)}
+									</TableCell>
+									<TableCell
+										className={`${CELL} text-right font-medium tabular-nums`}
+									>
+										{month.weightedCents === 0 ? (
+											<EmptyCellValue />
+										) : (
+											formatMoneyCompact(month.weightedCents)
+										)}
+									</TableCell>
+								</SimpleTableRow>
+							))}
+						</SimpleTable>
+					)}
+				</Card>
+
+				{showOwnerBreakdown ? (
+					<Card className="min-w-0">
+						<CardHeader>
+							<CardTitle>Forecast by rep</CardTitle>
+							<CardDescription>
+								Open weighted pipeline across the team
+							</CardDescription>
+						</CardHeader>
+						<SimpleTable variant="panel" columns={ownerColumns}>
+							{forecast.byOwner.map((row) => (
+								<SimpleTableRow key={row.owner.id}>
+									<TableCell className={CELL}>
+										<OwnerCell owner={row.owner} />
+									</TableCell>
+									<TableCell
+										className={`${CELL} text-right text-muted-foreground tabular-nums`}
+									>
+										{row.dealCount}
+									</TableCell>
+									<TableCell className={`${CELL} text-right tabular-nums`}>
+										{row.amountCents === 0 ? (
+											<EmptyCellValue />
+										) : (
+											formatMoneyCompact(row.amountCents)
+										)}
+									</TableCell>
+									<TableCell
+										className={`${CELL} text-right font-medium tabular-nums`}
+									>
+										{row.weightedCents === 0 ? (
+											<EmptyCellValue />
+										) : (
+											formatMoneyCompact(row.weightedCents)
+										)}
+									</TableCell>
+								</SimpleTableRow>
+							))}
+						</SimpleTable>
+					</Card>
+				) : null}
+			</div>
 		</div>
 	);
 }

@@ -34,9 +34,12 @@ const RAIL = [...OPEN_STAGES, DealStage.CLOSED_WON] as readonly DealStage[];
 export function StageStepper({
 	dealId,
 	stage,
+	disabled = false,
 }: {
 	dealId: string;
 	stage: DealStage;
+	/** Owner-only lock — rail stays visible but clicks do nothing. */
+	disabled?: boolean;
 }) {
 	const trpc = useTRPC();
 	const cache = useCrmCache();
@@ -67,8 +70,11 @@ export function StageStepper({
 						<button
 							type="button"
 							aria-current={current ? "step" : undefined}
-							disabled={setStage.isPending}
-							onClick={() => setStage.mutate({ id: dealId, stage: option })}
+							disabled={disabled || setStage.isPending}
+							onClick={() => {
+								if (disabled) return;
+								setStage.mutate({ id: dealId, stage: option });
+							}}
 							className={cn(
 								"min-w-0 flex-1 border-t-2 pt-2 text-left text-xs transition-colors disabled:pointer-events-none disabled:opacity-50",
 								reached

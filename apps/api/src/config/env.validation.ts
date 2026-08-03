@@ -70,6 +70,14 @@ export class EnvironmentVariables {
 	ALLOWED_SIGN_IN!: string;
 
 	/**
+	 * Optional CRM admin emails (comma-separated addresses). Admins may edit
+	 * any deal and reassign owners. See `@crm/auth`'s `admins.ts`.
+	 */
+	@IsOptional()
+	@IsString()
+	CRM_ADMIN_EMAILS?: string;
+
+	/**
 	 * Google OAuth is optional now that email/password sign-in is enabled. Set
 	 * both to turn Google sign-in on; leave both empty to run on email/password
 	 * only. `@crm/auth` enforces that they are set together.

@@ -25,11 +25,13 @@ const ORDER = [
 	DealStage.UNQUALIFIED_TO_BUY,
 ] as const;
 
+// Labels only — enum keys stay HubSpot-style; Sage maps into them (§3.3).
+// Lead ≈ blank/unknown; Negotiating ≈ Sage Negotiation; Proposal ≈ Sage Proposal.
 const PRESENTATION: Record<DealStage, { label: string; tone: StatusTone }> = {
-	DEMO_BOOKED: { label: "Demo booked", tone: "neutral" },
+	DEMO_BOOKED: { label: "Lead", tone: "neutral" },
 	QUALIFIED_TO_BUY: { label: "Qualified to buy", tone: "info" },
-	DECISION_MAKER_BOUGHT_IN: { label: "Decision maker in", tone: "info" },
-	CONTRACT_SENT: { label: "Contract sent", tone: "warning" },
+	DECISION_MAKER_BOUGHT_IN: { label: "Negotiating", tone: "info" },
+	CONTRACT_SENT: { label: "Proposal", tone: "warning" },
 	CLOSED_WON: { label: "Closed won", tone: "success" },
 	CLOSED_LOST: { label: "Closed lost", tone: "error" },
 	UNQUALIFIED_TO_BUY: { label: "Unqualified", tone: "neutral" },

@@ -49,3 +49,33 @@ export const SAGE_TEST_NAME_PREDICATE = "comp_name like 'Mobile Mark%'";
 export const SAGE_TEST_OPPORTUNITY_COMPANY_ID = "24";
 
 export const SAGE_REQUEST_TIMEOUT_MS = 40_000;
+
+// --- full pull / backfill (docs/plans/sage-crm-sync.md section 6) ------------
+
+/**
+ * Postgres advisory-lock key for "a Sage session is open".
+ *
+ * ONE Web Services session may exist globally (a second `logon` kicks the
+ * first), so the test-slice, the backfill, the nightly cron, and the deferred
+ * push all take this single lock before touching Sage. Arbitrary but fixed —
+ * changing it would let two holders coexist.
+ */
+export const SAGE_SESSION_LOCK_KEY = 742_000_777;
+
+/**
+ * Pause between Sage pages during the backfill.
+ *
+ * This is a live production server the sales team uses; a small delay keeps the
+ * walk from hammering it. The API's own ~10-20s/page dominates anyway.
+ */
+export const SAGE_PAGE_DELAY_MS = 400;
+
+/** How many company pages a single backfill run will walk (safety ceiling). */
+export const SAGE_MAX_BACKFILL_PAGES = 400;
+
+/**
+ * Overlap subtracted from the high-water before an incremental pull, so a row
+ * changed during the previous run is not missed. Idempotent upserts absorb the
+ * re-read.
+ */
+export const SAGE_INCREMENTAL_OVERLAP_MS = 60 * 60 * 1000;

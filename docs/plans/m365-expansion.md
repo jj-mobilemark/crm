@@ -584,10 +584,11 @@ knows prefs + synced mail (and optionally Graph). Do not build until asked.
 
 Connector syncing companies/contacts/deals so this app acts as the agentic
 front-end over Sage. The dedicated plan is [docs/plans/sage-crm-sync.md](sage-crm-sync.md).
-**Status (2026-08-02):** test-slice pull (companies, contacts, **deals**) +
-company/contact Sage-ID UI are landed. **Next: forecast view UI** (plan §3b).
-Follow [docs/plans/sage-crm-sync.md](sage-crm-sync.md) + `HANDOFF.md`, not this
-stub.
+**Status (2026-08-02):** DONE through **7.4b full pull** — ~14.2k companies /
+~24.8k contacts / 525 deals imported locally, owners from `acctmgr`, forecast
+amount/weighted corrected, nightly incremental wired. Reconcile + push remain
+DESIGN-ONLY. Follow [docs/plans/sage-crm-sync.md](sage-crm-sync.md) + `HANDOFF.md`,
+not this stub.
 
 ---
 

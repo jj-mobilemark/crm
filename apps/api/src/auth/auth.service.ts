@@ -1,4 +1,5 @@
 import type { Db } from "@crm/db";
+import { isCrmAdmin } from "@crm/auth";
 import { CACHE_MANAGER } from "@nestjs/cache-manager";
 import { Inject, Injectable, Logger, NotFoundException } from "@nestjs/common";
 import type { Cache } from "cache-manager";
@@ -12,6 +13,11 @@ export interface UserProfile {
 	image: string | null;
 	/** ISO-8601: a `Date` would come back from Redis as a string anyway. */
 	createdAt: string;
+	/**
+	 * From `CRM_ADMIN_EMAILS` today — leave room for Better Auth roles later
+	 * (`docs/crm-plan.md` §6) without changing call sites.
+	 */
+	isAdmin: boolean;
 }
 
 const PROFILE_TTL_MS = 5 * 60_000;
@@ -37,7 +43,9 @@ export class AuthService {
 		const cached = await this.cache.get<UserProfile>(key);
 
 		if (cached) {
-			return cached;
+			// Recompute admin from env so a list change bites without waiting out
+			// the profile TTL (and so old cache entries without `isAdmin` still work).
+			return { ...cached, isAdmin: isCrmAdmin(cached.email) };
 		}
 
 		this.logger.debug({ message: "Profile cache miss", userId });
@@ -64,6 +72,7 @@ export class AuthService {
 		const profile: UserProfile = {
 			...user,
 			createdAt: user.createdAt.toISOString(),
+			isAdmin: isCrmAdmin(user.email),
 		};
 
 		await this.cache.set(key, profile, PROFILE_TTL_MS);

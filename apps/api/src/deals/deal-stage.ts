@@ -33,3 +33,38 @@ const CLOSED = new Set<DealStage>(CLOSED_DEAL_STAGES);
 export function isClosedStage(stage: DealStage): boolean {
 	return CLOSED.has(stage);
 }
+
+/**
+ * Default certainty % when a deal moves to this stage.
+ *
+ * Sage samples use 0 / 10 / 25 / 50 / 75 / 90 / 100. Labels in the UI are
+ * Lead / Qualified / Negotiating / Proposal — this map is the local default
+ * until push writes certainty back to Sage.
+ */
+export const STAGE_CERTAINTY: Record<DealStage, number> = {
+	[DealStage.DEMO_BOOKED]: 10,
+	[DealStage.QUALIFIED_TO_BUY]: 25,
+	[DealStage.DECISION_MAKER_BOUGHT_IN]: 50,
+	[DealStage.CONTRACT_SENT]: 75,
+	[DealStage.CLOSED_WON]: 100,
+	[DealStage.CLOSED_LOST]: 0,
+	[DealStage.UNQUALIFIED_TO_BUY]: 0,
+};
+
+export function certaintyForStage(stage: DealStage): number {
+	return STAGE_CERTAINTY[stage];
+}
+
+/**
+ * Weighted revenue from unweighted amount × certainty %.
+ *
+ * Returns null when either side is missing — same as Sage when forecast is
+ * blank.
+ */
+export function weightedFromAmount(
+	amount: number | null,
+	probability: number | null,
+): number | null {
+	if (amount === null || probability === null) return null;
+	return (amount * probability) / 100;
+}

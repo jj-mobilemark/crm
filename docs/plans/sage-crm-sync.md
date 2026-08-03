@@ -175,8 +175,9 @@ a pull. `source` is set to `RecordSource.SAGE` on new rows.
 | --- | --- | --- |
 | `sageCrmCompanyId` | `companyid` | new `@unique` column; the Sage CRM join key (e.g. `4139`, `24`) |
 | `sage100CustomerNo` | `mas_customerno` | **Sage 100 customer number** (e.g. `0000777`, `MME`). Surfaced in the UI (section 3d). |
-| `sage100ArDivisionNo` | `mas_ardivisionno` | Sage 100 AR division (e.g. `00`). Together with `sage100CustomerNo` this is the Sage 100 customer key and the join to `MasHeader` / `MasOrderDetailHistory`. Display combined as `<div>-<no>` (e.g. `00-0000777`). |
+| `sage100ArDivisionNo` | `mas_ardivisionno` | Sage 100 AR division (always `00` here). Kept as the join key to `MasHeader` / `MasOrderDetailHistory` for the later order-history phase. **CORRECTED 2026-08-02:** NOT shown in the UI — the team does not use the division, so the Sage 100 id displays as the customer number alone (`0011246`, not `00-0011246`). See `formatSage100Id`. |
 | `name` | `name` | |
+| `ownerId` | `acctmgr` | **ADDED 2026-08-02.** Company owner is a free-text account-manager NAME (not a user id). Resolved to a local user by unique last name + first initial (`matchSageUserByName`). Unmatched names (former reps, blanks, junk) leave the company owner-less. Only 3 current reps appear as `acctmgr`. |
 | `domain` | `website` | parse host; else domain of primary `person.emailaddress`. Used to match an existing local company before creating one. |
 | `website` | `website` | as-is |
 | `city` | nested `address.city` / `city` | primary address |
@@ -202,6 +203,7 @@ the sales team needs them visible/copyable — section 3d.)
 | `phone` | `areacode` + `number` | |
 | `title` | `title` | |
 | `companyId` | `companyid` | resolve to the local company created/matched from that Sage companyid |
+| `ownerId` | — (inherited) | **ADDED 2026-08-02.** Contacts inherit their parent company's owner (Sage persons carry no usable owner field). Only set, never cleared. |
 | `source` | — | constant `SAGE` |
 
 **Contact Sage 100 id.** Sage 100 keys *customers* (companies), not individual
@@ -218,12 +220,25 @@ to be exposed later, add `sage100ContactCode` then.
 | `sageCrmOpportunityId` | `opportunityid` | new `@unique` column (also the provenance marker; Deal has no `source`). Opportunities are Sage CRM only — no Sage 100 id. |
 | `name` | `description` | |
 | `companyId` | `primarycompanyid` | resolve to local company |
-| `amount` | `total` | DECIDED: `total` (unweighted). `forecast` -> weighted field (3b). |
+| `amount` | `forecast` (else `total`) | **CORRECTED 2026-08-02** — see the box below. Sage `total` is empty/0 on every opportunity; the deal value lives in `forecast`. So `amount` (unweighted deal value) ← `forecast`, falling back to `total`. |
+| `weightedAmount` | computed | **CORRECTED** — `amount` × `certainty`/100. Sage has no separate weighted field for this team; it is derived. Null when there is no certainty. |
+| `probability` | `certainty` | integer 0–100. |
 | `currency` | `currency` | default `USD` if blank |
 | `stage` | `stage` + `status` | map to `DealStage` (see below) |
 | `expectedCloseDate` | `targetclose` | |
-| `closedAt` | `closed` | |
+| `closedAt` | `closed` → `targetclose` → `opened` | **CORRECTED** — real `closed` date; for a closed-stage deal with no close date, fall back to `targetclose` then `opened`. Never "now" (that bunched every dateless deal into the import month). Open deals: null. |
+| `createdAt` | `opened` (else `createddate`) | **CORRECTED** — the deal's real creation date, so the pipeline trend is by when deals actually opened, not by import time. |
 | `ownerId` | `assigneduserid` | REQUIRED locally. Resolve via `SAGE_USER_EMAILS`; unmapped → `ken@mobilemark.com`, else earliest User. Never null. |
+
+> **CORRECTED 2026-08-02 — forecast/total semantics (supersedes the earlier
+> `amount ← total`, `forecast → weighted` decision).** The original assumption
+> was that Sage `total` = unweighted deal value and `forecast` = weighted. The
+> live data is the opposite: `total` is empty/`0` on all 525 opportunities and
+> the team enters the deal value in `forecast` (with a separate `certainty`).
+> Example: opp 380 has `forecast` = 2,029,650, `certainty` = 50, `total` empty —
+> a real ~$2M deal. So `amount ← forecast` and `weightedAmount = amount ×
+> certainty` (≈ $1.01M). Existing rows were recomputed by
+> `apps/api/scripts/sage-backfill-deal-amounts.ts`.
 
 **Stage mapping (`DealStage`).** Sage stage/status vocabulary enumerated from a
 100-opportunity sample:
@@ -269,17 +284,21 @@ can sync: the dedicated `forecast` entity is **not Web Service enabled**. Sage
 sales forecasting is driven by the **opportunity** itself. The relevant fields
 (all confirmed present and populated):
 
-- `forecast` — the forecast (weighted) revenue amount.
-- `total` — the opportunity total (unweighted deal value).
+- `forecast` — **the deal value the team enters** (unweighted). CORRECTED
+  2026-08-02: earlier notes called this "weighted" — it is not (see §3.3 box).
+- `total` — nominally the unweighted total, but **empty/`0` on every
+  opportunity here** (the team does not use it). We fall back to it only if
+  `forecast` is ever blank.
 - `certainty` — probability %, real values seen: `0,10,25,50,75,90,100`.
 - `stage` / `status` — pipeline position.
 - `targetclose` — the period the revenue lands in (the axis a forecast is built on).
+- `opened` — when the opportunity was created (→ `Deal.createdAt`).
 - `type` — `Key Opportunity` / `New Business` / `Baseline Business`.
 
-A Sage forecast is essentially: **sum of `forecast` (or `total` x `certainty`)
-for open opportunities, grouped by `targetclose` period and rep**. So we can
-fully reconstruct forecasting from opportunity data — but only if we bring those
-fields across.
+A Sage forecast is essentially: **sum of `forecast` × `certainty` (the weighted
+value) for open opportunities, grouped by `targetclose` period and rep**. We
+store `amount` = `forecast` and `weightedAmount` = `amount` × `certainty`, so
+the local forecast view reconstructs this exactly.
 
 **DECIDED (2026-08-02): forecasting is IN the first cut** — add the fields in
 7.1, map them, and build a forecast view. This is the deliberate exception to
@@ -287,10 +306,9 @@ the "add the fewest columns" principle: three optional `Deal` columns for a
 capability the CRM lacks entirely, not a new model. Everything else Sage carries
 on an opportunity stays in the snapshot.
 
-**The gap (remaining):** Deal columns and opportunity import are landed for the
-test slice. The app still has **no forecast view** — pipeline by close month,
-weighted vs unweighted, per rep. That UI is the next build step (see
-`HANDOFF.md`). Without it, reps cannot see the forecast they rely on Sage for.
+**Status 2026-08-02:** Forecast view UI landed and **7.4b full pull is DONE**
+(section 6) — ~14.2k companies / ~24.8k contacts / 525 deals imported, owners
+mapped, dates and forecast/amount corrected. Incremental is wired.
 
 For **bidirectional** later: reps forecasting in THIS app means writing
 `stage`, `certainty`, `forecast`, `targetclose` back onto the Sage opportunity
@@ -304,7 +322,7 @@ layer. Decide which are in scope:
 
 | Sage capability | WS status | Local equivalent | Recommendation |
 | --- | --- | --- | --- |
-| **Forecasting** (opportunity-driven) | via `opportunity` | none | **In scope** — extend `Deal` + build a forecast view (section 3b). This is the headline risk. |
+| **Forecasting** (opportunity-driven) | via `opportunity` | Deal cols + overview forecast | **Done for pull** — extend further on push. |
 | **Activities / communications** (calls, meetings, tasks, letters) | `communication` enabled | `Activity` | **Strong phase-2 candidate** — an interface layer without the interaction history is thin. |
 | **Order / invoice history** (Sage 100) | `MasHeader` + `MasOrderDetailHistory` enabled | none | Read-only context on the company via `mas_customerno` join. Later phase. |
 | **Quotes / Sales Orders** | probably enabled (re-probe) | none | Optional; overlaps with Mas* order history. |
@@ -372,17 +390,21 @@ Mark records.
 ## 4. Open items (decide at build time; record in HANDOFF.md)
 
 1. **Owner mapping — DECIDED: static map** in `sage.mappings.ts`
-   (`SAGE_USER_EMAILS`). List was supplied 2026-08-02. Unmapped
-   `assigneduserid` → fallback User `ken@mobilemark.com` (Sage 27), else
-   earliest User by `createdAt`. Not blocking.
-2. **Deal amount source — DECIDED:** `Deal.amount` <- opportunity `total`
-   (unweighted); `forecast` -> the new weighted field (section 3b).
+   (`SAGE_USER_EMAILS` / `SAGE_USERS`). List supplied 2026-08-02; the 11 users
+   are pre-created by `ensureSageUsers`. Deal owner ← `assigneduserid`; unmapped
+   → `ken@mobilemark.com` (Sage 27), else earliest User. **Company owner ←
+   `acctmgr` name** (`matchSageUserByName`); **contacts inherit** the company
+   owner (§3.1/§3.2).
+2. **Deal amount source — CORRECTED 2026-08-02:** `Deal.amount` ← opportunity
+   `forecast` (the deal value; `total` is unused/empty here), and
+   `weightedAmount` = `amount` × `certainty`. This supersedes the original
+   `amount ← total`, `forecast → weighted` decision (see the §3.3 box).
 3. **Stage model — DECIDED (revised): keep the CRM's `DealStage` enum**, map
    Sage -> local for display, store the raw Sage stage for 1:1 push (section
    3.3). No enum swap / board re-key (per the guiding principle).
 4. **Forecasting — DECIDED: in the first cut** (section 3b). Deal columns +
-   opportunity import are DONE. Remaining: **forecast view UI** (see
-   `HANDOFF.md` Current state recipe).
+   opportunity import + forecast view UI + **7.4b full pull are all DONE**
+   (2026-08-02). Amount/weighted semantics corrected (§3.3 box).
 5. **Which extra modules** to bring in (order of value): communications ->
    order history -> leads -> quotes/cases. Confirm with the team. (Not blocking
    the triad.)
@@ -404,11 +426,13 @@ Mark records.
 
 ## 5. Build phases
 
-**Status (2026-08-02):** 7.1 (incl. Deal forecasting + `sageStage`/`sageStatus`),
-7.2 SOAP client, 7.3 mappings (incl. opportunity), **7.4a test-slice**
-(companies + people + opportunities), and **7.4c Sage-ID UI** (company/contact)
-are DONE. **Next: forecast view UI** (section 3b) — recipe in `HANDOFF.md`.
-Then optional deal Sage-ID UI; then **7.4b** full pull.
+**Status (2026-08-02):** 7.1, 7.2 SOAP client, 7.3 mappings, **7.4a test-slice**,
+**7.4c Sage-ID UI**, **forecast view UI**, AND **7.4b full pull** are all DONE.
+The first full backfill ran locally off-peak: ~14.2k companies / ~24.8k
+contacts / 525 deals / 39.5k snapshots, `phase = incremental`. Company/contact
+owners mapped from `acctmgr`; deal dates from `opened`/`closed`; amount/weighted
+corrected (§3.3 box). Remaining Sage work (reconcile soft-deactivate §6.7 and
+push, Part G) is DESIGN-ONLY.
 
 1. **7.1 Schema** (DONE): `RecordSource.SAGE`; ids —
    `Company.sageCrmCompanyId`, `Contact.sageCrmContactId`,
@@ -427,18 +451,27 @@ Then optional deal Sage-ID UI; then **7.4b** full pull.
    nested people + opportunities (`oppo_primarycompanyid IN (…) AND
    oppo_deleted IS NULL`); snapshots; upserts; `DealContact` from
    `primarypersonid`.
-5. **7.4c Sage-ID UI** (DONE for company/contact): `CopyButton`; id fields on
-   list/byId; table columns + sheet sections. Deal Sage-ID optional follow-on.
-6. **7.4b Full pull at scale**: `sage-pull.service.ts` — the two-phase
-   (backfill -> incremental), single-session, throttled design in **section 6**
-   (~14k companies/~26k contacts; `query`/`next` ~100/page; `comp_deleted IS
-   NULL`; nested-company pull; global session lock). Initial backfill as a
-   **Railway worker** (~1h, off-peak); incremental as the nightly
-   `/internal/sync/sage` cron (CRON_SECRET). Extends `SageSyncState`
-   (phase/backfillId/highWater — 6.2) + a local inactive flag for soft-deactivate
-   (6.7). `sage.router.ts` `status` (phase+progress) + `syncNow`; register in
-   `app.module.ts`, regenerate + commit `server.ts`.
-7. **Deferred (push)**: `SageOutbox` + `sage-push.service.ts` + create hooks.
+5. **7.4c Sage-ID UI** (DONE for company/contact/**deal**): `CopyButton`; id
+   fields on list/byId; table columns + sheet sections.
+6. **7.4b Full pull at scale** (DONE 2026-08-02 — local one-shot):
+   `SagePullService.runBackfill()` + `apps/api/scripts/sage-backfill.ts`.
+   Two-phase (backfill → incremental), single global session via
+   `withSageSession` (Postgres advisory lock), throttled `query`/`next` company
+   walk (`comp_deleted IS NULL`, nested people) then a full opportunity walk
+   (`oppo_deleted IS NULL`). `SageSyncState` extended
+   (`phase`/`backfillId`/`highWaterUpdatedAt`/`processed`/`backfillDoneAt`,
+   migration `add_sage_backfill_state`); soft-deactivate + push-echo columns
+   added (design-only). `GET /internal/sync/sage` now runs `runScheduled()`
+   (test slice while `phase=backfill`, incremental once flipped) — no router
+   change, `server.ts` untouched. **Deviations from the original design**:
+   local script instead of a Railway worker; `query`/`next` full walk instead of
+   id-paged resume (Sage is not id-ordered — proven; a re-run is the safe
+   recovery). One-time cleanups: `sage-backfill-owners.ts`,
+   `sage-backfill-deal-dates.ts`, `sage-backfill-deal-amounts.ts`.
+7. **Deferred (push + reconcile)**: `SageOutbox` + `sage-push.service.ts` +
+   create hooks; monthly reconcile that soft-deactivates ids absent from a full
+   run (§6.7). DESIGN-ONLY — do not build unless asked. `sage.router.ts`
+   status/syncNow also not yet built (cron uses the CRON_SECRET route).
 
 ---
 
@@ -451,6 +484,31 @@ pages are ~100 rows, the API is slow (~10-20s/page, ~1h for a full company
 sync), only ONE session may be open at a time, and it is a live on-prem server
 the sales team uses. So: a **two-phase (backfill -> incremental), throttled,
 single-session** pull.
+
+### 6.0 Gate — open questions (ANSWERED 2026-08-02, 7.4b shipped)
+
+All eight were resolved before building; kept here for the record. Full answers
+also in `HANDOFF.md` "Open questions … ANSWERED".
+
+1. **Backfill runtime** — LOCAL one-shot script, `query`/`next`, off-peak.
+2. **Where** — local, from the maintainer's machine (dry-run → full run).
+3. **Soft-deactivate** — `sageDeactivatedAt` on Company/Contact/Deal
+   (reconcile that sets it is design-only).
+4. **Opportunity walk** — ALL non-deleted opps after companies complete.
+5. **Global lock** — Postgres advisory lock (`withSageSession`).
+6. **Route** — kept `/internal/sync/sage`; `runScheduled` auto-switches
+   test-slice → incremental once `phase` flips.
+7. **Throttle** — `SAGE_PAGE_DELAY_MS` + `SAGE_MAX_BACKFILL_PAGES`, off-peak.
+8. **Commit forecast UI** — still uncommitted; commit with 7.4b.
+
+**Deviations from this plan**: local script (not a Railway worker); `query`/`next`
+full walk (not id-paged resume — Sage is not id-ordered).
+
+**Already reusable from 7.4a** (do not rebuild): hierarchical parse +
+`enrichPerson`; `queryAllCompanies` / `queryAllRecords` + `next`; opportunity
+mapping + `importTestSlice` as the bounded reference implementation.
+`SageSyncState` still has only `status` + `cursor` — phase fields are additive
+(6.2). No inactive flag on core models yet (6.7).
 
 ### 6.1 Two phases (query the COMPANY, take contacts from its nested children)
 
@@ -554,9 +612,9 @@ deletions via `... AND comp_deleted IS NULL`. But an incremental pass never sees
 a row that got deleted or merged since last run. The sibling project's answer,
 adopted here: on a FULL reconcile, local Sage ids not seen in the run get
 **verified with a single-company query and soft-deactivated — never
-hard-deleted**. That needs a local "inactive/archived" flag; `Company`/`Contact`
-have none today, so add one (or reuse `source`/a status) when 7.4b lands.
-Schedule the reconcile occasionally (e.g. monthly), not nightly.
+hard-deleted**. The flag now exists (`sageDeactivatedAt` on Company/Contact/Deal,
+added in 7.4b). The reconcile job that SETS it is not built yet — DESIGN-ONLY,
+schedule occasionally (e.g. monthly), not nightly.
 
 ### 6.8 Idempotency (the property everything above leans on)
 

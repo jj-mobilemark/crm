@@ -1,12 +1,23 @@
 import { type Db, DealStage, RecordSource } from "@crm/db";
 import { Injectable, Logger } from "@nestjs/common";
 import { InjectDatabase } from "../database/database.constants";
+import {
+	countMappableContacts,
+	maxNumericId,
+	sageDate,
+} from "./sage-backfill.util";
+import { withSageSession } from "./sage-session";
 import { SageSoapClient } from "./sage-soap.client";
 import {
+	SAGE_INCREMENTAL_OVERLAP_MS,
+	SAGE_MAX_BACKFILL_PAGES,
+	SAGE_PAGE_DELAY_MS,
 	SAGE_TEST_NAME_PREDICATE,
 	SAGE_TEST_OPPORTUNITY_COMPANY_ID,
+	SAGE_UPDATED_COLUMN,
 } from "./sage.constants";
 import {
+	emailForAcctMgr,
 	emailForSageUser,
 	mapCompanyTree,
 	mapContact,
@@ -14,18 +25,50 @@ import {
 	type MappedCompany,
 	type MappedContact,
 	type MappedOpportunity,
+	SAGE_USER_EMAILS,
 } from "./sage.mappings";
+import { ensureSageUsers } from "./sage-users";
 import type { SageCompanyTree } from "./sage-xml";
 
 /** Fallback owner when Sage assigneduserid is unmapped (Ken — Sage id 27). */
 const FALLBACK_OWNER_EMAIL = "ken@mobilemark.com";
 
+export type SageOutcome =
+	| "ok"
+	| "not-configured"
+	| "auth-failed"
+	| "failed"
+	| "busy";
+
 export type SageTestSliceSummary = {
-	outcome: "ok" | "not-configured" | "auth-failed" | "failed" | "busy";
+	outcome: SageOutcome;
 	reason?: string;
 	companiesFetched: number;
 	companiesUpserted: number;
 	contactsUpserted: number;
+	dealsUpserted: number;
+	dealContactsLinked: number;
+	snapshotsWritten: number;
+	skipped: number;
+};
+
+export type SageBackfillOptions = {
+	/** Fetch + snapshot + map + count, but write no core Company/Contact/Deal. */
+	dryRun?: boolean;
+	/** Stop after this many companies — the canary lever (e.g. 200). */
+	maxCompanies?: number;
+};
+
+export type SageBackfillSummary = {
+	outcome: SageOutcome;
+	reason?: string;
+	dryRun: boolean;
+	/** Company pages walked (query + next). */
+	pages: number;
+	companiesFetched: number;
+	companiesUpserted: number;
+	contactsUpserted: number;
+	dealsFetched: number;
 	dealsUpserted: number;
 	dealContactsLinked: number;
 	snapshotsWritten: number;
@@ -42,7 +85,6 @@ export type SageTestSliceSummary = {
 @Injectable()
 export class SagePullService {
 	private readonly logger = new Logger(SagePullService.name);
-	private running = false;
 
 	constructor(
 		@InjectDatabase() private readonly db: Db,
@@ -52,13 +94,10 @@ export class SagePullService {
 	/**
 	 * Import the Mobile Mark test companies, nested people, and opportunities.
 	 *
-	 * Bounded predicate — ~8 companies / ~4 deals on company 24, one session,
-	 * always logoff.
+	 * Bounded predicate — ~8 companies / ~4 deals on company 24. Runs inside the
+	 * one global Sage session (advisory lock), which `logoff`s for us.
 	 */
 	async importTestSlice(): Promise<SageTestSliceSummary> {
-		if (this.running) {
-			return emptySummary("busy", "A Sage sync is already running.");
-		}
 		if (!this.soap.isConfigured()) {
 			return emptySummary(
 				"not-configured",
@@ -66,7 +105,16 @@ export class SagePullService {
 			);
 		}
 
-		this.running = true;
+		const ran = await withSageSession(this.db, this.soap, () =>
+			this.runTestSlice(),
+		);
+		if (ran.outcome === "busy") {
+			return emptySummary("busy", "A Sage sync is already running.");
+		}
+		return ran.value;
+	}
+
+	private async runTestSlice(): Promise<SageTestSliceSummary> {
 		const summary: SageTestSliceSummary = {
 			outcome: "ok",
 			companiesFetched: 0,
@@ -109,10 +157,11 @@ export class SagePullService {
 			// Domains already claimed by ANY company — used to avoid unique
 			// collisions across the near-duplicate Mobile Mark rows.
 			const takenDomains = await this.loadTakenDomains();
+			const ownerByEmail = await this.loadOwnerCache();
 			const companyBySageId = new Map<string, string>();
 
 			for (const tree of trees) {
-				const result = await this.upsertCompanyTree(tree, takenDomains);
+				const result = await this.upsertCompanyTree(tree, takenDomains, ownerByEmail);
 				summary.companiesUpserted += result.company ? 1 : 0;
 				summary.contactsUpserted += result.contacts;
 				summary.snapshotsWritten += result.snapshots;
@@ -158,9 +207,6 @@ export class SagePullService {
 			summary.outcome = "failed";
 			summary.reason = reason;
 			return summary;
-		} finally {
-			await this.soap.logoff();
-			this.running = false;
 		}
 	}
 
@@ -290,7 +336,13 @@ export class SagePullService {
 			sageStatus: mapped.sageStatus,
 			dealType: mapped.dealType,
 			expectedCloseDate: mapped.expectedCloseDate,
-			closedAt: mapped.closedAt,
+			// Real Sage close date; if a closed deal has none, fall back to the
+			// forecast close then the open date rather than stamping "now"
+			// (which would bunch every dateless deal into the import month).
+			closedAt: resolvedClosedAt(mapped),
+			// The deal's true creation date is Sage `opened`, not our import time.
+			// `undefined` leaves the DB default (now) when Sage has neither.
+			createdAt: mapped.openedAt ?? undefined,
 		};
 
 		if (existing) {
@@ -299,9 +351,7 @@ export class SagePullService {
 				where: { id: existing.id },
 				data: {
 					...fields,
-					...(stageChanged
-						? { stageChangedAt: new Date() }
-						: {}),
+					...(stageChanged ? { stageChangedAt: new Date() } : {}),
 				},
 			});
 			return existing.id;
@@ -311,10 +361,7 @@ export class SagePullService {
 			data: {
 				...fields,
 				sageCrmOpportunityId: mapped.sageCrmOpportunityId,
-				stageChangedAt: new Date(),
-				closedAt:
-					mapped.closedAt ??
-					(isClosedStage(mapped.stage) ? new Date() : null),
+				stageChangedAt: mapped.openedAt ?? new Date(),
 			},
 			select: { id: true },
 		});
@@ -367,6 +414,562 @@ export class SagePullService {
 		return earliest?.id ?? null;
 	}
 
+	// --- full pull (backfill) -------------------------------------------------
+
+	/**
+	 * Full pull of every non-deleted company (+ nested people) then every
+	 * non-deleted opportunity (plan §6). One global Sage session, throttled,
+	 * snapshot-first. Idempotent, so a fresh re-run after a crash is always safe.
+	 *
+	 * The company walk uses Sage's own `query` -> `next` pagination, which walks
+	 * the COMPLETE matching set regardless of row order — the correctness this
+	 * relies on. `backfillId` (max id seen) is recorded for progress only; a true
+	 * id-paged resume is deferred until we confirm Sage orders by id (a re-run is
+	 * cheap because every write keys off `sageCrm*Id`).
+	 */
+	async runBackfill(
+		options: SageBackfillOptions = {},
+	): Promise<SageBackfillSummary> {
+		const dryRun = options.dryRun ?? false;
+		if (!this.soap.isConfigured()) {
+			return emptyBackfill(
+				"not-configured",
+				dryRun,
+				"Sage SOAP is not configured.",
+			);
+		}
+
+		const ran = await withSageSession(this.db, this.soap, () =>
+			this.runBackfillLocked(dryRun, options.maxCompanies),
+		);
+		if (ran.outcome === "busy") {
+			return emptyBackfill(
+				"busy",
+				dryRun,
+				"A Sage sync is already running.",
+			);
+		}
+		return ran.value;
+	}
+
+	private async runBackfillLocked(
+		dryRun: boolean,
+		maxCompanies?: number,
+	): Promise<SageBackfillSummary> {
+		const summary: SageBackfillSummary = {
+			outcome: "ok",
+			dryRun,
+			pages: 0,
+			companiesFetched: 0,
+			companiesUpserted: 0,
+			contactsUpserted: 0,
+			dealsFetched: 0,
+			dealsUpserted: 0,
+			dealContactsLinked: 0,
+			snapshotsWritten: 0,
+			skipped: 0,
+		};
+
+		try {
+			if (!dryRun) {
+				const users = await ensureSageUsers(this.db);
+				this.logger.log({ message: "Sage users ensured", ...users });
+			}
+
+			const companies = await this.backfillCompanies(
+				summary,
+				dryRun,
+				maxCompanies,
+			);
+			if (companies.outcome !== "ok") {
+				summary.outcome = companies.outcome;
+				summary.reason = companies.reason;
+				return summary;
+			}
+
+			const opps = await this.backfillOpportunities(summary, dryRun);
+			if (opps.outcome !== "ok") {
+				summary.outcome = opps.outcome;
+				summary.reason = opps.reason;
+				return summary;
+			}
+
+			// Only a COMPLETE full walk flips the phase to incremental. A capped
+			// (`--max`) or ceiling-truncated run is a partial backfill.
+			if (!dryRun && companies.completed) await this.markBackfillComplete();
+
+			this.logger.log({ message: "Sage backfill finished", ...summary });
+			return summary;
+		} catch (error) {
+			const reason =
+				error instanceof Error ? error.message : String(error);
+			this.logger.error(
+				{ message: "Sage backfill failed", reason },
+				error instanceof Error ? error.stack : String(error),
+			);
+			summary.outcome = "failed";
+			summary.reason = reason;
+			return summary;
+		}
+	}
+
+	/** Walk every non-deleted company page, snapshot-first, throttled. */
+	private async backfillCompanies(
+		summary: SageBackfillSummary,
+		dryRun: boolean,
+		maxCompanies?: number,
+	): Promise<{ outcome: SageOutcome; reason?: string; completed: boolean }> {
+		const takenDomains = await this.loadTakenDomains();
+		const ownerByEmail = await this.loadOwnerCache();
+
+		let more = true;
+		let firstPage = true;
+		let maxId: string | null = null;
+		let truncated = false;
+
+		while (more) {
+			if (summary.pages >= SAGE_MAX_BACKFILL_PAGES) {
+				this.logger.warn({
+					message: "Sage backfill hit the page ceiling",
+					pages: summary.pages,
+				});
+				truncated = true;
+				break;
+			}
+
+			const page = firstPage
+				? await this.soap.queryCompanies("comp_deleted IS NULL")
+				: await this.soap.nextCompanies();
+			firstPage = false;
+
+			if (page.outcome !== "ok") {
+				return {
+					outcome: page.outcome,
+					reason: page.reason,
+					completed: false,
+				};
+			}
+			summary.pages += 1;
+
+			for (const tree of page.data.companies) {
+				summary.companiesFetched += 1;
+				maxId = maxNumericId(maxId, tree.company.companyid);
+
+				if (dryRun) {
+					const mapped = mapCompanyTree(tree);
+					if (mapped) {
+						summary.companiesUpserted += 1;
+						summary.contactsUpserted += countMappableContacts(tree);
+					} else {
+						summary.skipped += 1;
+					}
+				} else {
+					const result = await this.upsertCompanyTree(
+						tree,
+						takenDomains,
+						ownerByEmail,
+					);
+					summary.companiesUpserted += result.company ? 1 : 0;
+					summary.contactsUpserted += result.contacts;
+					summary.snapshotsWritten += result.snapshots;
+					summary.skipped += result.skipped;
+				}
+
+				if (maxCompanies && summary.companiesFetched >= maxCompanies) {
+					more = false;
+					truncated = true;
+					break;
+				}
+			}
+
+			if (!dryRun) {
+				await this.checkpointCompanyBackfill(maxId, summary.companiesFetched);
+			}
+
+			this.logger.log({
+				message: "Sage backfill progress",
+				dryRun,
+				pages: summary.pages,
+				companiesFetched: summary.companiesFetched,
+				contactsUpserted: summary.contactsUpserted,
+				lastCompanyId: maxId,
+			});
+
+			if (more) more = page.data.more;
+			if (more) await delay(SAGE_PAGE_DELAY_MS);
+		}
+
+		return { outcome: "ok", completed: !truncated };
+	}
+
+	/** Pull every non-deleted opportunity and map onto deals. */
+	private async backfillOpportunities(
+		summary: SageBackfillSummary,
+		dryRun: boolean,
+	): Promise<{ outcome: SageOutcome; reason?: string }> {
+		const fetched = await this.soap.queryAllRecords(
+			"opportunity",
+			"oppo_deleted IS NULL",
+		);
+		if (fetched.outcome !== "ok") {
+			return { outcome: fetched.outcome, reason: fetched.reason };
+		}
+		summary.dealsFetched = fetched.data.length;
+
+		if (dryRun) {
+			for (const record of fetched.data) {
+				if (mapOpportunity(record)) summary.dealsUpserted += 1;
+				else summary.skipped += 1;
+			}
+			return { outcome: "ok" };
+		}
+
+		const companyBySageId = await this.loadCompanyBySageId();
+		const ownerCache = await this.loadOwnerCache();
+		const fallbackOwnerId = await this.resolveFallbackOwnerId();
+		if (!fallbackOwnerId) {
+			this.logger.warn({
+				message:
+					"No local User for deal owner fallback — skipping opportunities",
+			});
+			summary.skipped += fetched.data.length;
+			return { outcome: "ok" };
+		}
+
+		for (const record of fetched.data) {
+			const mapped = mapOpportunity(record);
+			if (!mapped) {
+				summary.skipped += 1;
+				continue;
+			}
+
+			summary.snapshotsWritten += await this.writeSnapshot(
+				"opportunity",
+				mapped.sageCrmOpportunityId,
+				record,
+			);
+
+			const companyId = companyBySageId.get(mapped.sageCrmCompanyId);
+			if (!companyId) {
+				summary.skipped += 1;
+				continue;
+			}
+
+			const ownerId =
+				ownerCache.get(emailForSageUser(mapped.sageAssignedUserId) ?? "") ??
+				fallbackOwnerId;
+
+			const dealId = await this.upsertDeal(mapped, companyId, ownerId);
+			if (!dealId) {
+				summary.skipped += 1;
+				continue;
+			}
+			summary.dealsUpserted += 1;
+
+			if (mapped.sageCrmPrimaryPersonId) {
+				const linked = await this.linkPrimaryDealContact(
+					dealId,
+					mapped.sageCrmPrimaryPersonId,
+				);
+				if (linked) summary.dealContactsLinked += 1;
+			}
+		}
+
+		return { outcome: "ok" };
+	}
+
+	// --- scheduled entrypoint -------------------------------------------------
+
+	/**
+	 * What `GET /internal/sync/sage` (the cron) runs.
+	 *
+	 * While the company entity is still in `backfill` phase — i.e. the one-shot
+	 * full pull has NOT completed yet — this stays the safe bounded test slice.
+	 * Once the backfill flips the phase to `incremental`, the same route becomes
+	 * the nightly incremental pull. The full backfill itself never runs through
+	 * this web route (it is the `sage-backfill.ts` script).
+	 */
+	async runScheduled(): Promise<SageTestSliceSummary | SageBackfillSummary> {
+		const state = await this.db.sageSyncState.findUnique({
+			where: { entity: "company" },
+			select: { phase: true },
+		});
+		if (state?.phase === "incremental") {
+			return this.runIncremental();
+		}
+		return this.importTestSlice();
+	}
+
+	// --- incremental (nightly) ------------------------------------------------
+
+	/**
+	 * Nightly incremental pull: only companies/opportunities changed since the
+	 * high-water, with an overlap. Idempotent upserts absorb the overlap. Runs
+	 * inside the one global Sage session.
+	 */
+	async runIncremental(): Promise<SageBackfillSummary> {
+		if (!this.soap.isConfigured()) {
+			return emptyBackfill(
+				"not-configured",
+				false,
+				"Sage SOAP is not configured.",
+			);
+		}
+
+		const ran = await withSageSession(this.db, this.soap, () =>
+			this.runIncrementalLocked(),
+		);
+		if (ran.outcome === "busy") {
+			return emptyBackfill("busy", false, "A Sage sync is already running.");
+		}
+		return ran.value;
+	}
+
+	private async runIncrementalLocked(): Promise<SageBackfillSummary> {
+		const summary: SageBackfillSummary = {
+			outcome: "ok",
+			dryRun: false,
+			pages: 0,
+			companiesFetched: 0,
+			companiesUpserted: 0,
+			contactsUpserted: 0,
+			dealsFetched: 0,
+			dealsUpserted: 0,
+			dealContactsLinked: 0,
+			snapshotsWritten: 0,
+			skipped: 0,
+		};
+
+		try {
+			const since = await this.incrementalSince();
+			const startedAt = new Date();
+			const takenDomains = await this.loadTakenDomains();
+			const ownerByEmail = await this.loadOwnerCache();
+
+			const changedPredicate = since
+				? `${SAGE_UPDATED_COLUMN.company} > '${sageDate(since)}' AND comp_deleted IS NULL`
+				: "comp_deleted IS NULL";
+
+			let more = true;
+			let firstPage = true;
+			while (more) {
+				if (summary.pages >= SAGE_MAX_BACKFILL_PAGES) break;
+				const page = firstPage
+					? await this.soap.queryCompanies(changedPredicate)
+					: await this.soap.nextCompanies();
+				firstPage = false;
+				if (page.outcome !== "ok") {
+					summary.outcome = page.outcome;
+					summary.reason = page.reason;
+					return summary;
+				}
+				summary.pages += 1;
+				for (const tree of page.data.companies) {
+					summary.companiesFetched += 1;
+					const result = await this.upsertCompanyTree(
+						tree,
+						takenDomains,
+						ownerByEmail,
+					);
+					summary.companiesUpserted += result.company ? 1 : 0;
+					summary.contactsUpserted += result.contacts;
+					summary.snapshotsWritten += result.snapshots;
+					summary.skipped += result.skipped;
+				}
+				if (more) more = page.data.more;
+				if (more) await delay(SAGE_PAGE_DELAY_MS);
+			}
+
+			const oppPredicate = since
+				? `${SAGE_UPDATED_COLUMN.opportunity} > '${sageDate(since)}' AND oppo_deleted IS NULL`
+				: "oppo_deleted IS NULL";
+			const opps = await this.backfillOpportunitiesPredicate(
+				summary,
+				oppPredicate,
+			);
+			if (opps.outcome !== "ok") {
+				summary.outcome = opps.outcome;
+				summary.reason = opps.reason;
+				return summary;
+			}
+
+			await this.advanceHighWater(startedAt);
+			this.logger.log({ message: "Sage incremental finished", ...summary });
+			return summary;
+		} catch (error) {
+			const reason =
+				error instanceof Error ? error.message : String(error);
+			this.logger.error(
+				{ message: "Sage incremental failed", reason },
+				error instanceof Error ? error.stack : String(error),
+			);
+			summary.outcome = "failed";
+			summary.reason = reason;
+			return summary;
+		}
+	}
+
+	/** Opportunity walk against an arbitrary predicate (shared by incremental). */
+	private async backfillOpportunitiesPredicate(
+		summary: SageBackfillSummary,
+		predicate: string,
+	): Promise<{ outcome: SageOutcome; reason?: string }> {
+		const fetched = await this.soap.queryAllRecords("opportunity", predicate);
+		if (fetched.outcome !== "ok") {
+			return { outcome: fetched.outcome, reason: fetched.reason };
+		}
+		summary.dealsFetched += fetched.data.length;
+
+		const companyBySageId = await this.loadCompanyBySageId();
+		const ownerCache = await this.loadOwnerCache();
+		const fallbackOwnerId = await this.resolveFallbackOwnerId();
+		if (!fallbackOwnerId) {
+			summary.skipped += fetched.data.length;
+			return { outcome: "ok" };
+		}
+
+		for (const record of fetched.data) {
+			const mapped = mapOpportunity(record);
+			if (!mapped) {
+				summary.skipped += 1;
+				continue;
+			}
+			summary.snapshotsWritten += await this.writeSnapshot(
+				"opportunity",
+				mapped.sageCrmOpportunityId,
+				record,
+			);
+			const companyId = companyBySageId.get(mapped.sageCrmCompanyId);
+			if (!companyId) {
+				summary.skipped += 1;
+				continue;
+			}
+			const ownerId =
+				ownerCache.get(emailForSageUser(mapped.sageAssignedUserId) ?? "") ??
+				fallbackOwnerId;
+			const dealId = await this.upsertDeal(mapped, companyId, ownerId);
+			if (!dealId) {
+				summary.skipped += 1;
+				continue;
+			}
+			summary.dealsUpserted += 1;
+			if (mapped.sageCrmPrimaryPersonId) {
+				const linked = await this.linkPrimaryDealContact(
+					dealId,
+					mapped.sageCrmPrimaryPersonId,
+				);
+				if (linked) summary.dealContactsLinked += 1;
+			}
+		}
+		return { outcome: "ok" };
+	}
+
+	// --- state + caches -------------------------------------------------------
+
+	private async checkpointCompanyBackfill(
+		backfillId: string | null,
+		processed: number,
+	): Promise<void> {
+		await this.db.sageSyncState.upsert({
+			where: { entity: "company" },
+			create: {
+				entity: "company",
+				status: "RUNNING",
+				phase: "backfill",
+				backfillId,
+				processed,
+			},
+			update: {
+				status: "RUNNING",
+				phase: "backfill",
+				backfillId,
+				processed,
+				lastSyncedAt: new Date(),
+			},
+		});
+	}
+
+	private async markBackfillComplete(): Promise<void> {
+		const now = new Date();
+		for (const entity of ["company", "opportunity"]) {
+			await this.db.sageSyncState.upsert({
+				where: { entity },
+				create: {
+					entity,
+					status: "IDLE",
+					phase: "incremental",
+					highWaterUpdatedAt: now,
+					backfillDoneAt: now,
+				},
+				update: {
+					status: "IDLE",
+					phase: "incremental",
+					highWaterUpdatedAt: now,
+					backfillDoneAt: now,
+					lastSyncedAt: now,
+				},
+			});
+		}
+	}
+
+	/** The oldest high-water across company/opportunity, minus the overlap. */
+	private async incrementalSince(): Promise<Date | null> {
+		const states = await this.db.sageSyncState.findMany({
+			where: { entity: { in: ["company", "opportunity"] } },
+			select: { highWaterUpdatedAt: true },
+		});
+		const waters = states
+			.map((s) => s.highWaterUpdatedAt)
+			.filter((d): d is Date => d !== null);
+		if (waters.length === 0) return null;
+		const oldest = waters.reduce((a, b) => (a < b ? a : b));
+		return new Date(oldest.getTime() - SAGE_INCREMENTAL_OVERLAP_MS);
+	}
+
+	private async advanceHighWater(to: Date): Promise<void> {
+		for (const entity of ["company", "opportunity"]) {
+			await this.db.sageSyncState.upsert({
+				where: { entity },
+				create: {
+					entity,
+					status: "IDLE",
+					phase: "incremental",
+					highWaterUpdatedAt: to,
+				},
+				update: {
+					status: "IDLE",
+					phase: "incremental",
+					highWaterUpdatedAt: to,
+					lastSyncedAt: to,
+				},
+			});
+		}
+	}
+
+	private async loadCompanyBySageId(): Promise<Map<string, string>> {
+		const rows = await this.db.company.findMany({
+			where: { sageCrmCompanyId: { not: null } },
+			select: { id: true, sageCrmCompanyId: true },
+		});
+		const map = new Map<string, string>();
+		for (const row of rows) {
+			if (row.sageCrmCompanyId) map.set(row.sageCrmCompanyId, row.id);
+		}
+		return map;
+	}
+
+	/** email -> local User id, for every known Sage owner email (one query). */
+	private async loadOwnerCache(): Promise<Map<string, string>> {
+		const emails = [...new Set(Object.values(SAGE_USER_EMAILS))];
+		const users = await this.db.user.findMany({
+			where: { email: { in: emails } },
+			select: { id: true, email: true },
+		});
+		const map = new Map<string, string>();
+		for (const user of users) map.set(user.email, user.id);
+		return map;
+	}
+
 	private async loadTakenDomains(): Promise<Set<string>> {
 		const rows = await this.db.company.findMany({
 			where: { domain: { not: null } },
@@ -382,6 +985,7 @@ export class SagePullService {
 	private async upsertCompanyTree(
 		tree: SageCompanyTree,
 		takenDomains: Set<string>,
+		ownerByEmail: Map<string, string>,
 	): Promise<{
 		company: boolean;
 		contacts: number;
@@ -411,7 +1015,13 @@ export class SagePullService {
 			people: tree.people,
 		});
 
-		const companyId = await this.upsertCompany(mapped, takenDomains);
+		// Company owner from Sage `acctmgr` (a name). Unmatched names / blanks
+		// resolve to null — those companies stay owner-less by design.
+		const ownerId =
+			ownerByEmail.get(emailForAcctMgr(mapped.accountManagerName) ?? "") ??
+			null;
+
+		const companyId = await this.upsertCompany(mapped, takenDomains, ownerId);
 		if (!companyId) {
 			return {
 				company: false,
@@ -440,7 +1050,8 @@ export class SagePullService {
 				person,
 			);
 
-			const contactId = await this.upsertContact(contact, companyId);
+			// Contacts inherit their company's owner (plan decision).
+			const contactId = await this.upsertContact(contact, companyId, ownerId);
 			if (!contactId) {
 				skipped += 1;
 				continue;
@@ -472,7 +1083,12 @@ export class SagePullService {
 	private async upsertCompany(
 		mapped: MappedCompany,
 		takenDomains: Set<string>,
+		ownerId: string | null,
 	): Promise<string | null> {
+		// Only ever SET an owner from Sage, never clear one — so a blank/unmatched
+		// acctmgr on a later pull cannot wipe an owner a human assigned.
+		const ownerData = ownerId ? { ownerId } : {};
+
 		const existing = await this.db.company.findUnique({
 			where: { sageCrmCompanyId: mapped.sageCrmCompanyId },
 			select: { id: true, domain: true },
@@ -494,6 +1110,7 @@ export class SagePullService {
 					city: mapped.city,
 					sage100CustomerNo: mapped.sage100CustomerNo,
 					sage100ArDivisionNo: mapped.sage100ArDivisionNo,
+					...ownerData,
 					...(domain && !existing.domain ? { domain } : {}),
 				},
 			});
@@ -522,6 +1139,7 @@ export class SagePullService {
 						sage100CustomerNo: mapped.sage100CustomerNo,
 						sage100ArDivisionNo: mapped.sage100ArDivisionNo,
 						source: RecordSource.SAGE,
+						...ownerData,
 					},
 				});
 				takenDomains.add(mapped.domain);
@@ -548,6 +1166,7 @@ export class SagePullService {
 				sage100CustomerNo: mapped.sage100CustomerNo,
 				sage100ArDivisionNo: mapped.sage100ArDivisionNo,
 				source: RecordSource.SAGE,
+				...ownerData,
 			},
 			select: { id: true },
 		});
@@ -559,7 +1178,11 @@ export class SagePullService {
 	private async upsertContact(
 		mapped: MappedContact,
 		companyId: string,
+		ownerId: string | null = null,
 	): Promise<string | null> {
+		// Inherit the company owner; only ever SET, never clear a human's choice.
+		const ownerData = ownerId ? { ownerId } : {};
+
 		const existing = await this.db.contact.findUnique({
 			where: { sageCrmContactId: mapped.sageCrmContactId },
 			select: { id: true },
@@ -574,6 +1197,7 @@ export class SagePullService {
 					phone: mapped.phone,
 					title: mapped.title,
 					companyId,
+					...ownerData,
 					// Email is @unique — only set when blank or already ours.
 					...(mapped.email
 						? await this.emailUpdateIfFree(mapped.email, existing.id)
@@ -600,6 +1224,7 @@ export class SagePullService {
 						title: mapped.title,
 						companyId: byEmail.companyId ?? companyId,
 						source: RecordSource.SAGE,
+						...ownerData,
 					},
 				});
 				return byEmail.id;
@@ -615,6 +1240,7 @@ export class SagePullService {
 						companyId,
 						sageCrmContactId: mapped.sageCrmContactId,
 						source: RecordSource.SAGE,
+						...ownerData,
 					},
 					select: { id: true },
 				});
@@ -632,6 +1258,7 @@ export class SagePullService {
 				companyId,
 				sageCrmContactId: mapped.sageCrmContactId,
 				source: RecordSource.SAGE,
+				...ownerData,
 			},
 			select: { id: true },
 		});
@@ -682,10 +1309,46 @@ function emptySummary(
 	};
 }
 
+function emptyBackfill(
+	outcome: SageOutcome,
+	dryRun: boolean,
+	reason: string,
+): SageBackfillSummary {
+	return {
+		outcome,
+		reason,
+		dryRun,
+		pages: 0,
+		companiesFetched: 0,
+		companiesUpserted: 0,
+		contactsUpserted: 0,
+		dealsFetched: 0,
+		dealsUpserted: 0,
+		dealContactsLinked: 0,
+		snapshotsWritten: 0,
+		skipped: 0,
+	};
+}
+
+function delay(ms: number): Promise<void> {
+	return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 function isClosedStage(stage: DealStage): boolean {
 	return (
 		stage === DealStage.CLOSED_WON || stage === DealStage.CLOSED_LOST
 	);
+}
+
+/**
+ * The date a deal closed: the real Sage `closed` date, else (for a closed-stage
+ * deal with no close date) the forecast close, else the open date. Open deals
+ * are null. Never "now" — that would bunch dateless deals into the import month.
+ */
+function resolvedClosedAt(mapped: MappedOpportunity): Date | null {
+	if (mapped.closedAt) return mapped.closedAt;
+	if (!isClosedStage(mapped.stage)) return null;
+	return mapped.expectedCloseDate ?? mapped.openedAt ?? null;
 }
 
 /**

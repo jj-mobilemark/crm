@@ -6,15 +6,21 @@ import {
 	type DataTableFacet,
 } from "@crm/ui/components/data-table";
 import { EmptyCellValue } from "@crm/ui/components/empty-cell";
-import { formatMoney, relativeTimeFromIso } from "@crm/ui/lib/format";
+import {
+	formatMoney,
+	formatPercent,
+	relativeTimeFromIso,
+} from "@crm/ui/lib/format";
 import { useQuery } from "@tanstack/react-query";
 import { CLOSING_OPTIONS } from "@/components/crm/closing-window";
 import { CompanyCell } from "@/components/crm/company-cell";
+import { CompanyPicker } from "@/components/crm/company-picker";
 import { DEAL_STAGE_OPTIONS } from "@/components/crm/deal-stage";
+import { OwnedDealStageMenu } from "@/components/crm/owned-deal-stage-menu";
 import { OwnerCell } from "@/components/crm/owner-cell";
 import { usePrefetchRecord } from "@/components/crm/record-sheet/record-prefetch";
 import { useOpenRecord } from "@/components/crm/record-sheet/record-stack";
-import { DealStageMenu } from "@/components/crm/stage-change";
+import { SageIdValue } from "@/components/crm/sage-id-value";
 import { useTableQuery } from "@/components/data-table/use-table-query";
 import { useTRPC } from "@/lib/trpc/client";
 import type { RouterOutputs } from "@/lib/trpc/types";
@@ -51,7 +57,13 @@ const COLUMNS: DataTableColumn<DealRow>[] = [
 		width: "w-[18%]",
 		// Editable in place: moving a deal along is the single most common thing
 		// anyone does here, and it should not need a page load.
-		cell: (row) => <DealStageMenu dealId={row.id} stage={row.stage} />,
+		cell: (row) => (
+			<OwnedDealStageMenu
+				dealId={row.id}
+				stage={row.stage}
+				ownerId={row.owner.id}
+			/>
+		),
 	},
 	{
 		id: "amount",
@@ -66,6 +78,37 @@ const COLUMNS: DataTableColumn<DealRow>[] = [
 			) : (
 				<span className="tabular-nums">
 					{formatMoney(row.amountCents, row.currency)}
+				</span>
+			),
+	},
+	{
+		id: "weighted",
+		header: "Weighted",
+		label: "Weighted amount",
+		align: "right",
+		width: "w-[12%]",
+		hideBelow: "md",
+		cell: (row) =>
+			row.weightedAmountCents === null ? (
+				<EmptyCellValue />
+			) : (
+				<span className="tabular-nums">
+					{formatMoney(row.weightedAmountCents, row.currency)}
+				</span>
+			),
+	},
+	{
+		id: "probability",
+		header: "Certainty",
+		align: "right",
+		width: "w-[10%]",
+		hideBelow: "lg",
+		cell: (row) =>
+			row.probability === null || row.probability === undefined ? (
+				<EmptyCellValue />
+			) : (
+				<span className="tabular-nums text-muted-foreground">
+					{formatPercent(row.probability / 100)}
 				</span>
 			),
 	},
@@ -93,6 +136,32 @@ const COLUMNS: DataTableColumn<DealRow>[] = [
 			),
 	},
 	{
+		id: "dealType",
+		header: "Type",
+		label: "Deal type",
+		width: "w-[12%]",
+		defaultHidden: true,
+		cell: (row) =>
+			row.dealType ? (
+				<span className="truncate text-muted-foreground">{row.dealType}</span>
+			) : (
+				<EmptyCellValue />
+			),
+	},
+	{
+		id: "sageCrmId",
+		header: "Sage CRM",
+		label: "Sage CRM ID",
+		width: "w-[10%]",
+		defaultHidden: true,
+		cell: (row) => (
+			<SageIdValue
+				value={row.sageCrmOpportunityId}
+				label="Sage CRM ID copied"
+			/>
+		),
+	},
+	{
 		// Hidden by default, but present: it is the table's default sort, and a
 		// default you cannot see or return to after sorting by something else is
 		// just an unexplained row order.
@@ -116,6 +185,7 @@ const COLUMNS: DataTableColumn<DealRow>[] = [
 		align: "right",
 		width: "w-[12%]",
 		hideBelow: "lg",
+		defaultHidden: true,
 		cell: (row) => (
 			<span className="text-muted-foreground" suppressHydrationWarning>
 				{relativeTimeFromIso(row.lastActivityAt)}
@@ -147,6 +217,20 @@ export function DealsTable() {
 				.filter((option) => (facetCounts?.owner?.[option.value] ?? 0) > 0),
 		},
 		{
+			id: "company",
+			label: "Company",
+			options: [],
+			render: ({ value, onChange, label }) => (
+				<CompanyPicker
+					allowAll
+					allLabel={label}
+					value={value}
+					onChange={onChange}
+					variant="filter"
+				/>
+			),
+		},
+		{
 			id: "stage",
 			label: "Stage",
 			options: DEAL_STAGE_OPTIONS.filter(
@@ -163,6 +247,7 @@ export function DealsTable() {
 	];
 
 	const openValueCents = deals.data?.openValueCents;
+	const openWeightedCents = deals.data?.openWeightedCents;
 
 	return (
 		<DataTable
@@ -192,7 +277,17 @@ export function DealsTable() {
 					<span>
 						{deals.data?.total ?? 0} deals ·{" "}
 						<span className="tabular-nums">{formatMoney(openValueCents)}</span>{" "}
-						open pipeline
+						open
+						{openWeightedCents !== null && openWeightedCents !== undefined ? (
+							<>
+								{" "}
+								·{" "}
+								<span className="tabular-nums">
+									{formatMoney(openWeightedCents)}
+								</span>{" "}
+								weighted
+							</>
+						) : null}
 					</span>
 				)
 			}

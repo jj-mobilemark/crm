@@ -9,8 +9,29 @@ import { z } from "zod";
  */
 const DASHBOARD_SCOPES = ["me", "everyone"] as const;
 
+/**
+ * Closed-won / win-rate window on the overview.
+ *
+ * Open pipeline and the forecast tables ignore this — they stay "all open".
+ * `"this_year"` (since 1 Jan) is the default so a Sage-heavy book of closed
+ * deals lands on the page without a narrow calendar-month cut.
+ */
+export const DASHBOARD_RANGES = [
+	"today",
+	"this_week",
+	"this_month",
+	"this_year",
+	"past_30",
+	"custom",
+] as const;
+
 export const dashboardSummaryInput = z.object({
 	scope: z.enum(DASHBOARD_SCOPES).default("me"),
+	range: z.enum(DASHBOARD_RANGES).default("this_year"),
+	/** `YYYY-MM-DD` — only read when `range` is `custom`. */
+	from: z.string().date().optional(),
+	/** `YYYY-MM-DD` — only read when `range` is `custom`. */
+	to: z.string().date().optional(),
 });
 
 export type DashboardSummaryInput = z.infer<typeof dashboardSummaryInput>;

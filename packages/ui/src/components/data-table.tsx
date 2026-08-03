@@ -61,6 +61,15 @@ export type DataTableFacet = {
 	id: string;
 	label: string;
 	options: { value: string; label: string }[];
+	/**
+	 * Custom control instead of the default radio dropdown — e.g. a searchable
+	 * company picker when the option list would be thousands of rows.
+	 */
+	render?: (args: {
+		value: string;
+		onChange: (value: string) => void;
+		label: string;
+	}) => ReactNode;
 };
 
 export type DataTableTabs = {
@@ -311,6 +320,19 @@ export function DataTable<TRow, TSub = unknown>({
 					<div className="grid grid-cols-1 gap-2 sm:flex sm:flex-wrap sm:items-center lg:ml-auto">
 						{facets?.map((facet) => {
 							const selected = query.filters[facet.id] ?? "all";
+							const onChange = (value: string) =>
+								query.setFilter(facet.id, value);
+							if (facet.render) {
+								return (
+									<Fragment key={facet.id}>
+										{facet.render({
+											value: selected,
+											onChange,
+											label: facet.label,
+										})}
+									</Fragment>
+								);
+							}
 							const active = facet.options.find((o) => o.value === selected);
 							return (
 								<DropdownMenu key={facet.id}>
@@ -332,7 +354,7 @@ export function DataTable<TRow, TSub = unknown>({
 									<DropdownMenuContent align="start" className="min-w-44">
 										<DropdownMenuRadioGroup
 											value={selected}
-											onValueChange={(value) => query.setFilter(facet.id, value)}
+											onValueChange={onChange}
 										>
 											<DropdownMenuRadioItem value="all">
 												{facet.label}

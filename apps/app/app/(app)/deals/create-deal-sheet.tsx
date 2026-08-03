@@ -149,21 +149,27 @@ export function CreateDealSheet({
 							/>
 						</Field>
 
-						<Field>
-							<FieldLabel htmlFor="create-deal-owner">Owner</FieldLabel>
-							<Select value={resolvedOwner} onValueChange={setOwnerId}>
-								<SelectTrigger id="create-deal-owner">
-									<SelectValue placeholder="Choose an owner" />
-								</SelectTrigger>
-								<SelectContent>
-									{(users.data ?? []).map((user) => (
-										<SelectItem key={user.id} value={user.id}>
-											{user.name}
-										</SelectItem>
-									))}
-								</SelectContent>
-							</Select>
-						</Field>
+						{me.data?.isAdmin ? (
+							<Field>
+								<FieldLabel htmlFor="create-deal-owner">Owner</FieldLabel>
+								<Select value={resolvedOwner} onValueChange={setOwnerId}>
+									<SelectTrigger id="create-deal-owner">
+										<SelectValue placeholder="Choose an owner" />
+									</SelectTrigger>
+									<SelectContent>
+										{(users.data ?? []).map((user) => (
+											<SelectItem key={user.id} value={user.id}>
+												{user.name}
+											</SelectItem>
+										))}
+									</SelectContent>
+								</Select>
+								<FieldDescription>
+									Admins can assign someone else. Everyone else owns the deals
+									they create.
+								</FieldDescription>
+							</Field>
+						) : null}
 
 						<Field>
 							<FieldLabel htmlFor="create-deal-stage">Stage</FieldLabel>

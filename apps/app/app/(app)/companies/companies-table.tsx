@@ -56,6 +56,7 @@ const COLUMNS: DataTableColumn<CompanyRow>[] = [
 		sortable: true,
 		width: "w-[16%]",
 		hideBelow: "md",
+		defaultHidden: true,
 		cell: (row) =>
 			row.domain ? (
 				<span className="truncate text-muted-foreground">{row.domain}</span>
@@ -82,6 +83,7 @@ const COLUMNS: DataTableColumn<CompanyRow>[] = [
 		sortable: true,
 		width: "w-[16%]",
 		hideBelow: "md",
+		defaultHidden: true,
 		cell: (row) => <OwnerCell owner={row.owner} />,
 	},
 	{
@@ -156,7 +158,6 @@ const COLUMNS: DataTableColumn<CompanyRow>[] = [
 	{
 		id: "sage100Id",
 		header: "Sage 100 ID",
-		defaultHidden: true,
 		width: "w-[12%]",
 		cell: (row) => (
 			<SageIdValue

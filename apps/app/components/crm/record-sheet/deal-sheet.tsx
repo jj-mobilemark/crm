@@ -8,11 +8,7 @@ import {
 } from "@crm/ui/components/entity-logo";
 import { SimpleTable, SimpleTableRow } from "@crm/ui/components/simple-table";
 import { TableCell } from "@crm/ui/components/table";
-import {
-	formatDay,
-	formatMoney,
-	relativeTimeFromIso,
-} from "@crm/ui/lib/format";
+import { formatDay, formatMoney, formatPercent } from "@crm/ui/lib/format";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { AgentPanel } from "@/components/crm/agent-panel";
@@ -22,10 +18,11 @@ import {
 	InlineSelectField,
 	savingField,
 } from "@/components/crm/inline-field";
-import { OwnerCell } from "@/components/crm/owner-cell";
+import { SageIdValue } from "@/components/crm/sage-id-value";
 import { DealStageMenu } from "@/components/crm/stage-change";
 import { StageStepper } from "@/components/crm/stage-stepper";
 import { Timeline } from "@/components/crm/timeline/timeline";
+import { useDealEditAccess } from "@/components/crm/use-deal-edit-access";
 import {
 	DetailSheetBody,
 	DetailSheetEmpty,
@@ -66,6 +63,7 @@ export function DealSheet({ dealId }: { dealId: string }) {
 
 	const query = useQuery(trpc.deals.byId.queryOptions({ id: dealId }));
 	const deal = query.data;
+	const access = useDealEditAccess(deal?.owner.id);
 
 	const tabs: DetailSheetTab[] = deal
 		? [
@@ -137,6 +135,7 @@ export function DealSheet({ dealId }: { dealId: string }) {
 						dealId={deal.id}
 						stage={deal.stage}
 						variant="control"
+						disabled={!access.canEdit}
 					/>
 				) : null
 			}
@@ -152,6 +151,24 @@ export function DealSheet({ dealId }: { dealId: string }) {
 								</span>
 							)}
 						</DetailSheetStat>
+						<DetailSheetStat label="Weighted">
+							{deal.weightedAmountCents === null ? (
+								<EmptyCellValue />
+							) : (
+								<span className="tabular-nums">
+									{formatMoney(deal.weightedAmountCents, deal.currency)}
+								</span>
+							)}
+						</DetailSheetStat>
+						<DetailSheetStat label="Certainty">
+							{deal.probability === null || deal.probability === undefined ? (
+								<EmptyCellValue />
+							) : (
+								<span className="tabular-nums">
+									{formatPercent(deal.probability / 100)}
+								</span>
+							)}
+						</DetailSheetStat>
 						<DetailSheetStat label="Expected close">
 							{deal.expectedCloseDate ? (
 								// The stored day, not the local rendering of a midnight-UTC
@@ -161,14 +178,6 @@ export function DealSheet({ dealId }: { dealId: string }) {
 							) : (
 								<EmptyCellValue />
 							)}
-						</DetailSheetStat>
-						{/* How long it has sat where it is — the staleness read that
-						    used to be a line of small print under the title. */}
-						<DetailSheetStat label="In stage">
-							{relativeTimeFromIso(deal.stageChangedAt)}
-						</DetailSheetStat>
-						<DetailSheetStat label="Owner">
-							<OwnerCell owner={deal.owner} />
 						</DetailSheetStat>
 					</DetailSheetStats>
 				) : null
@@ -183,6 +192,7 @@ export function DealSheet({ dealId }: { dealId: string }) {
 function DealOverview({ deal }: { deal: Deal }) {
 	const trpc = useTRPC();
 	const cache = useCrmCache();
+	const { canEdit, canReassign } = useDealEditAccess(deal.owner.id);
 
 	const users = useQuery(trpc.users.list.queryOptions());
 	const companies = useQuery(trpc.companies.options.queryOptions({ q: "" }));
@@ -208,7 +218,11 @@ function DealOverview({ deal }: { deal: Deal }) {
 			 * closing it — is the control in the header; this is the one-click
 			 * nudge to the next step. */}
 			<DetailSheetSection title="Stage">
-				<StageStepper dealId={deal.id} stage={deal.stage} />
+				<StageStepper
+					dealId={deal.id}
+					stage={deal.stage}
+					disabled={!canEdit}
+				/>
 
 				{/*
 				 * Two properties under the rail rather than an alert of its own.
@@ -238,6 +252,7 @@ function DealOverview({ deal }: { deal: Deal }) {
 						label="Name"
 						value={deal.name}
 						saving={isSaving("name")}
+						readOnly={!canEdit}
 						onSave={(name) => name && save({ name })}
 					/>
 					<InlineField
@@ -248,6 +263,7 @@ function DealOverview({ deal }: { deal: Deal }) {
 						}
 						placeholder="24000"
 						saving={isSaving("amountCents")}
+						readOnly={!canEdit}
 						onSave={(next) => {
 							if (next === "") return save({ amountCents: null });
 							const parsed = Number.parseFloat(next);
@@ -262,9 +278,35 @@ function DealOverview({ deal }: { deal: Deal }) {
 						}
 					/>
 					<InlineField
+						label="Certainty"
+						value={
+							deal.probability === null || deal.probability === undefined
+								? null
+								: String(deal.probability)
+						}
+						placeholder="50"
+						saving={isSaving("probability")}
+						readOnly={!canEdit}
+						onSave={(next) => {
+							if (next === "") return save({ probability: null });
+							const parsed = Number.parseInt(next, 10);
+							if (
+								!Number.isFinite(parsed) ||
+								parsed < 0 ||
+								parsed > 100
+							) {
+								toast.error("Certainty is a whole percent from 0 to 100.");
+								return;
+							}
+							save({ probability: parsed });
+						}}
+						render={(value) => formatPercent(Number(value) / 100)}
+					/>
+					<InlineField
 						label="Currency"
 						value={deal.currency}
 						saving={isSaving("currency")}
+						readOnly={!canEdit}
 						onSave={(currency) => {
 							if (currency.length !== 3) {
 								toast.error("Use a three-letter currency code, like USD.");
@@ -277,6 +319,7 @@ function DealOverview({ deal }: { deal: Deal }) {
 						label="Close date"
 						value={deal.expectedCloseDate}
 						saving={isSaving("expectedCloseDate")}
+						readOnly={!canEdit}
 						onSave={(next) => save({ expectedCloseDate: next || null })}
 					/>
 					<InlineSelectField
@@ -286,6 +329,7 @@ function DealOverview({ deal }: { deal: Deal }) {
 							value: company.id,
 							label: company.name,
 						}))}
+						readOnly={!canEdit}
 						onSave={(companyId) => save({ companyId })}
 					/>
 					<InlineSelectField
@@ -295,10 +339,34 @@ function DealOverview({ deal }: { deal: Deal }) {
 							value: user.id,
 							label: user.name,
 						}))}
+						readOnly={!canReassign}
 						onSave={(ownerId) => save({ ownerId })}
 					/>
+					{deal.dealType ? (
+						<DetailSheetProperty label="Type">
+							{deal.dealType}
+						</DetailSheetProperty>
+					) : null}
+					{deal.sageStage || deal.sageStatus ? (
+						<DetailSheetProperty label="Sage stage">
+							{[deal.sageStage, deal.sageStatus].filter(Boolean).join(" · ")}
+						</DetailSheetProperty>
+					) : null}
 				</DetailSheetProperties>
 			</DetailSheetSection>
+
+			{deal.sageCrmOpportunityId ? (
+				<DetailSheetSection title="Sage">
+					<DetailSheetProperties columns={1}>
+						<DetailSheetProperty label="Sage CRM ID">
+							<SageIdValue
+								value={deal.sageCrmOpportunityId}
+								label="Sage CRM ID copied"
+							/>
+						</DetailSheetProperty>
+					</DetailSheetProperties>
+				</DetailSheetSection>
+			) : null}
 		</DetailSheetBody>
 	);
 }

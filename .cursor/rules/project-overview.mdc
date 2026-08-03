@@ -49,11 +49,18 @@ surface on top, syncing bidirectionally (pull first, push later).
 - Sage sync is MECHANICAL, so it lives in `apps/api/src/sage/` (mirrors the
   Google/Microsoft modules) — the "intelligence never in the API" rule still
   holds.
-- **Forecasting is opportunity-driven in Sage** (stage + certainty% + forecast
-  amount + target close), not a separate record. Local `Deal` now carries
-  `probability` / `weightedAmount` / `dealType` / `sageStage` / `sageStatus`
-  and the test slice imports opportunities — the remaining gap is the
-  **forecast view UI** (see `HANDOFF.md` and plan §3b).
+- **Forecasting is opportunity-driven in Sage** (deal value + certainty% + target
+  close), not a separate record. The team enters the deal value in Sage
+  `forecast` (their `total` is unused/empty), so local `Deal.amount` ← `forecast`
+  and `weightedAmount` = `amount` × `certainty` (corrected 2026-08-02 — the
+  original total/forecast assumption was backwards). `Deal` also carries
+  `probability` / `dealType` / `sageStage` / `sageStatus`; the overview shows a
+  forecast by close month (weighted vs unweighted).
+- **7.4b full pull is DONE** (2026-08-02): ~14.2k companies / ~24.8k contacts /
+  525 deals imported by the local one-shot `apps/api/scripts/sage-backfill.ts`;
+  `phase = incremental`, nightly cron wired. Company/contact owners come from
+  Sage `acctmgr` (name match). Remaining Sage work (reconcile soft-deactivate,
+  push) is DESIGN-ONLY. See `docs/plans/sage-crm-sync.md` §3.3/§3b/§6.
 
 ## Where to read more
 

@@ -1,12 +1,14 @@
 import { describe, expect, it } from "bun:test";
 import { DealStage } from "@crm/db";
 import {
+	emailForAcctMgr,
 	emailForSageUser,
 	mapCompany,
 	mapCompanyTree,
 	mapContact,
 	mapOpportunity,
 	mapSageDealStage,
+	matchSageUserByName,
 	sage100Display,
 } from "../src/sage/sage.mappings";
 
@@ -124,15 +126,17 @@ describe("mapOpportunity", () => {
 			description: "249  PR-LTMWG944-SP716",
 			primarycompanyid: "24",
 			primarypersonid: "5",
-			total: "90000",
-			forecast: "81008.4",
-			certainty: "100",
+			// Sage `total` is unused (empty); the deal value lives in `forecast`.
+			total: "",
+			forecast: "90000",
+			certainty: "50",
 			currency: "USD",
 			stage: "Closed Won",
 			status: "Won",
 			type: "Key Opportunity",
 			targetclose: "2026-03-15T00:00:00",
 			closed: "2026-03-10T12:00:00",
+			opened: "2026-01-05T09:30:00",
 			assigneduserid: "27",
 		});
 
@@ -141,9 +145,10 @@ describe("mapOpportunity", () => {
 		expect(mapped?.sageCrmCompanyId).toBe("24");
 		expect(mapped?.sageCrmPrimaryPersonId).toBe("5");
 		expect(mapped?.name).toBe("249  PR-LTMWG944-SP716");
+		// Amount = forecast (deal value); weighted = amount x certainty.
 		expect(mapped?.amount).toBe("90000");
-		expect(mapped?.weightedAmount).toBe("81008.4");
-		expect(mapped?.probability).toBe(100);
+		expect(mapped?.weightedAmount).toBe("45000");
+		expect(mapped?.probability).toBe(50);
 		expect(mapped?.stage).toBe(DealStage.CLOSED_WON);
 		expect(mapped?.sageStage).toBe("Closed Won");
 		expect(mapped?.sageStatus).toBe("Won");
@@ -151,6 +156,50 @@ describe("mapOpportunity", () => {
 		expect(mapped?.sageAssignedUserId).toBe("27");
 		expect(mapped?.expectedCloseDate?.toISOString()).toContain("2026-03-15");
 		expect(mapped?.closedAt?.toISOString()).toContain("2026-03-10");
+		expect(mapped?.openedAt?.toISOString()).toContain("2026-01-05");
+	});
+
+	it("falls back opened -> createddate for the creation date", () => {
+		const mapped = mapOpportunity({
+			opportunityid: "9",
+			description: "x",
+			primarycompanyid: "24",
+			createddate: "2025-11-02T00:00:00",
+		});
+		expect(mapped?.openedAt?.toISOString()).toContain("2025-11-02");
+	});
+
+	it("takes amount from forecast, computes weighted, and handles no certainty", () => {
+		const full = mapOpportunity({
+			opportunityid: "1",
+			description: "big deal",
+			primarycompanyid: "24",
+			forecast: "2987000",
+			certainty: "50",
+		});
+		expect(full?.amount).toBe("2987000");
+		expect(full?.weightedAmount).toBe("1493500");
+
+		// No certainty -> we do not fabricate a weight.
+		const noCert = mapOpportunity({
+			opportunityid: "2",
+			description: "x",
+			primarycompanyid: "24",
+			forecast: "1000",
+		});
+		expect(noCert?.amount).toBe("1000");
+		expect(noCert?.weightedAmount).toBeNull();
+
+		// Falls back to `total` only when `forecast` is blank.
+		const fallback = mapOpportunity({
+			opportunityid: "3",
+			description: "x",
+			primarycompanyid: "24",
+			total: "500",
+			certainty: "10",
+		});
+		expect(fallback?.amount).toBe("500");
+		expect(fallback?.weightedAmount).toBe("50");
 	});
 
 	it("returns null without id, description, or company", () => {
@@ -206,14 +255,40 @@ describe("mapSageDealStage", () => {
 });
 
 describe("sage100Display", () => {
-	it("joins division and customer number", () => {
-		expect(sage100Display("00", "0000777")).toBe("00-0000777");
+	it("shows only the customer number, dropping the unused AR division", () => {
+		expect(sage100Display("00", "0011246")).toBe("0011246");
 	});
-	it("uses the customer number alone when there is no division", () => {
+	it("returns the customer number even without a division", () => {
 		expect(sage100Display(null, "MME")).toBe("MME");
 	});
 	it("is null when there is no customer number", () => {
 		expect(sage100Display("00", null)).toBeNull();
+	});
+});
+
+describe("matchSageUserByName (acctmgr -> owner)", () => {
+	it("matches known reps by last name + first initial", () => {
+		expect(matchSageUserByName("Chris Talbert")?.sageId).toBe("31");
+		expect(matchSageUserByName("Nino Barker")?.sageId).toBe("36");
+	});
+
+	it("ignores middle initials and name-format variance", () => {
+		expect(matchSageUserByName("Ken F. Lukowski")?.sageId).toBe("27");
+		expect(matchSageUserByName("Ken Lukowski")?.sageId).toBe("27");
+	});
+
+	it("leaves former reps, blanks, and junk unmatched", () => {
+		expect(matchSageUserByName("Chris Wallgren")).toBeNull();
+		expect(matchSageUserByName("Kyle Sertich")).toBeNull();
+		expect(matchSageUserByName("Joe Moore")).toBeNull();
+		expect(matchSageUserByName("Sale Rep Name")).toBeNull();
+		expect(matchSageUserByName("")).toBeNull();
+		expect(matchSageUserByName(null)).toBeNull();
+	});
+
+	it("emailForAcctMgr returns the matched rep's email or null", () => {
+		expect(emailForAcctMgr("Chris Talbert")).toBe("ctalbert@mobilemark.com");
+		expect(emailForAcctMgr("Kyle Sertich")).toBeNull();
 	});
 });
 

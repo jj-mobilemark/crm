@@ -24,77 +24,557 @@ it before stopping. The rules for maintaining it live in `AGENTS.md`
 ## Current state (keep this section up to date)
 
 - **Git**: `origin` = `jj-mobilemark/crm` (fork); `upstream` = `trycompai/crm`
-  (read-only). Work on `main`. Pre-upstream-merge snapshot: `421e556`.
-  Latest Sage commits: `9a0d06c` (7.4a/7.4c), then Deal+opportunity import
-  (see tip). Working tree should be clean after that commit.
+  (read-only). Work on `main` (ahead of origin). Pre-upstream-merge snapshot:
+  `421e556`. Tip commits: `9a0d06c` (7.4a/7.4c), `a21f1df` (Deal+opportunity
+  import). **Forecast UI is uncommitted** — see `git status` (dashboard/deals
+  API+UI + plan/HANDOFF edits). Commit that before starting 7.4b code.
 - **Upstream delta absorbed**: ~40 `packages/ui` restyles + favicon + prefetch.
   **Visual pass still needed** on Microsoft settings + sign-in.
-- **Verification**: `check-types` api/db green; Sage unit tests **29** pass;
-  live smoke OK — `dealsUpserted: 4`, `dealContactsLinked: 4` on company 24.
+- **Verification**: `check-types` api/app green for dashboard changes (api still
+  has pre-existing sage-pull arity errors unrelated to this). Overview now
+  coalesces `amount ?? weightedAmount` for KPIs/charts so Sage deals with empty
+  `total` still show dollars; date-range control on `/` scopes Closed won +
+  win rate only. **API has no hot reload** — restart `bun run src/main.ts` in
+  `apps/api` after these dashboard edits or the UI will keep serving stale
+  `$0` summaries.
 - **Runs locally**: Postgres via `docker compose up -d`. Prefer
-  `bun run src/main.ts` in `apps/api` (**restart after Sage edits** — no hot
-  reload) + `bun run dev` in `apps/app`. Re-run test slice:
+  `bun run src/main.ts` in `apps/api` + `bun run dev` in `apps/app`. Test-slice
+  re-import (still the only pull path):
   `curl -X POST -H "Authorization: Bearer $(grep '^CRON_SECRET=' .env | cut -d= -f2- | tr -d \"\\'\")" http://localhost:3001/internal/sync/sage`.
 - **Auth / env**: allow-list `ALLOWED_SIGN_IN=mobilemark.com`; Microsoft SSO
   works. `MICROSOFT_*` + `CRON_SECRET` + `SAGE_SOAP_*` in root `.env` (never
   record secrets here).
-- **Sage test slice in DB**: 8 companies + 120 contacts + **4 deals** on
-  company 24 (ids `1`, `2`, `383`, `557`). Stages:
-  `CLOSED_WON` / `CLOSED_LOST` / blank→`QUALIFIED_TO_BUY`. Each deal linked
-  via `DealContact` role `primary`. Opp `383`: `weightedAmount` 81008.4,
-  probability 100, `amount` null (Sage `total` blank; snapshot has raw).
+- **Local CRM data (2026-08-02)**: demo seed companies/contacts/deals purged.
+  DB now holds only the Sage Mobile Mark test slice — 8 companies + 120
+  contacts + **4 deals** on company 24 (`sageCrmOpportunityId` `1`, `2`,
+  `383`, `557`). Do **not** re-run `bun run db:seed` before full pull or
+  Stripe/Linear/etc. come back.
+  - `1`/`2` — `QUALIFIED_TO_BUY`, type New Business, $0 (open → forecast table)
+  - `383` — `CLOSED_WON`, Key Opportunity, `weightedAmount` 81008.4, `amount`
+    null, probability 100 (closed → deals list/sheet only)
+  - `557` — `CONTRACT_SENT` (open), Key Opportunity, amount 14121, certainty 50
 - **Active plan**: `docs/plans/sage-crm-sync.md` (canonical). Stub:
   `docs/plans/m365-expansion.md` Phase 7.
 - **Phases 0–5**: DONE. **Phase 6**: DEFERRED by human.
-- **Phase 7 DONE**: 7.1 (+ Deal forecasting cols + `sageStage`/`sageStatus`);
-  7.2 SOAP; 7.3 maps incl. `mapOpportunity` / `mapSageDealStage`; 7.4a
-  companies + people + opportunities; 7.4c company/contact Sage-ID UI.
+- **Phase 7 DONE**: 7.1–7.3; **7.4a** test-slice (companies + nested people +
+  opportunities); **7.4c** Sage-ID UI (company/contact/**deal**); **§3b
+  forecast view UI** (overview + deals table/sheet).
+- **Already built for scale (reuse in 7.4b)**:
+  - Hierarchical company parse + `enrichPerson` (`sage-xml.ts`)
+  - `query` → `next` while `<more>`; `queryAllCompanies` / `queryAllRecords`
+  - Mappings: company / contact / opportunity + stage + owner emails
+  - `importTestSlice()` only — **POST `/internal/sync/sage` still means test
+    slice**, not full pull
+  - `SageSyncState` today: per-entity `status` + single `cursor` only (no
+    phase / backfillId / highWater / lock yet — plan §6.2)
+  - **No** Company/Contact/Deal inactive flag yet (needed for §6.7 soft-deactivate)
 - **Phase 7 key files**:
-  - `apps/api/src/sage/sage-soap.client.ts` — + `queryAllRecords`
-  - `apps/api/src/sage/sage-xml.ts` — flat + hierarchical (`enrichPerson`)
-  - `apps/api/src/sage/sage.mappings.ts` — company/contact/opportunity
-  - `apps/api/src/sage/sage-pull.service.ts` — `importTestSlice()` (deals too)
-  - `apps/api/src/sage/sage-sync.controller.ts` — `/internal/sync/sage`
+  - `apps/api/src/sage/` — SOAP, XML, mappings, pull (test slice + 7.4b)
+  - `apps/api/src/deals/deals.service.ts` — list/byId expose forecast fields
+  - `apps/api/src/dashboard/dashboard.service.ts` — `forecast` + money coalesce
+    + date-range windows on `summary`
+  - `apps/app/app/(app)/sales-dashboard.tsx` — weighted KPI + by-month (+ by-rep)
+  - `apps/app/app/(app)/overview-range.tsx` — Today / Week / Month / 30d / Custom
+  - `apps/app/app/(app)/deals/deals-table.tsx` — weighted / certainty / Sage cols
+  - `apps/app/components/crm/record-sheet/deal-sheet.tsx` — forecast stats + Sage
   - `packages/db/prisma/migrations/20260802200000_add_deal_sage_fields/`
-  - Existing UI to extend: `apps/app/app/(app)/sales-dashboard.tsx`,
-    `apps/app/app/(app)/deals/deals-table.tsx`,
-    `apps/api/src/deals/deals.service.ts` (list/byId do **not** yet select
-    forecast columns).
-- **Phase 7 NOT done**: **forecast view UI** (headline gap); optional deal
-  Sage-ID on sheets/tables; 7.4b full pull.
+  - `packages/db/prisma/migrations/20260802220000_add_sage_backfill_state/`
+- **Phase 7 7.4b DONE (2026-08-02)** — first full backfill ran locally off-peak:
+  **14,252 companies / 24,773 contacts / 525 deals / 39,550 snapshots**,
+  `phase = incremental`. Nightly cron (`GET /internal/sync/sage` →
+  `runScheduled`) now runs incremental. Files: `sage.mappings.ts`
+  (`SAGE_USERS`, `matchSageUserByName`), `sage-users.ts`, `sage-session.ts`
+  (advisory lock), `sage-backfill.util.ts`, `sage-pull.service.ts`
+  (`runBackfill`/`runIncremental`/`runScheduled`), `sage-sync.controller.ts`,
+  `scripts/sage-backfill.ts`, migration `20260802220000_add_sage_backfill_state`.
+- **Post-backfill corrections (2026-08-02, all with one-time scripts + mapping
+  fixes so future pulls are correct):**
+  - **Sage 100 id** shows the customer number only (`0011246`, not `00-0011246`)
+    — `apps/app/components/crm/sage-id.ts`. Division kept in DB for the MasHeader
+    join.
+  - **Company owner ← `acctmgr`** name match; **contacts inherit** company owner.
+    Backfill: `scripts/sage-backfill-owners.ts` (5,985 companies / 12,865
+    contacts owned; only 3 current reps appear as `acctmgr`).
+  - **Deal dates**: `createdAt` ← Sage `opened`; `closedAt` ← `closed` →
+    `targetclose` → `opened` (never "now"). Backfill:
+    `scripts/sage-backfill-deal-dates.ts`.
+  - **Amount/weighted CORRECTED**: Sage `total` is empty/0 everywhere; the deal
+    value is in `forecast`. So `amount ← forecast`, `weightedAmount = amount ×
+    certainty`. Backfill: `scripts/sage-backfill-deal-amounts.ts`. Open pipeline
+    now ~$13.6M unweighted / ~$7.65M weighted (weighted was overstated before).
+- **Uncommitted**: all of the above + the forecast UI. Nothing committed by the
+  agents yet.
 - **Guiding principle**: fit Sage INTO existing models; fewest columns;
   snapshot = lossless backstop; **KEEP** `DealStage` enum (map per §3.3).
-- **Decisions already made**: owner map static; fallback
+- **Deal stage UI labels** (presentation only in `deal-stage.tsx`; enum
+  unchanged): Lead / Qualified to buy / Negotiating / Proposal / Closed won
+  (+ Closed lost, Unqualified).
+- **Deal ownership / certainty (2026-08-02)**: owner (or `CRM_ADMIN_EMAILS`)
+  may edit deals; admins reassign owners; create always owns unless admin
+  assigns. Stage change sets `probability` via `STAGE_CERTAINTY` and
+  recomputes `weightedAmount`. Certainty is inline-editable on the deal
+  sheet. Admin seam is email-list for now (`packages/auth/src/admins.ts`) —
+  leave room for Better Auth roles later.
+- **Decisions already made** (do not relitigate): owner map static; fallback
   `ken@mobilemark.com` then earliest User; `amount` ← `total`,
   `weightedAmount` ← `forecast`; `sageStage`/`sageStatus` IN; `DealContact`
-  from `primarypersonid` when contact exists.
-- **Gotchas**: `query`→`next` while `<more>`; ONE session globally; never
-  retry-spam logon; person emails nested under person; API has **no hot
-  reload** — restart after Sage edits.
-- **Next step (ONE path — do this, no fork)**: Forecast view UI.
-  Plan: `docs/plans/sage-crm-sync.md` §3b. Skills: `shadcn`, `nestjs-trpc`,
-  `no-use-effect`, `docs/design.md` (`packages/ui` only).
-  1. **API**: expose `probability`, `weightedAmount`, `dealType`,
-     `sageStage`, `sageStatus`, `sageCrmOpportunityId` on `deals.list` /
-     `deals.byId` (and any dashboard aggregate used). Money stays cents via
-     `toCents` (`apps/api/src/crm/values.ts`). Add a small forecast query if
-     needed (open deals grouped by `expectedCloseDate` month + `ownerId`;
-     sum `weightedAmount` and `amount`).
-  2. **UI**: a forecast surface for reps — by close month, weighted vs
-     unweighted, per rep. Prefer extending the existing sales dashboard /
-     deals area over a parallel nav item unless the design clearly needs one.
-     Show certainty % and deal type on the deal sheet/table where useful.
-  3. **Optional same pass**: Sage CRM ID copy on deal sheet (mirror 7.4c;
-     deals have no Sage 100 id).
-  4. Smoke: open `/deals` and the forecast surface; company-24 deals should
-     show weighted totals (esp. opp `383` ≈ $81k weighted).
-  Later: 7.4b full pull (plan §6) — `SageSyncState` phase fields + global
-  lock + soft-deactivate. Not before forecast UI unless human says so.
-- **Scale note (7.4b later)**: ~14k companies / ~26k contacts;
-  `comp_deleted IS NULL`; need `SageSyncState` phase fields + global lock +
-  soft-deactivate.
+  from `primarypersonid` when contact exists; hierarchical company pull
+  (nested people — §6.5); filter `comp_deleted IS NULL` / `oppo_deleted IS NULL`.
+- **Gotchas**: ONE Web Services session globally (second `logon` kicks first);
+  never retry-spam logon (can lock the service account); `next` is
+  session-stateful (cannot resume across processes); ~10–20s/page, ~1h for
+  ~14k companies; person emails nested under person; API **no hot reload**.
+- **Next step**: confirm the running full backfill finished (`SageSyncState`
+  `phase=incremental` + `backfillDoneAt` set; `/tmp/sage-backfill.log`), then
+  spot-check a non–Mobile Mark company + contacts + deals + forecast UI. Nightly
+  incremental is already wired. Plan: `docs/plans/sage-crm-sync.md` §6.
+
+### Open questions for the human — ANSWERED 2026-08-02
+
+All eight are resolved (per `.cursor/plans/sage_full_sync_ca35f635.plan.md` +
+the human's calls); recorded here so they are not relitigated:
+
+1. **Backfill runtime**: LOCAL one-shot script (`scripts/sage-backfill.ts`),
+   `query`/`next`, off-peak. (Railway worker deferred.)
+2. **Where**: local, from this machine (dry-run canary → full run).
+3. **Soft-deactivate**: `sageDeactivatedAt DateTime?` on Company + Contact +
+   Deal (never hard-delete). Reconcile that sets it is DESIGN-ONLY for now.
+4. **Opportunity walk**: ALL non-deleted opps (`oppo_deleted IS NULL`) after
+   companies complete — one separate walk.
+5. **Global lock**: Postgres advisory lock via `withSageSession` (key
+   `742000777`). Caveat re: pooled unlock documented; lease-row upgrade later.
+6. **Route**: KEEP `/internal/sync/sage`; it auto-switches (`runScheduled`) —
+   test slice while `phase=backfill`, incremental once flipped. Backfill = script
+   only.
+7. **Throttle**: `SAGE_PAGE_DELAY_MS` (400ms) inter-page + `SAGE_MAX_BACKFILL_PAGES`
+   ceiling; run off-peak. No hard clock window enforced in code.
+8. **Commit forecast UI first**: still uncommitted; commit alongside 7.4b when
+   the human is ready (this agent committed nothing).
+
+### 7.4b build recipe (after questions are answered)
+
+1. Additive Prisma migration: `SageSyncState` phase / backfillId /
+   highWaterUpdatedAt (+ optional progress); inactive flag on Company/Contact
+   (and Deal if decided).
+2. Global session lock; never double-logon.
+3. Full hierarchical company backfill (`comp_deleted IS NULL`) reusing
+   existing parser/client; then opportunity walk; soft-deactivate on reconcile
+   (§6.7) — never hard-delete.
+4. Wire incremental nightly path; `sage.router` status + syncNow; regenerate
+   `server.ts` if routers change.
+5. Smoke: progress counters; spot-check non–Mobile Mark company; confirm
+   forecast UI still works with larger open pipeline.
+6. Scale: ~14k companies / ~26k contacts; expect ~1h company walk.
+
+Do **not** start push or communications unless the human asks.
 
 ## Work log (newest first)
+
+### 2026-08-02 — Post-backfill corrections + docs (agent: Opus via Cursor)
+
+**Plan / phase**: follow-ups to 7.4b after the full backfill (see the prior
+entry). Human-reported issues fixed, then all internal docs updated.
+
+**What was completed**
+
+- **Sage 100 id display**: drop the unused `00-` AR division — show the
+  customer number alone (`0011246`). `formatSage100Id`
+  (`apps/app/components/crm/sage-id.ts`) + backend `sage100Display`. Data
+  untouched; division stays for the future MasHeader join.
+- **Company/contact owners** (were all null — owner was never mapped for
+  company/contact, only deals): map company owner from Sage `acctmgr` (a
+  free-text NAME) via `matchSageUserByName` (unique last name + first initial);
+  contacts inherit the company owner. Set-only (never clears a human's choice).
+  One-time `scripts/sage-backfill-owners.ts`: 5,985 companies / 12,865 contacts.
+  Unmatched (former reps Wallgren/Sertich/Moore, blanks) left owner-less.
+- **Deal dates** (chart was flat before the import month): `createdAt` ← Sage
+  `opened` (else `createddate`); `closedAt` ← `closed` → `targetclose` →
+  `opened` (removed the "stamp now()" default that bunched ~206 dateless closed
+  deals into August). One-time `scripts/sage-backfill-deal-dates.ts` (525).
+- **Amount/weighted CORRECTED** (Amount was blank, Weighted showed the full
+  value): Sage `total` is empty/0 on all 525 opps; the deal value is in
+  `forecast`. So `amount ← forecast` (fallback `total`), `weightedAmount =
+  amount × certainty/100`, null when no certainty. One-time
+  `scripts/sage-backfill-deal-amounts.ts` (525). Verified: opp 380 → amount
+  $2,029,650, weighted $1,014,825; open pipeline ~$13.6M unweighted / ~$7.65M
+  weighted.
+- **Docs updated**: `docs/plans/sage-crm-sync.md` (§3.1 owner + Sage 100 display,
+  §3.2 inherit, §3.3 amount/weighted/dates box, §3b forecast semantics, §4/§5/§6
+  status → 7.4b DONE), `.cursor/rules/project-overview.mdc` (forecast semantics +
+  7.4b done), this HANDOFF (Current state + this entry).
+- Tests: added matcher + weighting + opened/date tests; `bun test` Sage specs
+  green; whole-monorepo `check-types` green.
+
+**How and why**
+
+- The root cause of the Amount/Weighted bug was the plan's original assumption
+  that Sage `total` = value and `forecast` = weighted. Live data is the
+  opposite (`total` empty; `forecast` = the value reps type). Corrected the
+  mapping and recomputed from snapshots (no Sage refetch).
+
+**Deviations**
+
+- Reverses the earlier §3.3/§3b `amount ← total`, `forecast → weighted`
+  decision — documented in the §3.3 "CORRECTED" box so it is not reintroduced.
+
+**What's next**
+
+- Nothing committed yet — commit 7.4b + these fixes + forecast UI when the human
+  is ready. Reconcile (soft-deactivate, §6.7) and push (Part G) remain
+  DESIGN-ONLY. One-time scripts can be deleted after commit if desired (they are
+  idempotent and re-derivable).
+
+### 2026-08-02 — Overview: money coalesce + date range
+
+**Plan / phase**: Overview UX (not a Sage phase). Fixes empty KPIs/charts after
+full Sage pull; adds closed-won date range.
+
+**What was completed**
+- Root cause: KPIs/charts summed `Deal.amount` (Sage `total`, often null) while
+  forecast tables used `weightedAmount` (Sage `forecast`).
+- `dashboard.service.ts`: `dealMoneyCents(amount, weightedAmount)` for stage
+  pipeline, trend, closed-won, win-rate avg; `groupBy` sums both money fields;
+  date-range resolver (`today` / `this_week` / `this_month` / `past_30` /
+  `custom`) scopes Closed won + win rate only; open pipeline + forecast stay
+  all-open; trend stays trailing 6 months.
+- `dashboard.contracts.ts`: `range` / `from` / `to` on summary input.
+- UI: `overview-range.tsx` + nuqs parsers; header control next to Me/Everyone;
+  KPI labels use range; Deals in progress prefers weighted when amount null.
+  Files: `overview-search-params.ts`, `page.tsx`, `dashboard-summary.tsx`,
+  `sales-dashboard.tsx`.
+
+**How and why**
+After backfill, overview showed 147 closed / 159 open deals but $0 KPIs and
+empty charts — Sage revenue lives in `forecast`. Date range was requested so
+reps can flip Closed won / win rate without changing the Sage forecast view.
+
+**Deviations**: Custom without valid `from`/`to` falls back to this month
+(soft) rather than Zod-rejecting the query. Trend chart not resized by range
+(per plan).
+
+**What's next**: Restart API so the new summary shape is live; confirm charts
+populate on `/` with Everyone. Then unchanged — confirm full backfill finished
+and spot-check. Plan: `docs/plans/sage-crm-sync.md` §6.
+
+### 2026-08-02 — Deal owner-only edits + stage→certainty + inline certainty
+
+**Plan / phase**: Deal permissions + forecasting fields (local edits before
+Sage push). Leaves room for Better Auth roles (`docs/crm-plan.md` §6).
+
+**What was completed**
+- `CRM_ADMIN_EMAILS` env + `isCrmAdmin` / `canEditOwnedRecord` /
+  `canReassignOwner` in `packages/auth/src/admins.ts` (local `.env` has
+  `jjohnson@mobilemark.com`).
+- `users.me` exposes `isAdmin`. Deals `create`/`update`/`setStage` require
+  owner or admin; only admin may change `ownerId`. Non-admin create forces
+  actor as owner.
+- `STAGE_CERTAINTY` on stage change; `probability` on `deals.update`;
+  weighted = amount × certainty%.
+- UI: inline Certainty on deal sheet; `readOnly` on inline fields when not
+  allowed; stage menus/stepper gated; create-deal hides owner picker for
+  non-admins.
+- Tests: `packages/auth/test/admins.spec.ts`, `apps/api/test/deal-stage.spec.ts`.
+
+**How and why**
+Human: owner-only edits, admin override + reassign, stage drives certainty,
+certainty editable inline for owners.
+
+**Deviations**: Admin is email allow-list (not Better Auth `user.role` yet) —
+intentional thin seam. Default certainty map: Lead 10 / Qual 25 / Neg 50 /
+Proposal 75 / Won 100 / Lost|Unqual 0 (confirm with human if wrong).
+
+**What's next**: Restart API so env + guards load. Confirm certainty map with
+human if needed. Unchanged on Sage backfill spot-check.
+
+### 2026-08-02 — Deal stage UI labels (Sage-ish, no enum re-key)
+
+**Plan / phase**: UI polish; plan §3.3 still stands (keep `DealStage` enum).
+
+**What was completed**
+- Relabeled presentation only in `apps/app/components/crm/deal-stage.tsx`:
+  `DEMO_BOOKED` → "Lead"; `DECISION_MAKER_BOUGHT_IN` → "Negotiating";
+  `CONTRACT_SENT` → "Proposal". Qualified / Closed won / Closed lost /
+  Unqualified unchanged. Stepper, menus, filters, indicators all use this map.
+
+**How and why**
+Human asked for visual Sage-aligned names without re-keying the enum. Lead ≈
+blank/unknown; Negotiating ≈ Negotiation; Proposal ≈ Proposal.
+
+**Deviations**: None (labels only; Sage→enum mapper unchanged).
+
+**What's next**: Unchanged — confirm full backfill finished, then spot-check.
+
+### 2026-08-02 — Clear control on company filter chip
+
+**Plan / phase**: UI polish.
+
+**What was completed**
+- `CompanyPicker` filter mode: × button beside the trigger when a company (or
+  "No company") is selected — clears back to all (`company-picker.tsx`).
+
+**How and why**
+Once a name filled the chip, clearing required reopening the menu.
+
+**Deviations**: None.
+
+**What's next**: Unchanged.
+
+### 2026-08-02 — Restarted API so deals company filter applies
+
+**Plan / phase**: UI polish follow-up.
+
+**What was completed**
+- Restarted `apps/api` (`bun run src/main.ts`) — previous process was from
+  before `dealListInput.company` / `buildWhere` company filter existed. Nest
+  has no hot reload, so the list kept returning unfiltered deals (Zod stripped
+  the unknown `company` key).
+
+**How and why**
+Human reported company filter selection did not change the deals list.
+
+**Deviations**: None.
+
+**What's next**: Unchanged. Confirm filter works after refresh.
+
+### 2026-08-02 — Company filter on deals list
+
+**Plan / phase**: UI polish.
+
+**What was completed**
+- `dealListInput.company` + `buildWhere` filter (`deals.contracts.ts`,
+  `deals.service.ts`).
+- Deals URL facet + searchable `CompanyPicker` (no "No company" — deals always
+  have a company) (`deals-search-params.ts`, `deals-table.tsx`).
+- `CompanyPicker`: "No company" only when `includeNone` (contacts still pass it).
+
+**How and why**
+Same pattern as contacts; human asked for it on deals too.
+
+**Deviations**: None.
+
+**What's next**: Unchanged. Restart API if it was already running (no hot
+reload) so `company` on list input is accepted.
+
+### 2026-08-02 — Default column sets for companies + contacts lists
+
+**Plan / phase**: UI polish.
+
+**What was completed**
+- Contacts default columns: Name, Title, Email, Company, Last activity, Sage
+  100 ID (`owner` now `defaultHidden`).
+- Companies default columns: Company, Industry, Contacts, Open deals, Last
+  activity, Sage 100 ID (`domain` + `owner` now `defaultHidden`).
+
+**How and why**
+Matched the column sets the human settled on in the UI.
+
+**Deviations**: None.
+
+**What's next**: Unchanged. Clear `hide` in the URL if an old tab still shows
+a different set.
+
+### 2026-08-02 — Contacts company facet → searchable CompanyPicker
+
+**Plan / phase**: UI polish on contacts list (post–Sage scale).
+
+**What was completed**
+- `DataTableFacet` accepts optional `render` for custom facet controls
+  (`packages/ui/.../data-table.tsx`).
+- `CompanyPicker` filter mode: `allowAll` + `variant="filter"` (compact
+  trigger, search popover, All / No company / typeahead)
+  (`apps/app/components/crm/company-picker.tsx`).
+- Contacts table company filter uses that picker instead of a radio dropdown
+  of the first 100 options (`contacts-table.tsx`). Companies page has no
+  company facet — unchanged.
+
+**How and why**
+With ~14k Sage companies the old dropdown could not list matches; the create-
+contact picker already searched via `companies.options`.
+
+**Deviations**: None.
+
+**What's next**: Unchanged — confirm full backfill finished, then spot-check.
+
+### 2026-08-02 — Sage 100 ID column visible by default on companies/contacts
+
+**Plan / phase**: Phase 7.4c polish (UI only).
+
+**What was completed**
+- Companies + contacts tables: `sage100Id` no longer `defaultHidden`
+  (`companies-table.tsx`, `contacts-table.tsx`). Sage CRM ID stays opt-in.
+- `SageIdValue`: click the id text to copy (stops row open); copy icon still
+  works (`sage-id-value.tsx`).
+
+**How and why**
+Columns already existed from 7.4c but were hidden by default; human asked to
+show Sage 100 ID in the list without opening Columns.
+
+**Deviations**: None.
+
+**What's next**: Unchanged — confirm full backfill finished, then spot-check.
+If a tab still hides the column, clear the `hide` query param (old default was
+baked into that URL).
+
+### 2026-08-02 — 7.4b full pull implemented + first backfill run (agent: Opus via Cursor)
+
+**Plan / phase**: `docs/plans/sage-crm-sync.md` §6 (7.4b full pull), executing
+`.cursor/plans/sage_full_sync_ca35f635.plan.md` Parts A–E. Human decisions:
+local one-shot backfill; push design-only.
+
+**What was completed**
+
+- **Part A — users**: `SAGE_USERS` (11 reps, names from the human's CSV) in
+  `apps/api/src/sage/sage.mappings.ts`; `SAGE_USER_EMAILS` now DERIVED from it
+  (no drift). `ensureSageUsers(db)` in `apps/api/src/sage/sage-users.ts` —
+  idempotent, stable id `sage-user-<sageId>`, keyed by email, `emailVerified`.
+  Ken (27) is Jordan's stand-in + the fallback owner.
+- **Part B — schema**: additive migration
+  `packages/db/prisma/migrations/20260802220000_add_sage_backfill_state/`
+  (applied). `SageSyncState` +`phase`/`backfillId`/`highWaterUpdatedAt`/
+  `processed`/`backfillDoneAt` (kept `cursor`). `Company`/`Contact`/`Deal`
+  +`sageDeactivatedAt` (soft-deactivate, §6.7) +`sagePushedAt`/`sageUpdatedAt`
+  (push echo-guard markers, design-only).
+- **Part C — safety**: `withSageSession(db, soap, work)` in
+  `apps/api/src/sage/sage-session.ts` — Postgres advisory lock
+  (`pg_try_advisory_lock` key `742000777`), always `logoff` + unlock in finally.
+  Replaces the in-process `running` flag (test slice uses it too). Throttle
+  `SAGE_PAGE_DELAY_MS`, page ceiling `SAGE_MAX_BACKFILL_PAGES`, dry-run mode.
+- **Part D — backfill**: `SagePullService.runBackfill({ dryRun, maxCompanies })`
+  + `apps/api/scripts/sage-backfill.ts` one-shot (boots a slim Nest context).
+  Company walk uses Sage `query`→`next` (walks the COMPLETE set — confirmed
+  needed: page 1 already returned companyid 13821, so results are NOT id-ordered).
+  Then a full opportunity walk (`oppo_deleted IS NULL`). Owner + company-id +
+  taken-domain lookups preloaded once (not per row). Only a COMPLETE walk flips
+  `phase` to incremental — a `--max`/ceiling run stays `backfill`.
+- **Part E — route**: `GET /internal/sync/sage` now calls `runScheduled()` —
+  test slice while `phase = backfill`, nightly `runIncremental()` once the
+  backfill flips it. Backfill never runs via the web route (script only). No
+  router change, so `server.ts` is untouched.
+- **Tests**: `apps/api/test/sage-backfill.spec.ts` (pure helpers extracted to
+  `sage-backfill.util.ts`). All Sage tests + whole-monorepo `check-types` green.
+- **Canary** (`--dry-run --max=200`): ok in 44s (~22s/page). 200 companies →
+  293 contacts; **546 opportunities in Sage**, 525 map, 21 skipped (legacy rows
+  with no id/description/company — never fail the import).
+- **First full run STARTED** (background, off-peak ~10:10pm): 11 users created,
+  writing companies/contacts/deals to the LOCAL DB. Expect ~50–55 min. Every row
+  is `source = SAGE` (reversible in bulk).
+
+**How and why**
+
+- Followed the plan's two human decisions + recommended defaults. Chose
+  `query`/`next` over id-paging because Sage row order is not guaranteed (proven
+  at runtime); idempotent upserts make a fresh re-run the safe crash recovery.
+- Names came only from the human's CSV; `SAGE_USER_EMAILS` derives from the list.
+
+**Deviations**
+
+- **id-paged resume (plan Part C / §6.3) deferred**: use `query`/`next` full
+  walk instead (correctness — Sage is not id-ordered). `backfillId` is a progress
+  marker only; a crash recovers by re-running (idempotent).
+- **Advisory-lock caveat**: session-level lock is bound to the Postgres
+  connection; with the API's pool the explicit unlock may no-op and release only
+  on connection close. Fine for the standalone script (process exit frees it).
+  Documented in `sage-session.ts`; upgrade to a lease row when the long-lived API
+  host runs Sage jobs alongside the cron/push.
+- Snapshot-first is at RECORD granularity (existing `upsertCompanyTree` writes
+  each snapshot before its upsert), not a separate page pass.
+
+**What's next**
+
+- Confirm the full run finished ok (`SageSyncState.phase = incremental`,
+  `backfillDoneAt` set; `/tmp/sage-backfill.log`). Spot-check a non–Mobile Mark
+  company + its contacts + deals in the UI; confirm the forecast overview still
+  works with the larger open pipeline.
+- Nightly incremental is already wired (cron → `/internal/sync/sage`).
+  Reconcile/soft-deactivate (§6.7) and push (`SageOutbox`, Part G) remain
+  DESIGN-ONLY — do not build unless asked.
+- Forecast UI + this 7.4b work are uncommitted; commit when the human is ready
+  (this agent committed nothing).
+
+### 2026-08-02 — Purged local seed CRM data (kept Mobile Mark Sage slice)
+
+**What was completed** — Deleted 18 non–Mobile Mark companies (seed + a few
+MANUAL/CALENDAR rows) and related contacts/deals/activities from local
+Postgres. Left the 8 Sage `Mobile Mark%` companies + 120 contacts + 4 deals.
+Did **not** change `packages/db/prisma/seed.ts`.
+
+**How and why** — One-shot Prisma transaction: clear `primaryContactId`,
+delete deals/contacts/activities for non-keep company ids, unlink
+email/calendar, then delete companies. Keep rule: name/domain matches Mobile
+Mark **or** `sageCrmCompanyId` set. Prep for a real full Sage sync without
+demo Stripe/Linear/etc. noise.
+
+**Deviations** — None; operational cleanup only.
+
+**What's next** — Still gated on human Q&A before 7.4b full pull
+(`docs/plans/sage-crm-sync.md` §6 / §6.0). Do not re-run `bun run db:seed`.
+
+### 2026-08-02 — Docs gate for 7.4b full pull (agent: Grok via Cursor)
+
+**Plan / phase**: docs only — prep human Q&A before 7.4b.
+
+**What was completed**
+
+- Refreshed HANDOFF Current state: forecast UI done (uncommitted), accurate
+  deal stages from DB, reuse inventory for scale, **gate** so next agent does
+  not start 7.4b until open questions are answered.
+- Listed eight open questions (worker vs chunked, soft-deactivate, lock,
+  route shape, throttle, commit-first, etc.).
+- Updated `docs/plans/sage-crm-sync.md` §5/§6 gate + open-questions block;
+  `m365-expansion.md` Phase 7 stub; `.cursor/rules/project-overview.mdc`.
+
+**How and why**
+
+- Human asked to update docs for full-pull readiness and to leave room for
+  questions to the next agent before implementing.
+
+**Deviations**
+
+- None (docs only).
+
+**What's next**
+
+- Human ↔ next agent: answer Open questions. Then commit forecast UI (if not
+  already), then implement 7.4b per recipe above.
+
+
+### 2026-08-02 — Forecast view UI (agent: Grok via Cursor)
+
+**Plan / phase**: `docs/plans/sage-crm-sync.md` §3b — forecast surface.
+
+**What was completed**
+
+- `deals.list` / `deals.byId` now return `probability`, `weightedAmountCents`,
+  `dealType`, `sageStage`, `sageStatus`, `sageCrmOpportunityId`; list also
+  returns `openWeightedCents`.
+- `dashboard.summary` adds `forecast` (totals, months by expected close,
+  byOwner) and `closingThisMonthTotal.weightedCents`.
+- Overview (`sales-dashboard.tsx`): Weighted forecast KPI; Forecast by close
+  month table; Forecast by rep when scope is everyone.
+- Deals table: Weighted, Certainty columns; Type + Sage CRM ID (hidden by
+  default). Footer shows weighted total.
+- Deal sheet: Amount / Weighted / Certainty / Close stats; type + Sage stage;
+  Sage CRM ID copy section.
+- Plan stubs (`sage-crm-sync.md` §3b/§4/§5, `m365-expansion.md` Phase 7)
+  updated — next is 7.4b.
+
+**How and why**
+
+- Forecasting in Sage is opportunity-driven; the UI reconstructs it from Deal
+  columns already imported. Folded aggregates into `dashboard.summary` (same
+  scope me/everyone) rather than a parallel route or nav item.
+
+**Deviations**
+
+- Replaced the "Average deal" KPI with "Weighted forecast" (four-card strip).
+  Average deal remains available via the existing performance block if needed
+  later.
+- Deal sheet header stats swapped "In stage" / Owner for Weighted / Certainty
+  (owner still editable in Details).
+
+**What's next**
+
+- 7.4b full pull (Current state recipe).
 
 ### 2026-08-02 — Commit Deal import + handoff for forecast UI (agent: Grok via Cursor)
 
