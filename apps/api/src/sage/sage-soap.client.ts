@@ -5,13 +5,17 @@ import { type SageCredentials, sageCredentials } from "./sage.config";
 import {
 	SAGE_REQUEST_NS,
 	SAGE_REQUEST_TIMEOUT_MS,
+	SAGE_TYPE_NS,
 	type SageEntity,
+	type SageWriteField,
 } from "./sage.constants";
 import {
+	parseAddId,
 	parseCompanyPage,
 	parseFault,
 	parseQueryPage,
 	parseSessionId,
+	parseUpdateResult,
 	type SageCompanyTree,
 	type SageRecord,
 } from "./sage-xml";
@@ -213,6 +217,106 @@ export class SageSoapClient {
 		return { outcome: "ok", data: all };
 	}
 
+	/**
+	 * Update one existing record by its id field (plan Phase 0 — push).
+	 *
+	 * `fields` MUST include the entity id (e.g. `opportunityid`); the rest are
+	 * the changed values. Confirmed shape: operation in `http://tempuri.org/`,
+	 * a typed `records xsi:type="typens:<entity>"` with `typens:`-prefixed field
+	 * children. Returns rows updated (1 on success).
+	 */
+	async update(
+		entity: SageEntity,
+		fields: SageWriteField[],
+	): Promise<SageResult<{ numberUpdated: number }>> {
+		return this.write("update", entity, fields, (xml) => {
+			const result = parseUpdateResult(xml);
+			if (!result.success) {
+				return {
+					outcome: "failed",
+					reason: `Sage update did not succeed (numberupdated=${result.numberUpdated}).`,
+					retryable: false,
+				};
+			}
+			return {
+				outcome: "ok",
+				data: { numberUpdated: result.numberUpdated },
+			};
+		});
+	}
+
+	/**
+	 * Create one record (plan Phase 0 — push). Returns the new Sage id.
+	 *
+	 * `fields` are the short-named values (no id). Sage answers with the created
+	 * record's `<crmid>`, which the caller writes back onto the local row.
+	 */
+	async add(
+		entity: SageEntity,
+		fields: SageWriteField[],
+	): Promise<SageResult<{ id: string }>> {
+		return this.write("add", entity, fields, (xml) => {
+			const id = parseAddId(xml);
+			if (!id) {
+				return {
+					outcome: "failed",
+					reason: "Sage add returned no crmid.",
+					retryable: false,
+				};
+			}
+			return { outcome: "ok", data: { id } };
+		});
+	}
+
+	/** Shared add/update: build the write body, POST, re-logon once on a fault. */
+	private async write<T>(
+		action: "add" | "update",
+		entity: SageEntity,
+		fields: SageWriteField[],
+		parse: (xml: string) => SageResult<T>,
+	): Promise<SageResult<T>> {
+		if (!this.creds) {
+			return {
+				outcome: "not-configured",
+				reason: "Sage SOAP is not configured.",
+			};
+		}
+
+		const session = await this.ensureSession();
+		if (session.outcome !== "ok") return session;
+
+		const first = await this.runWrite(action, entity, fields, parse);
+		if (first.outcome === "ok") return first;
+
+		if (first.outcome === "failed" && first.retryable) {
+			this.sessionId = undefined;
+			const retrySession = await this.ensureSession();
+			if (retrySession.outcome !== "ok") return retrySession;
+			return this.runWrite(action, entity, fields, parse);
+		}
+
+		return first;
+	}
+
+	private async runWrite<T>(
+		action: "add" | "update",
+		entity: SageEntity,
+		fields: SageWriteField[],
+		parse: (xml: string) => SageResult<T>,
+	): Promise<SageResult<T>> {
+		const body = writeBody(action, entity, fields);
+		const response = await this.post(action, this.envelope(body, this.sessionId));
+		if (response.outcome !== "ok") return response;
+
+		const fault = parseFault(response.data);
+		if (fault) {
+			this.logger.warn({ message: `Sage ${action} fault`, entity, fault });
+			return { outcome: "failed", reason: fault, retryable: true };
+		}
+
+		return parse(response.data);
+	}
+
 	/** Best-effort session teardown; failures are swallowed. */
 	async logoff(): Promise<void> {
 		if (!this.creds || !this.sessionId) return;
@@ -339,7 +443,7 @@ export class SageSoapClient {
 
 	/** POST one SOAP envelope; maps transport/HTTP problems onto SageResult. */
 	private async post(
-		action: "logon" | "query" | "next" | "logoff",
+		action: "logon" | "query" | "next" | "logoff" | "add" | "update",
 		envelope: string,
 	): Promise<SageResult<string>> {
 		if (!this.creds) {
@@ -403,11 +507,45 @@ export class SageSoapClient {
 			: "";
 		return (
 			`<?xml version="1.0" encoding="utf-8"?>` +
-			`<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:tem="${SAGE_REQUEST_NS}">` +
+			`<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" ` +
+			`xmlns:tem="${SAGE_REQUEST_NS}" xmlns:typens="${SAGE_TYPE_NS}" ` +
+			`xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">` +
 			`${header}<soap:Body>${body}</soap:Body>` +
 			`</soap:Envelope>`
 		);
 	}
+}
+
+/**
+ * A Sage `add`/`update` body (confirmed shape, plan Phase 0):
+ *
+ * ```
+ * <tem:update>
+ *   <tem:entityname>opportunity</tem:entityname>
+ *   <tem:records xsi:type="typens:opportunity">
+ *     <typens:opportunityid>557</typens:opportunityid>
+ *     <typens:description>...</typens:description>
+ *   </tem:records>
+ * </tem:update>
+ * ```
+ */
+function writeBody(
+	action: "add" | "update",
+	entity: SageEntity,
+	fields: SageWriteField[],
+): string {
+	const children = fields
+		.map(
+			(field) =>
+				`<typens:${field.name}>${escapeXml(field.value)}</typens:${field.name}>`,
+		)
+		.join("");
+	return (
+		`<tem:${action}>` +
+		`<tem:entityname>${entity}</tem:entityname>` +
+		`<tem:records xsi:type="typens:${entity}">${children}</tem:records>` +
+		`</tem:${action}>`
+	);
 }
 
 function escapeXml(value: string): string {

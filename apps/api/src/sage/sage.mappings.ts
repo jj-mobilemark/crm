@@ -1,4 +1,5 @@
 import { DealStage } from "@crm/db";
+import type { SageWriteField } from "./sage.constants";
 import type { SageCompanyTree, SageRecord } from "./sage-xml";
 
 /**
@@ -30,6 +31,8 @@ export type MappedCompany = {
 	 * `matchSageUserByName`; unmatched names leave the company owner-less.
 	 */
 	accountManagerName: string | null;
+	/** Sage `updateddate` — used by the push echo-guard on pull. */
+	sageUpdatedAt: Date | null;
 };
 
 export type MappedContact = {
@@ -41,6 +44,8 @@ export type MappedContact = {
 	email: string | null;
 	phone: string | null;
 	title: string | null;
+	/** Sage `updateddate` — used by the push echo-guard on pull. */
+	sageUpdatedAt: Date | null;
 };
 
 /**
@@ -89,6 +94,7 @@ export function mapCompany(record: SageRecord): MappedCompany | null {
 		city: clean(record.city),
 		primaryPersonId: clean(record.primarypersonid),
 		accountManagerName: clean(record.acctmgr),
+		sageUpdatedAt: parseSageDate(record.updateddate),
 	};
 }
 
@@ -109,6 +115,7 @@ export function mapContact(
 		email: normaliseEmail(record.emailaddress),
 		phone: joinPhone(record.areacode, record.number),
 		title: clean(record.title),
+		sageUpdatedAt: parseSageDate(record.updateddate),
 	};
 }
 
@@ -137,6 +144,8 @@ export type MappedOpportunity = {
 	openedAt: Date | null;
 	/** Sage `assigneduserid` — resolve via `emailForSageUser` + fallback. */
 	sageAssignedUserId: string | null;
+	/** Sage `updateddate` — used by the push echo-guard on pull. */
+	sageUpdatedAt: Date | null;
 };
 
 /**
@@ -176,7 +185,21 @@ export function mapOpportunity(record: SageRecord): MappedOpportunity | null {
 		closedAt: parseSageDate(record.closed),
 		openedAt: parseSageDate(record.opened) ?? parseSageDate(record.createddate),
 		sageAssignedUserId: clean(record.assigneduserid),
+		sageUpdatedAt: parseSageDate(record.updateddate),
 	};
+}
+
+/**
+ * True when a Sage `updateddate` is at/before our last push — i.e. the change
+ * we are about to pull is our own write coming back. The pull should skip
+ * overwriting local mapped fields in that case (local wins).
+ */
+export function isPushEcho(
+	sageUpdatedAt: Date | null | undefined,
+	sagePushedAt: Date | null | undefined,
+): boolean {
+	if (!sageUpdatedAt || !sagePushedAt) return false;
+	return sageUpdatedAt.getTime() <= sagePushedAt.getTime();
 }
 
 /**
@@ -321,6 +344,211 @@ export function matchSageUserByName(
 /** The email of the account manager, or null when the name is unmatched. */
 export function emailForAcctMgr(name: string | null | undefined): string | null {
 	return matchSageUserByName(name)?.email ?? null;
+}
+
+/** Sage CRM user id for a local owner email, or null when not a mapped rep. */
+export function sageUserIdForEmail(
+	email: string | null | undefined,
+): string | null {
+	const cleaned = clean(email)?.toLowerCase();
+	if (!cleaned) return null;
+	for (const user of SAGE_USERS) {
+		if (user.email.toLowerCase() === cleaned) return user.sageId;
+	}
+	return null;
+}
+
+// --- push: local -> Sage write fields (plan §3, reversed) -------------------
+//
+// The inverse of the read mappings above. Each `toSage*Fields` returns the SHORT
+// Sage field names a write needs (see `SageWriteField`); an `update` set leads
+// with the entity id. Only the fields Sage OWNS in the 1:1 catalog are pushed —
+// nested address / phone / email are separate Sage entities and are NOT written
+// through a flat company/person update in this cut (noted for a later phase).
+
+/** Local deal values needed to write an opportunity back to Sage. */
+export type DealPushInput = {
+	sageCrmOpportunityId: string | null;
+	name: string;
+	/** Unweighted deal value -> Sage `forecast`, decimal string or null. */
+	amount: string | null;
+	/** 0-100 -> Sage `certainty`. */
+	probability: number | null;
+	stage: DealStage;
+	/** Raw Sage stage/status last pulled — kept for a lossless 1:1 round-trip. */
+	sageStage: string | null;
+	sageStatus: string | null;
+	expectedCloseDate: Date | null;
+	/** Local owner's email -> Sage `assigneduserid` when it is a mapped rep. */
+	ownerEmail: string | null;
+	/** Parent company's Sage id — REQUIRED to create an opportunity in Sage. */
+	sageCrmCompanyId: string | null;
+	/** Primary contact's Sage id, linked as `primarypersonid` when present. */
+	sageCrmPrimaryPersonId: string | null;
+};
+
+/**
+ * Opportunity write fields for an `update` or `add`.
+ *
+ * Stage/status: if the raw Sage stage still maps to the local stage, send it
+ * back verbatim (lossless — e.g. "Purchasing" is not flattened to "Proposal").
+ * Once the rep changes the stage locally, derive the Sage values from the enum.
+ */
+export function toSageOpportunityFields(
+	input: DealPushInput,
+	op: "create" | "update",
+): SageWriteField[] {
+	const fields: SageWriteField[] = [];
+
+	if (op === "update") {
+		if (!input.sageCrmOpportunityId) {
+			throw new Error("opportunity update needs sageCrmOpportunityId");
+		}
+		fields.push({ name: "opportunityid", value: input.sageCrmOpportunityId });
+	} else {
+		if (!input.sageCrmCompanyId) {
+			throw new Error("opportunity create needs a parent sageCrmCompanyId");
+		}
+		fields.push({ name: "primarycompanyid", value: input.sageCrmCompanyId });
+		if (input.sageCrmPrimaryPersonId) {
+			fields.push({
+				name: "primarypersonid",
+				value: input.sageCrmPrimaryPersonId,
+			});
+		}
+	}
+
+	fields.push({ name: "description", value: input.name });
+
+	if (input.amount !== null) {
+		fields.push({ name: "forecast", value: input.amount });
+	}
+	if (input.probability !== null) {
+		fields.push({ name: "certainty", value: String(input.probability) });
+	}
+	if (input.expectedCloseDate) {
+		fields.push({
+			name: "targetclose",
+			value: sageDateForPush(input.expectedCloseDate),
+		});
+	}
+
+	const { stage, status } = sageStageForPush(input);
+	fields.push({ name: "stage", value: stage });
+	fields.push({ name: "status", value: status });
+
+	const assigned = sageUserIdForEmail(input.ownerEmail);
+	if (assigned) fields.push({ name: "assigneduserid", value: assigned });
+
+	return fields;
+}
+
+/** Local company values needed to write a company back to Sage. */
+export type CompanyPushInput = {
+	sageCrmCompanyId: string | null;
+	name: string;
+	website: string | null;
+};
+
+export function toSageCompanyFields(
+	input: CompanyPushInput,
+	op: "create" | "update",
+): SageWriteField[] {
+	const fields: SageWriteField[] = [];
+	if (op === "update") {
+		if (!input.sageCrmCompanyId) {
+			throw new Error("company update needs sageCrmCompanyId");
+		}
+		fields.push({ name: "companyid", value: input.sageCrmCompanyId });
+	}
+	fields.push({ name: "name", value: input.name });
+	if (input.website) fields.push({ name: "website", value: input.website });
+	return fields;
+}
+
+/** Local contact values needed to write a person back to Sage. */
+export type ContactPushInput = {
+	sageCrmContactId: string | null;
+	firstName: string;
+	lastName: string | null;
+	title: string | null;
+	/** Parent company's Sage id — REQUIRED to create a person in Sage. */
+	sageCrmCompanyId: string | null;
+};
+
+export function toSagePersonFields(
+	input: ContactPushInput,
+	op: "create" | "update",
+): SageWriteField[] {
+	const fields: SageWriteField[] = [];
+	if (op === "update") {
+		if (!input.sageCrmContactId) {
+			throw new Error("person update needs sageCrmContactId");
+		}
+		fields.push({ name: "personid", value: input.sageCrmContactId });
+	} else {
+		if (!input.sageCrmCompanyId) {
+			throw new Error("person create needs a parent sageCrmCompanyId");
+		}
+		fields.push({ name: "companyid", value: input.sageCrmCompanyId });
+	}
+	fields.push({ name: "firstname", value: input.firstName });
+	if (input.lastName) fields.push({ name: "lastname", value: input.lastName });
+	if (input.title) fields.push({ name: "title", value: input.title });
+	return fields;
+}
+
+/**
+ * Local `DealStage` -> Sage `{ stage, status }`, keeping the raw Sage values
+ * when they still describe the current local stage (a lossless round-trip).
+ */
+export function sageStageForPush(input: {
+	stage: DealStage;
+	sageStage: string | null;
+	sageStatus: string | null;
+}): { stage: string; status: string } {
+	// Unchanged since the pull: send exactly what Sage gave us.
+	if (
+		input.sageStage &&
+		mapSageDealStage(input.sageStage, input.sageStatus) === input.stage
+	) {
+		return { stage: input.sageStage, status: input.sageStatus ?? "In Progress" };
+	}
+	return DEAL_STAGE_TO_SAGE[input.stage];
+}
+
+/**
+ * The Sage stage/status a local `DealStage` should write when it has diverged
+ * from the pulled value (the rep moved the deal). Chosen from the team's active
+ * Sage vocabulary (plan §3.3).
+ */
+const DEAL_STAGE_TO_SAGE: Record<DealStage, { stage: string; status: string }> =
+	{
+		[DealStage.DEMO_BOOKED]: {
+			stage: "Investigation/Prospecting",
+			status: "In Progress",
+		},
+		[DealStage.QUALIFIED_TO_BUY]: {
+			stage: "Investigation/Prospecting",
+			status: "In Progress",
+		},
+		[DealStage.DECISION_MAKER_BOUGHT_IN]: {
+			stage: "Negotiation",
+			status: "In Progress",
+		},
+		[DealStage.CONTRACT_SENT]: { stage: "Proposal", status: "In Progress" },
+		[DealStage.CLOSED_WON]: { stage: "Closed Won", status: "Won" },
+		[DealStage.CLOSED_LOST]: { stage: "Lost", status: "Lost" },
+		[DealStage.UNQUALIFIED_TO_BUY]: { stage: "Lost", status: "Lost" },
+	};
+
+/** A Date as Sage's local ISO-ish datetime, e.g. `2026-07-30T16:50:58`. */
+export function sageDateForPush(date: Date): string {
+	const pad = (n: number) => String(n).padStart(2, "0");
+	return (
+		`${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}` +
+		`T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
+	);
 }
 
 // --- helpers ----------------------------------------------------------------

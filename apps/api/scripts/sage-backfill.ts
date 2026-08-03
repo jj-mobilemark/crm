@@ -8,6 +8,8 @@
  *   bun run scripts/sage-backfill.ts --dry-run --max=200   # canary, no writes
  *   bun run scripts/sage-backfill.ts --max=200             # small real slice
  *   bun run scripts/sage-backfill.ts                       # full run (off-peak)
+ *   bun run scripts/sage-backfill.ts --incremental --dry-run  # preview a nightly pull
+ *   bun run scripts/sage-backfill.ts --incremental            # run a nightly pull
  *
  * Run it off-peak. It holds one Sage session and pages slowly on purpose so the
  * sales team never sees Sage slow down.
@@ -30,19 +32,27 @@ import { SageModule } from "../src/sage/sage.module";
 })
 class BackfillModule {}
 
-function parseArgs(argv: string[]): { dryRun: boolean; maxCompanies?: number } {
+function parseArgs(argv: string[]): {
+	dryRun: boolean;
+	incremental: boolean;
+	maxCompanies?: number;
+} {
 	const dryRun = argv.includes("--dry-run");
+	const incremental = argv.includes("--incremental");
 	const maxArg = argv.find((a) => a.startsWith("--max="));
 	const max = maxArg ? Number.parseInt(maxArg.slice("--max=".length), 10) : NaN;
 	return {
 		dryRun,
+		incremental,
 		maxCompanies: Number.isFinite(max) && max > 0 ? max : undefined,
 	};
 }
 
 async function main(): Promise<void> {
 	const logger = new Logger("SageBackfillScript");
-	const { dryRun, maxCompanies } = parseArgs(process.argv.slice(2));
+	const { dryRun, incremental, maxCompanies } = parseArgs(
+		process.argv.slice(2),
+	);
 
 	const app = await NestFactory.createApplicationContext(BackfillModule, {
 		logger: ["log", "warn", "error"],
@@ -51,13 +61,21 @@ async function main(): Promise<void> {
 
 	const pull = app.get(SagePullService);
 
-	logger.log({ message: "Sage backfill starting", dryRun, maxCompanies });
+	const mode = incremental ? "incremental" : "backfill";
+	logger.log({
+		message: "Sage sync starting",
+		mode,
+		dryRun,
+		maxCompanies,
+	});
 	const startedAt = Date.now();
 
-	const summary = await pull.runBackfill({ dryRun, maxCompanies });
+	const summary = incremental
+		? await pull.runIncremental({ dryRun })
+		: await pull.runBackfill({ dryRun, maxCompanies });
 
 	const durationMs = Date.now() - startedAt;
-	logger.log({ message: "Sage backfill done", durationMs, ...summary });
+	logger.log({ message: "Sage sync done", mode, durationMs, ...summary });
 
 	await app.close();
 	process.exit(summary.outcome === "ok" ? 0 : 1);

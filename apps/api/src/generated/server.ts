@@ -13,9 +13,9 @@ import { z } from "zod";
 
 const t = initTRPC.create();
 const publicProcedure = t.procedure;
-import { timelineInput, timelineCountsInput, myTasksInput, activityCreateInput, completeInput } from "../activities/activities.contracts";
+import { timelineInput, timelineCountsInput, myTasksInput, activityCreateInput, completeInput, setPriorityInput } from "../activities/activities.contracts";
 import { companyListInput, companyIdInput, companyOptionsInput, companyCreateInput, companyUpdateArgs, setPrimaryContactInput } from "../companies/companies.contracts";
-import { contactListInput, contactIdInput, contactCreateInput, contactUpdateArgs, factDecisionInput } from "../contacts/contacts.contracts";
+import { contactListInput, contactIdInput, contactOptionsInput, contactCreateInput, contactUpdateArgs, factDecisionInput } from "../contacts/contacts.contracts";
 import { conversationListInput, conversationEventsInput, conversationSaveInput, conversationIdInput } from "../conversations/conversations.contracts";
 import { dashboardSummaryInput } from "../dashboard/dashboard.contracts";
 import { dealListInput, dealIdInput, dealCreateInput, dealUpdateArgs, setStageInput } from "../deals/deals.contracts";
@@ -23,6 +23,7 @@ import { followupPrefsInput, followupDecideInput } from "../followups/followups.
 import { setAutoCreateInput, suppressDomainInput, threadInput, calendarEventInput } from "../google/google.contracts";
 import { msSetAutoCreateInput, msSuppressDomainInput, msThreadInput, msCalendarEventInput } from "../microsoft/microsoft.contracts";
 import { screeningDecideInput } from "../screening/screening.contracts";
+import { sequenceIdInput, enrollmentListInput, sequenceCreateInput, sequenceUpdateInput, sequenceReplaceStepsInput, sequenceEnrollInput, enrollmentIdInput } from "../sequences/sequences.contracts";
 import type { ActivitiesRouter } from "../activities/activities.router";
 import type { CompaniesRouter } from "../companies/companies.router";
 import type { ContactsRouter } from "../contacts/contacts.router";
@@ -34,6 +35,7 @@ import type { GoogleRouter } from "../google/google.router";
 import type { MicrosoftRouter } from "../microsoft/microsoft.router";
 import type { ScreeningRouter } from "../screening/screening.router";
 import type { SearchRouter } from "../search/search.router";
+import type { SequencesRouter } from "../sequences/sequences.router";
 import type { UsersRouter } from "../users/users.router";
 
 const appRouter = t.router({
@@ -52,7 +54,10 @@ const appRouter = t.router({
       .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<ActivitiesRouter["create"]>>),
     complete: publicProcedure
       .input(completeInput)
-      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<ActivitiesRouter["complete"]>>)
+      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<ActivitiesRouter["complete"]>>),
+    setPriority: publicProcedure
+      .input(setPriorityInput)
+      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<ActivitiesRouter["setPriority"]>>)
     }),
   companies: t.router({
     list: publicProcedure
@@ -87,6 +92,9 @@ const appRouter = t.router({
     byId: publicProcedure
       .input(contactIdInput)
       .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<ContactsRouter["byId"]>>),
+    options: publicProcedure
+      .input(contactOptionsInput)
+      .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<ContactsRouter["options"]>>),
     create: publicProcedure
       .input(contactCreateInput)
       .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<ContactsRouter["create"]>>),
@@ -202,6 +210,39 @@ const appRouter = t.router({
     quick: publicProcedure
       .input(z.object({ q: z.string().default("") }))
       .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<SearchRouter["quick"]>>)
+    }),
+  sequences: t.router({
+    list: publicProcedure
+      .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<SequencesRouter["list"]>>),
+    byId: publicProcedure
+      .input(sequenceIdInput)
+      .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<SequencesRouter["byId"]>>),
+    canSend: publicProcedure
+      .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<SequencesRouter["canSend"]>>),
+    enrollments: publicProcedure
+      .input(enrollmentListInput)
+      .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<SequencesRouter["enrollments"]>>),
+    create: publicProcedure
+      .input(sequenceCreateInput)
+      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<SequencesRouter["create"]>>),
+    update: publicProcedure
+      .input(sequenceUpdateInput)
+      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<SequencesRouter["update"]>>),
+    replaceSteps: publicProcedure
+      .input(sequenceReplaceStepsInput)
+      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<SequencesRouter["replaceSteps"]>>),
+    enroll: publicProcedure
+      .input(sequenceEnrollInput)
+      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<SequencesRouter["enroll"]>>),
+    pauseEnrollment: publicProcedure
+      .input(enrollmentIdInput)
+      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<SequencesRouter["pauseEnrollment"]>>),
+    resumeEnrollment: publicProcedure
+      .input(enrollmentIdInput)
+      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<SequencesRouter["resumeEnrollment"]>>),
+    stopEnrollment: publicProcedure
+      .input(enrollmentIdInput)
+      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<SequencesRouter["stopEnrollment"]>>)
     }),
   users: t.router({
     me: publicProcedure

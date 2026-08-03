@@ -4,6 +4,7 @@ import { Injectable, Logger } from "@nestjs/common";
 import { InjectDatabase } from "../database/database.constants";
 import {
 	MICROSOFT_PROVIDER_ID,
+	MS_MAIL_SEND_SCOPE,
 	SCOPE_FOR_SOURCE,
 	type SyncSource,
 } from "./microsoft.constants";
@@ -121,6 +122,48 @@ export class MicrosoftTokenService {
 				message: "Microsoft token refresh failed",
 				userId,
 				source,
+				reason: error instanceof Error ? error.message : String(error),
+			});
+
+			return {
+				outcome: "needs-reconnect",
+				reason: "Microsoft would not refresh the access token.",
+			};
+		}
+	}
+
+	/**
+	 * A valid access token with Mail.Send, or why there isn't one.
+	 *
+	 * Sequences call this; mail sync does not. Missing send is an ordinary
+	 * state for a rep who has not re-consented since Mail.Send was added.
+	 */
+	async accessTokenForSend(userId: string): Promise<TokenResult> {
+		const scopes = await this.grantedScopes(userId);
+		if (!scopes.includes(MS_MAIL_SEND_SCOPE)) {
+			return {
+				outcome: "not-connected",
+				reason: "The Mail.Send scope has not been granted.",
+			};
+		}
+
+		try {
+			const { accessToken } = await auth.api.getAccessToken({
+				body: { providerId: MICROSOFT_PROVIDER_ID, userId },
+			});
+
+			if (!accessToken) {
+				return {
+					outcome: "needs-reconnect",
+					reason: "Microsoft returned no access token.",
+				};
+			}
+
+			return { outcome: "ok", accessToken };
+		} catch (error) {
+			this.logger.warn({
+				message: "Microsoft token refresh failed (send)",
+				userId,
 				reason: error instanceof Error ? error.message : String(error),
 			});
 

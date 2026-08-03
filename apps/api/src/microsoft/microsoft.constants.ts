@@ -1,11 +1,16 @@
-import { MS_CALENDAR_SCOPE, MS_MAIL_SCOPE } from "@crm/auth";
+import { MS_CALENDAR_SCOPE, MS_MAIL_SCOPE, MS_MAIL_SEND_SCOPE } from "@crm/auth";
 
 /**
  * The scope strings come from `@crm/auth`, which is where the OAuth request is
  * actually made. Re-declaring them here would be two lists that drift, and the
  * failure is silent: the grant looks right and `isConnected()` says no.
  */
-export { MS_CALENDAR_SCOPE, MS_MAIL_SCOPE, MS_SYNC_SCOPES } from "@crm/auth";
+export {
+	MS_CALENDAR_SCOPE,
+	MS_MAIL_SCOPE,
+	MS_MAIL_SEND_SCOPE,
+	MS_SYNC_SCOPES,
+} from "@crm/auth";
 
 /**
  * The two sources sync independently: they have separate cursors, separate

@@ -17,6 +17,7 @@ import { AgentTriggerService } from "../agent/agent-trigger.service";
 import { blankToNull, toCents } from "../crm/values";
 import { InjectDatabase } from "../database/database.constants";
 import { OPEN_DEAL_STAGES } from "../deals/deal-stage";
+import { SagePushService } from "../sage/sage-push.service";
 import {
 	countsByKey,
 	FACET_ALL,
@@ -33,6 +34,9 @@ import type {
 } from "./companies.contracts";
 import { normalizeDomain } from "./domain";
 import { FaviconService } from "./favicon.service";
+
+/** Signed-in actor for Sage push attribution (human UI only). */
+export type CompanyActor = { id: string };
 
 const OWNER_SELECT = {
 	id: true,
@@ -114,6 +118,7 @@ export class CompaniesService {
 		private readonly agent: AgentTriggerService,
 		private readonly queue: AgentQueueService,
 		private readonly favicon: FaviconService,
+		private readonly sagePush: SagePushService,
 	) {}
 
 	async list(input: CompanyListInput): Promise<ListResult<CompanyRow>> {
@@ -301,7 +306,7 @@ export class CompaniesService {
 		});
 	}
 
-	async create(input: CompanyCreateInput) {
+	async create(input: CompanyCreateInput, actor?: CompanyActor) {
 		const domain = normalizeDomain(input.domain);
 
 		if (domain) {
@@ -343,10 +348,15 @@ export class CompaniesService {
 		// while the row is enriching, so it lands without a reload.
 		void this.favicon.backfill(company.id, company.domain);
 
+		// Human UI create -> SageOutbox (sync/agent paths never call this method).
+		if (actor) {
+			await this.sagePush.enqueueAndKick("company", company.id, actor.id);
+		}
+
 		return company;
 	}
 
-	async update(id: string, input: CompanyUpdateInput) {
+	async update(id: string, input: CompanyUpdateInput, actor?: CompanyActor) {
 		const data: Prisma.CompanyUpdateInput = {};
 
 		if (input.name !== undefined) data.name = input.name.trim();
@@ -417,6 +427,16 @@ export class CompaniesService {
 					"Domain changed — anything we knew was about a different company",
 				);
 				void this.favicon.backfill(id, updated.domain);
+			}
+
+			// Human UI update of mapped fields -> SageOutbox.
+			if (
+				actor &&
+				(input.name !== undefined ||
+					input.website !== undefined ||
+					input.domain !== undefined)
+			) {
+				await this.sagePush.enqueueAndKick("company", id, actor.id);
 			}
 
 			return updated;

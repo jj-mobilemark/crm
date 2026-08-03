@@ -19,6 +19,7 @@ import {
 import {
 	emailForAcctMgr,
 	emailForSageUser,
+	isPushEcho,
 	mapCompanyTree,
 	mapContact,
 	mapOpportunity,
@@ -320,7 +321,7 @@ export class SagePullService {
 	): Promise<string | null> {
 		const existing = await this.db.deal.findUnique({
 			where: { sageCrmOpportunityId: mapped.sageCrmOpportunityId },
-			select: { id: true, stage: true },
+			select: { id: true, stage: true, sagePushedAt: true },
 		});
 
 		const fields = {
@@ -343,9 +344,18 @@ export class SagePullService {
 			// The deal's true creation date is Sage `opened`, not our import time.
 			// `undefined` leaves the DB default (now) when Sage has neither.
 			createdAt: mapped.openedAt ?? undefined,
+			sageUpdatedAt: mapped.sageUpdatedAt,
 		};
 
 		if (existing) {
+			// Our own push coming back — keep local mapped fields, stamp cursor.
+			if (isPushEcho(mapped.sageUpdatedAt, existing.sagePushedAt)) {
+				await this.db.deal.update({
+					where: { id: existing.id },
+					data: { sageUpdatedAt: mapped.sageUpdatedAt },
+				});
+				return existing.id;
+			}
 			const stageChanged = existing.stage !== mapped.stage;
 			await this.db.deal.update({
 				where: { id: existing.id },
@@ -707,28 +717,33 @@ export class SagePullService {
 	 * high-water, with an overlap. Idempotent upserts absorb the overlap. Runs
 	 * inside the one global Sage session.
 	 */
-	async runIncremental(): Promise<SageBackfillSummary> {
+	async runIncremental(
+		options: { dryRun?: boolean } = {},
+	): Promise<SageBackfillSummary> {
+		const dryRun = options.dryRun ?? false;
 		if (!this.soap.isConfigured()) {
 			return emptyBackfill(
 				"not-configured",
-				false,
+				dryRun,
 				"Sage SOAP is not configured.",
 			);
 		}
 
 		const ran = await withSageSession(this.db, this.soap, () =>
-			this.runIncrementalLocked(),
+			this.runIncrementalLocked(dryRun),
 		);
 		if (ran.outcome === "busy") {
-			return emptyBackfill("busy", false, "A Sage sync is already running.");
+			return emptyBackfill("busy", dryRun, "A Sage sync is already running.");
 		}
 		return ran.value;
 	}
 
-	private async runIncrementalLocked(): Promise<SageBackfillSummary> {
+	private async runIncrementalLocked(
+		dryRun: boolean,
+	): Promise<SageBackfillSummary> {
 		const summary: SageBackfillSummary = {
 			outcome: "ok",
-			dryRun: false,
+			dryRun,
 			pages: 0,
 			companiesFetched: 0,
 			companiesUpserted: 0,
@@ -766,15 +781,25 @@ export class SagePullService {
 				summary.pages += 1;
 				for (const tree of page.data.companies) {
 					summary.companiesFetched += 1;
-					const result = await this.upsertCompanyTree(
-						tree,
-						takenDomains,
-						ownerByEmail,
-					);
-					summary.companiesUpserted += result.company ? 1 : 0;
-					summary.contactsUpserted += result.contacts;
-					summary.snapshotsWritten += result.snapshots;
-					summary.skipped += result.skipped;
+					if (dryRun) {
+						const mapped = mapCompanyTree(tree);
+						if (mapped) {
+							summary.companiesUpserted += 1;
+							summary.contactsUpserted += countMappableContacts(tree);
+						} else {
+							summary.skipped += 1;
+						}
+					} else {
+						const result = await this.upsertCompanyTree(
+							tree,
+							takenDomains,
+							ownerByEmail,
+						);
+						summary.companiesUpserted += result.company ? 1 : 0;
+						summary.contactsUpserted += result.contacts;
+						summary.snapshotsWritten += result.snapshots;
+						summary.skipped += result.skipped;
+					}
 				}
 				if (more) more = page.data.more;
 				if (more) await delay(SAGE_PAGE_DELAY_MS);
@@ -786,6 +811,7 @@ export class SagePullService {
 			const opps = await this.backfillOpportunitiesPredicate(
 				summary,
 				oppPredicate,
+				dryRun,
 			);
 			if (opps.outcome !== "ok") {
 				summary.outcome = opps.outcome;
@@ -793,8 +819,14 @@ export class SagePullService {
 				return summary;
 			}
 
-			await this.advanceHighWater(startedAt);
-			this.logger.log({ message: "Sage incremental finished", ...summary });
+			// A dry run reports what would change but never advances the cursor.
+			if (!dryRun) await this.advanceHighWater(startedAt);
+			this.logger.log({
+				message: dryRun
+					? "Sage incremental dry-run finished"
+					: "Sage incremental finished",
+				...summary,
+			});
 			return summary;
 		} catch (error) {
 			const reason =
@@ -813,12 +845,21 @@ export class SagePullService {
 	private async backfillOpportunitiesPredicate(
 		summary: SageBackfillSummary,
 		predicate: string,
+		dryRun = false,
 	): Promise<{ outcome: SageOutcome; reason?: string }> {
 		const fetched = await this.soap.queryAllRecords("opportunity", predicate);
 		if (fetched.outcome !== "ok") {
 			return { outcome: fetched.outcome, reason: fetched.reason };
 		}
 		summary.dealsFetched += fetched.data.length;
+
+		if (dryRun) {
+			for (const record of fetched.data) {
+				if (mapOpportunity(record)) summary.dealsUpserted += 1;
+				else summary.skipped += 1;
+			}
+			return { outcome: "ok" };
+		}
 
 		const companyBySageId = await this.loadCompanyBySageId();
 		const ownerCache = await this.loadOwnerCache();
@@ -1091,10 +1132,17 @@ export class SagePullService {
 
 		const existing = await this.db.company.findUnique({
 			where: { sageCrmCompanyId: mapped.sageCrmCompanyId },
-			select: { id: true, domain: true },
+			select: { id: true, domain: true, sagePushedAt: true },
 		});
 
 		if (existing) {
+			if (isPushEcho(mapped.sageUpdatedAt, existing.sagePushedAt)) {
+				await this.db.company.update({
+					where: { id: existing.id },
+					data: { sageUpdatedAt: mapped.sageUpdatedAt },
+				});
+				return existing.id;
+			}
 			const domain = resolveDomain(
 				mapped.domain,
 				existing.domain,
@@ -1110,6 +1158,7 @@ export class SagePullService {
 					city: mapped.city,
 					sage100CustomerNo: mapped.sage100CustomerNo,
 					sage100ArDivisionNo: mapped.sage100ArDivisionNo,
+					sageUpdatedAt: mapped.sageUpdatedAt,
 					...ownerData,
 					...(domain && !existing.domain ? { domain } : {}),
 				},
@@ -1138,6 +1187,7 @@ export class SagePullService {
 						city: mapped.city,
 						sage100CustomerNo: mapped.sage100CustomerNo,
 						sage100ArDivisionNo: mapped.sage100ArDivisionNo,
+						sageUpdatedAt: mapped.sageUpdatedAt,
 						source: RecordSource.SAGE,
 						...ownerData,
 					},
@@ -1165,6 +1215,7 @@ export class SagePullService {
 				sageCrmCompanyId: mapped.sageCrmCompanyId,
 				sage100CustomerNo: mapped.sage100CustomerNo,
 				sage100ArDivisionNo: mapped.sage100ArDivisionNo,
+				sageUpdatedAt: mapped.sageUpdatedAt,
 				source: RecordSource.SAGE,
 				...ownerData,
 			},
@@ -1185,10 +1236,17 @@ export class SagePullService {
 
 		const existing = await this.db.contact.findUnique({
 			where: { sageCrmContactId: mapped.sageCrmContactId },
-			select: { id: true },
+			select: { id: true, sagePushedAt: true },
 		});
 
 		if (existing) {
+			if (isPushEcho(mapped.sageUpdatedAt, existing.sagePushedAt)) {
+				await this.db.contact.update({
+					where: { id: existing.id },
+					data: { sageUpdatedAt: mapped.sageUpdatedAt },
+				});
+				return existing.id;
+			}
 			await this.db.contact.update({
 				where: { id: existing.id },
 				data: {
@@ -1197,6 +1255,7 @@ export class SagePullService {
 					phone: mapped.phone,
 					title: mapped.title,
 					companyId,
+					sageUpdatedAt: mapped.sageUpdatedAt,
 					...ownerData,
 					// Email is @unique — only set when blank or already ours.
 					...(mapped.email
@@ -1223,6 +1282,7 @@ export class SagePullService {
 						phone: mapped.phone,
 						title: mapped.title,
 						companyId: byEmail.companyId ?? companyId,
+						sageUpdatedAt: mapped.sageUpdatedAt,
 						source: RecordSource.SAGE,
 						...ownerData,
 					},
@@ -1239,6 +1299,7 @@ export class SagePullService {
 						title: mapped.title,
 						companyId,
 						sageCrmContactId: mapped.sageCrmContactId,
+						sageUpdatedAt: mapped.sageUpdatedAt,
 						source: RecordSource.SAGE,
 						...ownerData,
 					},
@@ -1257,6 +1318,7 @@ export class SagePullService {
 				title: mapped.title,
 				companyId,
 				sageCrmContactId: mapped.sageCrmContactId,
+				sageUpdatedAt: mapped.sageUpdatedAt,
 				source: RecordSource.SAGE,
 				...ownerData,
 			},

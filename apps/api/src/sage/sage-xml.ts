@@ -59,6 +59,34 @@ export function parseSessionId(xml: string): string | null {
 }
 
 /**
+ * The outcome of an `update` write.
+ *
+ * Sage answers with `<updateresponse><result><numberupdated>N</numberupdated>
+ * <updatesuccess>true</updatesuccess></result></updateresponse>` (confirmed
+ * against production, plan Phase 0). Tags carry no prefix in the body, so match
+ * by local name.
+ */
+export function parseUpdateResult(xml: string): {
+	success: boolean;
+	numberUpdated: number;
+} {
+	const success = /<updatesuccess>\s*true\s*<\/updatesuccess>/i.test(xml);
+	const n = xml.match(/<numberupdated>\s*(\d+)\s*<\/numberupdated>/i)?.[1];
+	return { success, numberUpdated: n ? Number.parseInt(n, 10) : 0 };
+}
+
+/**
+ * The new Sage id from an `add` write, or null.
+ *
+ * Sage answers with `<addresponse><result><records xsi:type="typens:crmid">
+ * <crmid>804</crmid></records></result></addresponse>` — the created record's
+ * id is the `<crmid>` value (confirmed against production, plan Phase 0).
+ */
+export function parseAddId(xml: string): string | null {
+	return xml.match(/<crmid>\s*([^<\s]+)\s*<\/crmid>/i)?.[1] ?? null;
+}
+
+/**
  * Every top-level record of the given entity from a `queryresponse`.
  *
  * Only the record's own scalar fields are returned; nested child records (which

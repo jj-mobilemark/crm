@@ -7,6 +7,7 @@ import { cn } from "@crm/ui/lib/utils";
 import { useMutation } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { dealStageLabel } from "@/components/crm/deal-stage";
+import { PriorityBadge } from "@/components/crm/priority";
 import { RecordLink } from "@/components/crm/record-sheet/record-link";
 import { useCrmCache } from "@/lib/trpc/cache";
 import { useTRPC } from "@/lib/trpc/client";
@@ -113,7 +114,10 @@ export function TimelineEntry({
 		entry.contact && entry.contact.id !== here ? entry.contact : null;
 
 	const footnotes = Boolean(
-		deal || contact || (isTask && !done && entry.dueAt),
+		deal ||
+			contact ||
+			(isTask && !done && entry.dueAt) ||
+			(isTask && entry.priority),
 	);
 
 	return (
@@ -210,6 +214,10 @@ export function TimelineEntry({
 				 */}
 				{footnotes ? (
 					<div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-muted-foreground">
+						{isTask && entry.priority ? (
+							<PriorityBadge priority={entry.priority} />
+						) : null}
+
 						{overdue ? (
 							<StatusIndicator
 								tone="error"

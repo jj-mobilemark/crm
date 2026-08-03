@@ -244,6 +244,8 @@ writeFileSync(
 			// Once a day: queues one `followups` AgentTask per mailbox-connected
 			// rep. The dispatcher (apps/agent) runs each one on its own clock.
 			{ path: "/internal/agent/followups", schedule: "0 13 * * *" },
+			// Email sequences: send due steps from each rep's Outlook mailbox.
+			{ path: "/internal/sequences/tick", schedule: "*/2 * * * *" },
 		],
 	}),
 );

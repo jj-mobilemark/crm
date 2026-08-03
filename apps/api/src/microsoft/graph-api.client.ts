@@ -52,12 +52,50 @@ export class GraphApiClient {
 			if (value !== undefined) target.searchParams.set(key, String(value));
 		}
 
+		return this.request<T>(target, accessToken, { method: "GET", headers });
+	}
+
+	/**
+	 * A POST against a Microsoft Graph endpoint (e.g. `/me/sendMail`).
+	 *
+	 * Same outcome vocabulary as `get`. Empty 202 bodies (sendMail) return
+	 * `ok` with `undefined as T` — callers that need a body should use an
+	 * endpoint that returns one.
+	 */
+	async post<T>(
+		url: string,
+		accessToken: string,
+		body: unknown,
+		headers: Record<string, string> = {},
+	): Promise<GraphResult<T>> {
+		const target = new URL(url);
+		return this.request<T>(target, accessToken, {
+			method: "POST",
+			headers: {
+				"content-type": "application/json",
+				...headers,
+			},
+			body: JSON.stringify(body),
+		});
+	}
+
+	private async request<T>(
+		target: URL,
+		accessToken: string,
+		init: {
+			method: "GET" | "POST";
+			headers?: Record<string, string>;
+			body?: string;
+		},
+	): Promise<GraphResult<T>> {
 		const controller = new AbortController();
 		const timeout = setTimeout(() => controller.abort(), DEFAULT_TIMEOUT_MS);
 
 		try {
 			const response = await fetch(target, {
-				headers: { authorization: `Bearer ${accessToken}`, ...headers },
+				method: init.method,
+				headers: { authorization: `Bearer ${accessToken}`, ...init.headers },
+				body: init.body,
 				signal: controller.signal,
 			});
 
@@ -83,7 +121,12 @@ export class GraphApiClient {
 		path: string,
 	): Promise<GraphResult<T>> {
 		if (response.ok) {
-			return { outcome: "ok", data: (await response.json()) as T };
+			// sendMail answers 202 with an empty body; treat that as success.
+			const text = await response.text();
+			if (!text) {
+				return { outcome: "ok", data: undefined as T };
+			}
+			return { outcome: "ok", data: JSON.parse(text) as T };
 		}
 
 		// Read the body for the reason, but never log it verbatim — Graph echoes

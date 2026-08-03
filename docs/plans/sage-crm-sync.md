@@ -468,10 +468,13 @@ push, Part G) is DESIGN-ONLY.
    id-paged resume (Sage is not id-ordered — proven; a re-run is the safe
    recovery). One-time cleanups: `sage-backfill-owners.ts`,
    `sage-backfill-deal-dates.ts`, `sage-backfill-deal-amounts.ts`.
-7. **Deferred (push + reconcile)**: `SageOutbox` + `sage-push.service.ts` +
-   create hooks; monthly reconcile that soft-deactivates ids absent from a full
-   run (§6.7). DESIGN-ONLY — do not build unless asked. `sage.router.ts`
-   status/syncNow also not yet built (cron uses the CRON_SECRET route).
+7. **Push (BUILT 2026-08-03)**: `SageOutbox` + `sage-push.service.ts` + human UI
+   enqueue hooks + SOAP `add`/`update` (confirmed against production — variant A
+   envelope, `<crmid>` on add). Best-effort immediate flush on save + drain on
+   `/internal/sync/sage` after pull. Local wins; pull echo-guard skips our own
+   write via `sagePushedAt`/`sageUpdatedAt`. **Reconcile** soft-deactivate (§6.7)
+   remains DESIGN-ONLY. `sage.router.ts` status/syncNow also not yet built.
+   See `HANDOFF-SAGE-SYNC.md`.
 
 ---
 

@@ -16,11 +16,24 @@ import {
 	PopoverContent,
 	PopoverTrigger,
 } from "@crm/ui/components/popover";
+import {
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from "@crm/ui/components/select";
 import { Spinner } from "@crm/ui/components/spinner";
 import { ToggleGroup, ToggleGroupItem } from "@crm/ui/components/toggle-group";
 import { useMutation } from "@tanstack/react-query";
 import { useState } from "react";
 import { toast } from "sonner";
+import {
+	PRIORITY_NONE,
+	PRIORITY_OPTIONS,
+	type PriorityValue,
+	priorityLabel,
+} from "@/components/crm/priority";
 import { useCrmCache } from "@/lib/trpc/cache";
 import { useTRPC } from "@/lib/trpc/client";
 import { ActivityIcon, activityLabel } from "./activity-icon";
@@ -81,6 +94,7 @@ export function ActivityComposer({ anchor }: { anchor: TimelineAnchor }) {
 	const [type, setType] = useState<ComposableType>("NOTE");
 	const [draft, setDraft] = useState("");
 	const [dueAt, setDueAt] = useState<Date | undefined>(undefined);
+	const [priority, setPriority] = useState<string>(PRIORITY_NONE);
 
 	const isTask = type === "TASK";
 	const text = draft.trim();
@@ -88,6 +102,7 @@ export function ActivityComposer({ anchor }: { anchor: TimelineAnchor }) {
 	const reset = () => {
 		setDraft("");
 		setDueAt(undefined);
+		setPriority(PRIORITY_NONE);
 	};
 
 	const create = useMutation(
@@ -108,6 +123,11 @@ export function ActivityComposer({ anchor }: { anchor: TimelineAnchor }) {
 			subject: isTask ? text : undefined,
 			body: isTask ? undefined : text,
 			dueAt: isTask ? (dueAt?.toISOString() ?? null) : undefined,
+			priority: isTask
+				? priority === PRIORITY_NONE
+					? null
+					: (priority as PriorityValue)
+				: undefined,
 		});
 	};
 
@@ -168,22 +188,48 @@ export function ActivityComposer({ anchor }: { anchor: TimelineAnchor }) {
 					 * knows nothing about any of these tokens.
 					 */}
 					{isTask ? (
-						<Popover>
-							<PopoverTrigger asChild>
-								<InputGroupButton variant="ghost" size="xs">
-									<Icon icon={Calendar} data-icon="inline-start" />
-									{dueAt ? dueFormat.format(dueAt) : "Due date"}
-								</InputGroupButton>
-							</PopoverTrigger>
-							<PopoverContent size="fit" align="start">
-								<DayPicker
-									mode="single"
-									selected={dueAt}
-									onSelect={setDueAt}
-									autoFocus
-								/>
-							</PopoverContent>
-						</Popover>
+						<>
+							<Popover>
+								<PopoverTrigger asChild>
+									<InputGroupButton variant="ghost" size="xs">
+										<Icon icon={Calendar} data-icon="inline-start" />
+										{dueAt ? dueFormat.format(dueAt) : "Due date"}
+									</InputGroupButton>
+								</PopoverTrigger>
+								<PopoverContent size="fit" align="start">
+									<DayPicker
+										mode="single"
+										selected={dueAt}
+										onSelect={setDueAt}
+										autoFocus
+									/>
+								</PopoverContent>
+							</Popover>
+
+							<Select value={priority} onValueChange={setPriority}>
+								<SelectTrigger
+									variant="ghost"
+									size="sm"
+									className="h-7 w-auto gap-1 border-0 px-2 text-xs shadow-none"
+									aria-label="Priority"
+								>
+									<SelectValue>
+										{priorityLabel(
+											priority === PRIORITY_NONE
+												? null
+												: (priority as PriorityValue),
+										)}
+									</SelectValue>
+								</SelectTrigger>
+								<SelectContent>
+									{PRIORITY_OPTIONS.map((option) => (
+										<SelectItem key={option.value} value={option.value}>
+											{option.label}
+										</SelectItem>
+									))}
+								</SelectContent>
+							</Select>
+						</>
 					) : null}
 
 					{/*

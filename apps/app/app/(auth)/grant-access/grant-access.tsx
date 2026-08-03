@@ -1,7 +1,7 @@
 "use client";
 
 import { authClient, signOut } from "@crm/auth/client";
-import { MS_SYNC_SCOPES, SYNC_SCOPES } from "@crm/auth/scopes";
+import { MS_ALL_SCOPES, SYNC_SCOPES } from "@crm/auth/scopes";
 import GoogleLogo from "@crm/ui/components/brand-logos/google";
 import MicrosoftLogo from "@crm/ui/components/brand-logos/microsoft";
 import { Button } from "@crm/ui/components/button";
@@ -24,8 +24,11 @@ export function GrantAccess({ provider }: { provider: SyncProvider }) {
 
 		// `linkSocial` rather than `signIn.social`: there is already a session and
 		// an account row, and this is a scope upgrade on the existing grant.
+		// Microsoft: ask for sync + Mail.Send together so a re-consent also
+		// unlocks sequences. Missing Mail.Send does not block the rest of the
+		// app — only sequence activation checks hasMsSendScopes.
 		const scopes =
-			provider === "microsoft" ? [...MS_SYNC_SCOPES] : [...SYNC_SCOPES];
+			provider === "microsoft" ? [...MS_ALL_SCOPES] : [...SYNC_SCOPES];
 
 		const { error } = await authClient.linkSocial({
 			provider,

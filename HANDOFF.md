@@ -24,151 +24,133 @@ it before stopping. The rules for maintaining it live in `AGENTS.md`
 ## Current state (keep this section up to date)
 
 - **Git**: `origin` = `jj-mobilemark/crm` (fork); `upstream` = `trycompai/crm`
-  (read-only). Work on `main` (ahead of origin). Pre-upstream-merge snapshot:
-  `421e556`. Tip commits: `9a0d06c` (7.4a/7.4c), `a21f1df` (Deal+opportunity
-  import). **Forecast UI is uncommitted** — see `git status` (dashboard/deals
-  API+UI + plan/HANDOFF edits). Commit that before starting 7.4b code.
-- **Upstream delta absorbed**: ~40 `packages/ui` restyles + favicon + prefetch.
-  **Visual pass still needed** on Microsoft settings + sign-in.
-- **Verification**: `check-types` api/app green for dashboard changes (api still
-  has pre-existing sage-pull arity errors unrelated to this). Overview now
-  coalesces `amount ?? weightedAmount` for KPIs/charts so Sage deals with empty
-  `total` still show dollars; date-range control on `/` scopes Closed won +
-  win rate only. **API has no hot reload** — restart `bun run src/main.ts` in
-  `apps/api` after these dashboard edits or the UI will keep serving stale
-  `$0` summaries.
+  (read-only). Work on `main`.
+- **Active plan**: `docs/plans/sequences.md` (email sequences — **IMPLEMENTED**
+  2026-08-03). Sage: `docs/plans/sage-crm-sync.md` (7.4b full pull DONE;
+  **push BUILT 2026-08-03** — see dedicated `HANDOFF-SAGE-SYNC.md`).
+  M365 Phases 0–5 DONE; Phase 6 DEFERRED.
+- **Deal/task priority + Tasks page (new, 2026-08-03)**: nullable `Priority`
+  enum (`LOW`/`MEDIUM`/`HIGH`/`HIGHEST`) on `Deal` and `Activity`; migration
+  `20260803110000_add_priority` applied locally. Dedicated `/tasks` nav page
+  with filters + global New task sheet (still requires company/deal anchor).
+- **Email sequences**: `/sequences` panel + Nest tick every 2 min.
+  Requires Entra **Mail.Send** admin consent + rep re-consent. See
+  `docs/plans/sequences.md`. Migration
+  `20260803100000_add_email_sequences` applied locally.
+- **Verification**: `check-types` app + db green; api still has pre-existing
+  `sage-soap.client.ts` `SAGE_TYPE_NS` error unrelated to priority/tasks.
 - **Runs locally**: Postgres via `docker compose up -d`. Prefer
-  `bun run src/main.ts` in `apps/api` + `bun run dev` in `apps/app`. Test-slice
-  re-import (still the only pull path):
-  `curl -X POST -H "Authorization: Bearer $(grep '^CRON_SECRET=' .env | cut -d= -f2- | tr -d \"\\'\")" http://localhost:3001/internal/sync/sage`.
+  `bun run src/main.ts` in `apps/api` + `bun run dev` in `apps/app`.
+  **API has no hot reload** — restart after these API edits.
 - **Auth / env**: allow-list `ALLOWED_SIGN_IN=mobilemark.com`; Microsoft SSO
   works. `MICROSOFT_*` + `CRON_SECRET` + `SAGE_SOAP_*` in root `.env` (never
-  record secrets here).
-- **Local CRM data (2026-08-02)**: demo seed companies/contacts/deals purged.
-  DB now holds only the Sage Mobile Mark test slice — 8 companies + 120
-  contacts + **4 deals** on company 24 (`sageCrmOpportunityId` `1`, `2`,
-  `383`, `557`). Do **not** re-run `bun run db:seed` before full pull or
-  Stripe/Linear/etc. come back.
-  - `1`/`2` — `QUALIFIED_TO_BUY`, type New Business, $0 (open → forecast table)
-  - `383` — `CLOSED_WON`, Key Opportunity, `weightedAmount` 81008.4, `amount`
-    null, probability 100 (closed → deals list/sheet only)
-  - `557` — `CONTRACT_SENT` (open), Key Opportunity, amount 14121, certainty 50
-- **Active plan**: `docs/plans/sage-crm-sync.md` (canonical). Stub:
-  `docs/plans/m365-expansion.md` Phase 7.
-- **Phases 0–5**: DONE. **Phase 6**: DEFERRED by human.
-- **Phase 7 DONE**: 7.1–7.3; **7.4a** test-slice (companies + nested people +
-  opportunities); **7.4c** Sage-ID UI (company/contact/**deal**); **§3b
-  forecast view UI** (overview + deals table/sheet).
-- **Already built for scale (reuse in 7.4b)**:
-  - Hierarchical company parse + `enrichPerson` (`sage-xml.ts`)
-  - `query` → `next` while `<more>`; `queryAllCompanies` / `queryAllRecords`
-  - Mappings: company / contact / opportunity + stage + owner emails
-  - `importTestSlice()` only — **POST `/internal/sync/sage` still means test
-    slice**, not full pull
-  - `SageSyncState` today: per-entity `status` + single `cursor` only (no
-    phase / backfillId / highWater / lock yet — plan §6.2)
-  - **No** Company/Contact/Deal inactive flag yet (needed for §6.7 soft-deactivate)
-- **Phase 7 key files**:
-  - `apps/api/src/sage/` — SOAP, XML, mappings, pull (test slice + 7.4b)
-  - `apps/api/src/deals/deals.service.ts` — list/byId expose forecast fields
-  - `apps/api/src/dashboard/dashboard.service.ts` — `forecast` + money coalesce
-    + date-range windows on `summary`
-  - `apps/app/app/(app)/sales-dashboard.tsx` — weighted KPI + by-month (+ by-rep)
-  - `apps/app/app/(app)/overview-range.tsx` — Today / Week / Month / 30d / Custom
-  - `apps/app/app/(app)/deals/deals-table.tsx` — weighted / certainty / Sage cols
-  - `apps/app/components/crm/record-sheet/deal-sheet.tsx` — forecast stats + Sage
-  - `packages/db/prisma/migrations/20260802200000_add_deal_sage_fields/`
-  - `packages/db/prisma/migrations/20260802220000_add_sage_backfill_state/`
-- **Phase 7 7.4b DONE (2026-08-02)** — first full backfill ran locally off-peak:
-  **14,252 companies / 24,773 contacts / 525 deals / 39,550 snapshots**,
-  `phase = incremental`. Nightly cron (`GET /internal/sync/sage` →
-  `runScheduled`) now runs incremental. Files: `sage.mappings.ts`
-  (`SAGE_USERS`, `matchSageUserByName`), `sage-users.ts`, `sage-session.ts`
-  (advisory lock), `sage-backfill.util.ts`, `sage-pull.service.ts`
-  (`runBackfill`/`runIncremental`/`runScheduled`), `sage-sync.controller.ts`,
-  `scripts/sage-backfill.ts`, migration `20260802220000_add_sage_backfill_state`.
-- **Post-backfill corrections (2026-08-02, all with one-time scripts + mapping
-  fixes so future pulls are correct):**
-  - **Sage 100 id** shows the customer number only (`0011246`, not `00-0011246`)
-    — `apps/app/components/crm/sage-id.ts`. Division kept in DB for the MasHeader
-    join.
-  - **Company owner ← `acctmgr`** name match; **contacts inherit** company owner.
-    Backfill: `scripts/sage-backfill-owners.ts` (5,985 companies / 12,865
-    contacts owned; only 3 current reps appear as `acctmgr`).
-  - **Deal dates**: `createdAt` ← Sage `opened`; `closedAt` ← `closed` →
-    `targetclose` → `opened` (never "now"). Backfill:
-    `scripts/sage-backfill-deal-dates.ts`.
-  - **Amount/weighted CORRECTED**: Sage `total` is empty/0 everywhere; the deal
-    value is in `forecast`. So `amount ← forecast`, `weightedAmount = amount ×
-    certainty`. Backfill: `scripts/sage-backfill-deal-amounts.ts`. Open pipeline
-    now ~$13.6M unweighted / ~$7.65M weighted (weighted was overstated before).
-- **Uncommitted**: all of the above + the forecast UI. Nothing committed by the
-  agents yet.
-- **Guiding principle**: fit Sage INTO existing models; fewest columns;
-  snapshot = lossless backstop; **KEEP** `DealStage` enum (map per §3.3).
-- **Deal stage UI labels** (presentation only in `deal-stage.tsx`; enum
-  unchanged): Lead / Qualified to buy / Negotiating / Proposal / Closed won
-  (+ Closed lost, Unqualified).
-- **Deal ownership / certainty (2026-08-02)**: owner (or `CRM_ADMIN_EMAILS`)
-  may edit deals; admins reassign owners; create always owns unless admin
-  assigns. Stage change sets `probability` via `STAGE_CERTAINTY` and
-  recomputes `weightedAmount`. Certainty is inline-editable on the deal
-  sheet. Admin seam is email-list for now (`packages/auth/src/admins.ts`) —
-  leave room for Better Auth roles later.
-- **Decisions already made** (do not relitigate): owner map static; fallback
-  `ken@mobilemark.com` then earliest User; `amount` ← `total`,
-  `weightedAmount` ← `forecast`; `sageStage`/`sageStatus` IN; `DealContact`
-  from `primarypersonid` when contact exists; hierarchical company pull
-  (nested people — §6.5); filter `comp_deleted IS NULL` / `oppo_deleted IS NULL`.
-- **Gotchas**: ONE Web Services session globally (second `logon` kicks first);
-  never retry-spam logon (can lock the service account); `next` is
-  session-stateful (cannot resume across processes); ~10–20s/page, ~1h for
-  ~14k companies; person emails nested under person; API **no hot reload**.
-- **Next step**: confirm the running full backfill finished (`SageSyncState`
-  `phase=incremental` + `backfillDoneAt` set; `/tmp/sage-backfill.log`), then
-  spot-check a non–Mobile Mark company + contacts + deals + forecast UI. Nightly
-  incremental is already wired. Plan: `docs/plans/sage-crm-sync.md` §6.
+  record secrets here). Optional `APP_PUBLIC_URL` for sequence tracking links.
+- **Local CRM data**: Sage backfill data (companies/contacts/deals) — do not
+  re-run `bun run db:seed` casually.
+- **Key files (priority/tasks)**:
+  - `packages/db/prisma/schema.prisma` — `Priority` enum + columns
+  - `apps/api/src/deals/`, `apps/api/src/activities/` — contracts + service
+  - `apps/app/components/crm/priority.tsx` — shared badge/options
+  - `apps/app/app/(app)/tasks/` — page, table, create sheet
+  - `apps/app/components/app-icon-rail.tsx` — Tasks nav item
 
-### Open questions for the human — ANSWERED 2026-08-02
+---
 
-All eight are resolved (per `.cursor/plans/sage_full_sync_ca35f635.plan.md` +
-the human's calls); recorded here so they are not relitigated:
+## Work log
 
-1. **Backfill runtime**: LOCAL one-shot script (`scripts/sage-backfill.ts`),
-   `query`/`next`, off-peak. (Railway worker deferred.)
-2. **Where**: local, from this machine (dry-run canary → full run).
-3. **Soft-deactivate**: `sageDeactivatedAt DateTime?` on Company + Contact +
-   Deal (never hard-delete). Reconcile that sets it is DESIGN-ONLY for now.
-4. **Opportunity walk**: ALL non-deleted opps (`oppo_deleted IS NULL`) after
-   companies complete — one separate walk.
-5. **Global lock**: Postgres advisory lock via `withSageSession` (key
-   `742000777`). Caveat re: pooled unlock documented; lease-row upgrade later.
-6. **Route**: KEEP `/internal/sync/sage`; it auto-switches (`runScheduled`) —
-   test slice while `phase=backfill`, incremental once flipped. Backfill = script
-   only.
-7. **Throttle**: `SAGE_PAGE_DELAY_MS` (400ms) inter-page + `SAGE_MAX_BACKFILL_PAGES`
-   ceiling; run off-peak. No hard clock window enforced in code.
-8. **Commit forecast UI first**: still uncommitted; commit alongside 7.4b when
-   the human is ready (this agent committed nothing).
+### 2026-08-03 — Sage push write-back (see HANDOFF-SAGE-SYNC.md)
 
-### 7.4b build recipe (after questions are answered)
+**What was completed**
+- Live SOAP `add`/`update` confirmed (opp 557 update; add created Sage opp
+  **805** on company 24 — delete manually).
+- Outbox + push service + reverse mappings + human UI enqueue + cron flush +
+  pull echo-guard wired. Full detail / next steps:
+  **`HANDOFF-SAGE-SYNC.md`**.
 
-1. Additive Prisma migration: `SageSyncState` phase / backfillId /
-   highWaterUpdatedAt (+ optional progress); inactive flag on Company/Contact
-   (and Deal if decided).
-2. Global session lock; never double-logon.
-3. Full hierarchical company backfill (`comp_deleted IS NULL`) reusing
-   existing parser/client; then opportunity walk; soft-deactivate on reconcile
-   (§6.7) — never hard-delete.
-4. Wire incremental nightly path; `sage.router` status + syncNow; regenerate
-   `server.ts` if routers change.
-5. Smoke: progress counters; spot-check non–Mobile Mark company; confirm
-   forecast UI still works with larger open pipeline.
-6. Scale: ~14k companies / ~26k contacts; expect ~1h company walk.
+**What's next**
+1. Delete Sage opp 805; restart API; smoke UI edit of deal 557.
+2. Continue other tracks as before (sequences Entra Mail.Send, priority smoke).
 
-Do **not** start push or communications unless the human asks.
+### 2026-08-03 — Deal & task priority + Tasks page
 
-## Work log (newest first)
+**What was completed**
+- Schema: `enum Priority { LOW MEDIUM HIGH HIGHEST }` + nullable `priority`
+  on `Deal` and `Activity`; indexes; migration
+  `packages/db/prisma/migrations/20260803110000_add_priority/`.
+- Deals API: create/update accept `priority`; list facet + select/serialize
+  (`apps/api/src/deals/deals.contracts.ts`, `deals.service.ts`).
+- Activities API: create accepts `priority` for TASK; `setPriority` mutation;
+  `myTasks` gains `status` / `priority` filters and sorts by priority then due
+  (`apps/api/src/activities/*`). Dashboard overdue tasks select includes
+  `priority`. Regenerated `apps/api/src/generated/server.ts`.
+- Shared UI: `apps/app/components/crm/priority.tsx` (labels, tones, badge,
+  facet options).
+- Deal UI: priority on create sheet, deal sheet overview, deals table column
+  + facet.
+- Task UI: priority in timeline composer; badge on timeline entry, follow-ups
+  My open tasks, overview Overdue tasks.
+- New `/tasks` page: nav item, filterable table (status/window/priority),
+  complete + setPriority on row, `CreateTaskSheet` (company required, optional
+  deal).
+
+**How and why**
+- Tasks remain `Activity` rows with `type: TASK` (no new Task model). Priority
+  is mechanical CRM data in Nest/DB — not agent intelligence. Dedicated Tasks
+  nav page because creation previously only lived inside record timelines;
+  global New task still requires a company/contact/deal anchor (confirmed).
+
+**Deviations**
+- None relative to the agreed plan. Nav rail already had Sequences; Tasks was
+  inserted after Deals.
+
+**What's next**
+1. Restart the API (`bun run src/main.ts` in `apps/api`) and smoke-test:
+   set deal priority, create a task from `/tasks` and from a deal timeline,
+   filter `/tasks` by priority/overdue.
+2. Commit when ready (priority migration + UI + sequences may share the
+   working tree — check `git status`).
+3. Sage push/reconcile remains design-only (`docs/plans/sage-crm-sync.md`
+   §3.3/§6). Priority is local-only (not a Sage field).
+
+### 2026-08-03 — Email sequencing panel (full v1)
+
+**What was completed**
+- Microsoft Graph send prerequisite: `Mail.Send` in
+  `packages/auth/src/scopes.ts` (`MS_MAIL_SEND_SCOPE`, `MS_ALL_SCOPES`,
+  `hasMsSendScopes`); Better Auth requests it at sign-in; grant-access
+  `linkSocial` asks for sync+send together. Graph `post()` +
+  `outlook-send.client.ts`; `MicrosoftTokenService.accessTokenForSend`.
+- Schema + migration `20260803100000_add_email_sequences`:
+  `EmailSequence`, `SequenceStep`, `SequenceEnrollment`, `SequenceStepRun`,
+  `SequenceUnsubscribe` (+ enums).
+- API module `apps/api/src/sequences/`: CRUD, enroll, pause/resume/stop,
+  stats, tick (lease + send window + merge fields + reply auto-stop +
+  timeline Activity + tracking/unsubscribe), controller routes
+  `/internal/sequences/tick`, `/t/open|click/:token`, `/u/:token`.
+- Cron `*/2 * * * *` in `apps/api/scripts/build-func.mjs`.
+- `contacts.options` + `ContactMultiPicker`; `/sequences` UI (list, builder,
+  detail, enroll, enrollment table); nav item in `app-icon-rail.tsx`.
+- Docs: `docs/plans/sequences.md`; `.env.example` + `APP_PUBLIC_URL` in
+  `env.validation.ts`.
+
+**How and why**
+- Sequences are mechanical (like mail sync), so they live in Nest, not the
+  agent. Per-rep delegated Graph send matches deliverability and reply
+  routing. Tick mirrors `AgentTask` / `EmailBackfill` lease patterns.
+
+**Deviations**
+- Tracking defaults **off** per sequence (`trackingEnabled: false`) to
+  protect B2B deliverability; unsubscribe footer is still always appended.
+- Grant-access wall still only requires sync scopes for app entry; missing
+  `Mail.Send` only blocks enroll (banner on `/sequences`), not the whole CRM.
+
+**What's next**
+1. **Human**: Entra → add delegated `Mail.Send` + Grant admin consent; each
+   rep reconnects Microsoft.
+2. Smoke test: create sequence → activate → enroll →
+   `POST /internal/sequences/tick` with `CRON_SECRET`.
+3. Optional follow-ups from plan extras: bounce handling, daily send caps,
+   deal-stage auto-enroll.
 
 ### 2026-08-02 — Post-backfill corrections + docs (agent: Opus via Cursor)
 

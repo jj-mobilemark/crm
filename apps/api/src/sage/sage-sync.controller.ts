@@ -11,14 +11,15 @@ import { ConfigService } from "@nestjs/config";
 import { AllowAnonymous } from "@thallesp/nestjs-better-auth";
 import type { EnvironmentVariables } from "../config/env.validation";
 import { SagePullService } from "./sage-pull.service";
+import { SagePushService } from "./sage-push.service";
 
 /**
- * Sage CRM sync entrypoint (test-slice first).
+ * Sage CRM sync entrypoint (pull + push flush).
  *
  * Same shape as `MicrosoftSyncController`: no user session; `CRON_SECRET` is
- * the guard. The test-slice import is small (~8 companies) and safe to run on
- * demand. The full ~14k backfill must NOT go through this web route — that is
- * a Railway worker (see plan section 6.3).
+ * the guard. Pull runs first (test-slice or incremental). Push flush drains the
+ * SageOutbox under the same single-session lock rule — sequentially after pull
+ * so they never open two Sage sessions at once.
  */
 @Controller("internal/sync")
 export class SageSyncController {
@@ -27,6 +28,7 @@ export class SageSyncController {
 
 	constructor(
 		private readonly pull: SagePullService,
+		private readonly push: SagePushService,
 		config: ConfigService<EnvironmentVariables, true>,
 	) {
 		this.secret = config.get("CRON_SECRET", { infer: true });
@@ -58,9 +60,11 @@ export class SageSyncController {
 			throw new ForbiddenException();
 		}
 
-		// Test slice until the one-shot backfill flips the phase, then nightly
-		// incremental — see `SagePullService.runScheduled`.
-		return this.pull.runScheduled();
+		// Pull first (holds the session lock), then drain the outbox. Busy on
+		// flush means another holder still has the lock — next cron picks it up.
+		const pull = await this.pull.runScheduled();
+		const push = await this.push.flush();
+		return { pull, push };
 	}
 }
 

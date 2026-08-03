@@ -1,4 +1,4 @@
-import { ActivityType, type Db, type Prisma } from "@crm/db";
+import { ActivityType, type Db, type Priority, type Prisma } from "@crm/db";
 import {
 	BadRequestException,
 	Injectable,
@@ -8,6 +8,7 @@ import {
 import { ActivityStampService } from "../crm/activity-stamp.service";
 import { blankToNull } from "../crm/values";
 import { InjectDatabase } from "../database/database.constants";
+import { FACET_ALL } from "../trpc/list-input";
 import type {
 	ActivityCreateInput,
 	MyTasksInput,
@@ -30,6 +31,7 @@ const ENTRY_SELECT = {
 	occurredAt: true,
 	dueAt: true,
 	completedAt: true,
+	priority: true,
 	meta: true,
 	createdAt: true,
 	createdBy: { select: AUTHOR_SELECT },
@@ -58,6 +60,9 @@ const ENTRY_SELECT = {
 		},
 	},
 } as const;
+
+/** Facet value for tasks with no priority set. */
+const FACET_NONE = "none";
 
 /** Entries a `NOTE`-ish filter should keep — what someone wrote down. */
 const NOTE_TYPES = [
@@ -168,6 +173,7 @@ export class ActivitiesService {
 				// is what a reverse-chronological list is ordered by.
 				occurredAt: parseDate(input.occurredAt) ?? new Date(),
 				dueAt: isTask ? parseDate(input.dueAt) : null,
+				priority: isTask ? (input.priority ?? null) : null,
 				companyId,
 				contactId: input.contactId ?? null,
 				dealId: input.dealId ?? null,
@@ -214,24 +220,56 @@ export class ActivitiesService {
 		return serializeEntry(updated);
 	}
 
-	/** Open tasks assigned to whoever is asking. */
+	/** Sets or clears a task's priority. */
+	async setPriority(id: string, priority: Priority | null) {
+		const activity = await this.db.activity.findUnique({
+			where: { id },
+			select: { type: true },
+		});
+
+		if (!activity) {
+			throw new NotFoundException(`No activity with id ${id}.`);
+		}
+
+		if (activity.type !== ActivityType.TASK) {
+			throw new BadRequestException("Only tasks have a priority.");
+		}
+
+		const updated = await this.db.activity.update({
+			where: { id },
+			data: { priority },
+			select: ENTRY_SELECT,
+		});
+
+		return serializeEntry(updated);
+	}
+
+	/** Tasks assigned to whoever is asking. */
 	async myTasks(input: MyTasksInput, actingUserId: string) {
 		const now = new Date();
 		const where: Prisma.ActivityWhereInput = {
 			type: ActivityType.TASK,
-			completedAt: null,
 			createdById: actingUserId,
 		};
+
+		if (input.status === "open") where.completedAt = null;
+		if (input.status === "done") where.completedAt = { not: null };
 
 		if (input.window === "overdue") where.dueAt = { lt: now };
 		if (input.window === "upcoming") where.dueAt = { gte: now };
 
+		if (input.priority !== FACET_ALL) {
+			where.priority =
+				input.priority === FACET_NONE ? null : (input.priority as Priority);
+		}
+
 		const tasks = await this.db.activity.findMany({
 			where,
 			take: input.limit,
-			// Undated tasks last: a task with no due date is a someday, and it
-			// should not sit above something due this afternoon.
+			// Highest priority first, then soonest due. Undated / unprioritised
+			// last — a someday should not sit above something due this afternoon.
 			orderBy: [
+				{ priority: { sort: "desc", nulls: "last" } },
 				{ dueAt: { sort: "asc", nulls: "last" } },
 				{ createdAt: "desc" },
 			],

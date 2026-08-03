@@ -44,13 +44,19 @@ export class CompaniesRouter {
 	}
 
 	@Mutation({ input: companyCreateInput })
-	async create(@Input() input: z.infer<typeof companyCreateInput>) {
-		return this.companies.create(input);
+	async create(
+		@Ctx() ctx: AuthedTrpcContext,
+		@Input() input: z.infer<typeof companyCreateInput>,
+	) {
+		return this.companies.create(input, { id: ctx.user.id });
 	}
 
 	@Mutation({ input: companyUpdateArgs })
-	async update(@Input() input: z.infer<typeof companyUpdateArgs>) {
-		return this.companies.update(input.id, input.data);
+	async update(
+		@Ctx() ctx: AuthedTrpcContext,
+		@Input() input: z.infer<typeof companyUpdateArgs>,
+	) {
+		return this.companies.update(input.id, input.data, { id: ctx.user.id });
 	}
 
 	/** Re-runs the brand lookup, ignoring Context.dev's cache. */

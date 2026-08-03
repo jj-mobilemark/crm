@@ -21,6 +21,7 @@ import { formatMoneyCompact, relativeTimeFromIso } from "@crm/ui/lib/format";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { DealStageIndicator } from "@/components/crm/deal-stage";
+import { PriorityBadge } from "@/components/crm/priority";
 import { RecordLink } from "@/components/crm/record-sheet/record-link";
 import { useOpenRecord } from "@/components/crm/record-sheet/record-stack";
 import { useCrmCache } from "@/lib/trpc/cache";
@@ -31,6 +32,7 @@ const CELL = "px-3 py-2.5 align-middle";
 const TASK_COLUMNS: SimpleTableColumn[] = [
 	{ srLabel: "Done", width: "w-8" },
 	{ header: "Task" },
+	{ header: "Priority", width: "w-24", className: "hidden sm:table-cell" },
 	{ header: "Due", width: "w-24", align: "right" },
 ];
 
@@ -123,6 +125,9 @@ function MyTasksPanel() {
 												) : null}
 											</span>
 										</span>
+									</TableCell>
+									<TableCell className={`${CELL} hidden sm:table-cell`}>
+										<PriorityBadge priority={task.priority} />
 									</TableCell>
 									<TableCell className={`${CELL} text-right`}>
 										{task.dueAt ? (

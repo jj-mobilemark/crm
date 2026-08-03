@@ -14,6 +14,7 @@ import {
 	contactCreateInput,
 	contactIdInput,
 	contactListInput,
+	contactOptionsInput,
 	contactUpdateArgs,
 	factDecisionInput,
 } from "./contacts.contracts";
@@ -36,14 +37,26 @@ export class ContactsRouter {
 		return this.contacts.byId(id);
 	}
 
+	/** Contact pickers (sequence enroll, etc.). */
+	@Query({ input: contactOptionsInput })
+	async options(@Input("q") q: string) {
+		return this.contacts.options(q);
+	}
+
 	@Mutation({ input: contactCreateInput })
-	async create(@Input() input: z.infer<typeof contactCreateInput>) {
-		return this.contacts.create(input);
+	async create(
+		@Ctx() ctx: AuthedTrpcContext,
+		@Input() input: z.infer<typeof contactCreateInput>,
+	) {
+		return this.contacts.create(input, { id: ctx.user.id });
 	}
 
 	@Mutation({ input: contactUpdateArgs })
-	async update(@Input() input: z.infer<typeof contactUpdateArgs>) {
-		return this.contacts.update(input.id, input.data);
+	async update(
+		@Ctx() ctx: AuthedTrpcContext,
+		@Input() input: z.infer<typeof contactUpdateArgs>,
+	) {
+		return this.contacts.update(input.id, input.data, { id: ctx.user.id });
 	}
 
 	/** A rep accepting or dismissing something the agent suggested. */

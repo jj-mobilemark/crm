@@ -1,4 +1,4 @@
-import { DealStage } from "@crm/db";
+import { DealStage, Priority } from "@crm/db";
 import { z } from "zod";
 import { listInput } from "../trpc/list-input";
 
@@ -12,6 +12,10 @@ export const CLOSING_WINDOWS = [
 ] as const;
 
 export type ClosingWindow = (typeof CLOSING_WINDOWS)[number];
+
+const priorityEnum = z.enum(
+	Object.values(Priority) as [Priority, ...Priority[]],
+);
 
 export const dealListInput = listInput.extend({
 	/**
@@ -32,6 +36,8 @@ export const dealListInput = listInput.extend({
 	closing: z.string().default("all"),
 	/** A company id, or `"all"`. Deals always have a company — no `"none"`. */
 	company: z.string().default("all"),
+	/** A `Priority`, `"none"` (null), or `"all"`. */
+	priority: z.string().default("all"),
 });
 
 export type DealListInput = z.infer<typeof dealListInput>;
@@ -51,6 +57,8 @@ export const dealCreateInput = z.object({
 	currency: z.string().length(3).optional(),
 	/** ISO-8601 date. */
 	expectedCloseDate: z.string().nullable().optional(),
+	/** Null / omitted = no priority. */
+	priority: priorityEnum.nullable().optional(),
 });
 
 export type DealCreateInput = z.infer<typeof dealCreateInput>;
@@ -66,6 +74,8 @@ const dealUpdateInput = z.object({
 	expectedCloseDate: z.string().nullable().optional(),
 	/** Certainty % 0–100 (Sage `certainty`). Null clears it. */
 	probability: z.number().int().min(0).max(100).nullable().optional(),
+	/** Null clears priority. */
+	priority: priorityEnum.nullable().optional(),
 });
 
 export type DealUpdateInput = z.infer<typeof dealUpdateInput>;

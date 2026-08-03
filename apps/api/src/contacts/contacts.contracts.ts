@@ -69,3 +69,8 @@ export const factDecisionInput = z.object({
 });
 
 export type FactDecisionInput = z.infer<typeof factDecisionInput>;
+
+/** Free-text filter for the contact picker; `""` means "the first hundred". */
+export const contactOptionsInput = z.object({
+	q: z.string().default(""),
+});

@@ -34,6 +34,9 @@ model User {
   factDecisions  ContactFact[] @relation("FactDecider")
   conversations  AgentConversation[] @relation("ConversationOwner")
   followUpPreference FollowUpPreference?
+  createdSequences     EmailSequence[]      @relation("SequenceCreator")
+  sequenceEnrollments  SequenceEnrollment[] @relation("SequenceSender")
+  enrolledSequences    SequenceEnrollment[] @relation("SequenceEnroller")
 
   @@unique([email])
   @@map("user")
@@ -125,6 +128,15 @@ enum ActivityType {
   STAGE_CHANGE
   /// Written by the enrichment agent.
   ENRICHMENT
+}
+
+/// Rep-facing priority for deals and tasks. Null means "no priority set".
+/// Declaration order is sort order in Postgres (LOW < … < HIGHEST).
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+  HIGHEST
 }
 
 enum EnrichmentStatus {
@@ -332,6 +344,7 @@ model Contact {
   emailThreads    EmailThread[]
   calendarEvents  CalendarEvent[]
   eventAttendance CalendarAttendee[]
+  sequenceEnrollments SequenceEnrollment[]
   createdAt       DateTime           @default(now())
   updatedAt       DateTime           @updatedAt
 
@@ -553,6 +566,8 @@ model Deal {
 
   stage             DealStage @default(DEMO_BOOKED)
   stageChangedAt    DateTime  @default(now())
+  /// Optional urgency. Null = no priority set.
+  priority          Priority?
   amount            Decimal?  @db.Decimal(14, 2)
   currency          String    @default("USD")
   expectedCloseDate DateTime?
@@ -594,6 +609,7 @@ model Deal {
   @@index([companyId])
   @@index([ownerId])
   @@index([stage])
+  @@index([priority])
   @@index([expectedCloseDate])
   @@index([lastActivityAt])
   @@map("deal")
@@ -622,6 +638,8 @@ model Activity {
   /// Set when it is scheduled. Overdue is dueAt in the past with no completedAt.
   dueAt       DateTime?
   completedAt DateTime?
+  /// Optional urgency on TASK rows. Null = no priority set. Ignored for other types.
+  priority    Priority?
 
   /// Always stamped when it can be resolved, even for deal and contact
   /// activity, so a company timeline is one indexed range scan rather than
@@ -654,6 +672,7 @@ model Activity {
   @@index([dealId, createdAt])
   @@index([contactId, createdAt])
   @@index([dueAt])
+  @@index([priority])
   @@index([createdById])
   @@map("activity")
 }
@@ -771,6 +790,45 @@ model SageRecordSnapshot {
 
   @@unique([entity, sageId])
   @@map("sageRecordSnapshot")
+}
+
+/// Outbound push queue: local edits waiting to be written back to Sage CRM.
+///
+/// The write direction of the Sage sync (plan §5 item 7 / Phase G). A human UI
+/// create or update on a Company / Contact / Deal enqueues a row here; a flush
+/// under the single Sage session lock (`withSageSession`) drains it, SOAP
+/// `add`/`update`s the record, then stamps `sagePushedAt` (+ the new
+/// `sageCrm*Id` on a create) so the next pull skips our own write. Mechanical
+/// only — no intelligence, mirroring the pull. Deduped in application code
+/// (one pending row per record), like `AgentTask`.
+model SageOutbox {
+  id String @id @default(cuid())
+
+  /// The LOCAL entity: "company" | "contact" | "deal".
+  entity String
+  /// The local record id (Company / Contact / Deal `id`).
+  localId String
+  /// "create" (no Sage id yet) | "update" (existing Sage-linked row).
+  op String
+
+  /// "pending" | "done" | "failed".
+  status String @default("pending")
+  /// Push attempts so far; parked as "failed" once it passes the retry cap.
+  attempts Int @default(0)
+  lastError String?
+  /// Set on a transient failure — the flush skips the row until this passes.
+  nextAttemptAt DateTime?
+
+  /// The user whose UI action queued this (audit only; may be null).
+  requestedById String?
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  processedAt DateTime?
+
+  @@index([status, nextAttemptAt])
+  @@index([entity, localId])
+  @@map("sageOutbox")
 }
 
 /// One conversation, whoever's mailbox it came from.
@@ -993,4 +1051,162 @@ model FollowUpPreference {
   updatedAt  DateTime @updatedAt
 
   @@map("followUpPreference")
+}
+
+// ---------------------------------------------------------------------------
+// Email sequences
+//
+// Mechanical outbound cadences: Nest owns the tick, Graph sends from each
+// rep's mailbox, mail sync detects replies. Intelligence stays in the agent.
+// ---------------------------------------------------------------------------
+
+enum EmailSequenceStatus {
+  DRAFT
+  ACTIVE
+  ARCHIVED
+}
+
+enum SequenceEnrollmentStatus {
+  ACTIVE
+  PAUSED
+  COMPLETED
+  STOPPED_REPLIED
+  STOPPED_MANUAL
+  UNSUBSCRIBED
+  BOUNCED
+  FAILED
+  NEEDS_RECONNECT
+}
+
+enum SequenceStepRunStatus {
+  SENT
+  FAILED
+  SKIPPED
+}
+
+/// A multi-step email cadence owned by a rep.
+model EmailSequence {
+  id          String              @id @default(cuid())
+  name        String
+  description String?
+  status      EmailSequenceStatus @default(DRAFT)
+
+  /// IANA timezone for sending-window checks (e.g. "America/Chicago").
+  timezone String @default("UTC")
+  /// Minutes from midnight (local) when sending may start. Inclusive.
+  sendWindowStartMinute Int @default(540)
+  /// Minutes from midnight (local) when sending must stop. Exclusive.
+  sendWindowEndMinute   Int @default(1020)
+  /// JSON array of weekday ints, 0=Sunday … 6=Saturday. Default Mon–Fri.
+  sendDays Json @default("[1,2,3,4,5]")
+
+  stopOnReply Boolean @default(true)
+  /// When true, inject open/click tracking into sent HTML.
+  trackingEnabled Boolean @default(false)
+
+  createdById String
+  createdBy   User   @relation("SequenceCreator", fields: [createdById], references: [id], onDelete: Cascade)
+
+  steps       SequenceStep[]
+  enrollments SequenceEnrollment[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status, updatedAt])
+  @@map("emailSequence")
+}
+
+model SequenceStep {
+  id         String        @id @default(cuid())
+  sequenceId String
+  sequence   EmailSequence @relation(fields: [sequenceId], references: [id], onDelete: Cascade)
+
+  /// 0-based position in the sequence.
+  order Int
+  /// Minutes to wait after the previous step before sending this one.
+  /// Step 0 usually has delayMinutes = 0 (send on enroll / next window).
+  delayMinutes Int @default(0)
+
+  subject      String
+  /// HTML body with merge tokens like {{firstName}}, {{companyName}}.
+  bodyTemplate String
+
+  runs SequenceStepRun[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([sequenceId, order])
+  @@index([sequenceId])
+  @@map("sequenceStep")
+}
+
+model SequenceEnrollment {
+  id         String        @id @default(cuid())
+  sequenceId String
+  sequence   EmailSequence @relation(fields: [sequenceId], references: [id], onDelete: Cascade)
+  contactId  String
+  contact    Contact       @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  /// Whose Outlook mailbox sends (delegated Graph Mail.Send).
+  senderUserId String
+  senderUser   User   @relation("SequenceSender", fields: [senderUserId], references: [id], onDelete: Cascade)
+  enrolledById String
+  enrolledBy   User   @relation("SequenceEnroller", fields: [enrolledById], references: [id], onDelete: Cascade)
+
+  status           SequenceEnrollmentStatus @default(ACTIVE)
+  currentStepOrder Int                      @default(0)
+  nextRunAt        DateTime                 @default(now())
+  /// Lease for the tick worker (FOR UPDATE SKIP LOCKED pattern).
+  leasedUntil      DateTime?
+  /// internetMessageId of the first/last sent message for reply threading.
+  threadInternetMessageId String?
+  stoppedReason           String?
+
+  runs SequenceStepRun[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([sequenceId, contactId])
+  @@index([status, nextRunAt])
+  @@index([contactId])
+  @@index([senderUserId])
+  @@map("sequenceEnrollment")
+}
+
+model SequenceStepRun {
+  id           String             @id @default(cuid())
+  enrollmentId String
+  enrollment   SequenceEnrollment @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+  stepId       String
+  step         SequenceStep       @relation(fields: [stepId], references: [id], onDelete: Cascade)
+
+  status            SequenceStepRunStatus
+  sentAt            DateTime?
+  internetMessageId String?
+  error             String?
+  /// Opaque token for open/click/unsubscribe URLs.
+  trackingToken     String                @unique @default(cuid())
+  openedAt          DateTime?
+  clickedAt         DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([enrollmentId, createdAt])
+  @@index([stepId])
+  @@map("sequenceStepRun")
+}
+
+/// Global suppression — an unsubscribed address is skipped by every sequence.
+model SequenceUnsubscribe {
+  id        String   @id @default(cuid())
+  /// Lowercased email address.
+  email     String
+  reason    String?
+  createdAt DateTime @default(now())
+
+  @@unique([email])
+  @@map("sequenceUnsubscribe")
 }

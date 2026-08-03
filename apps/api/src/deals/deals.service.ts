@@ -1,12 +1,9 @@
-import {
-	canEditOwnedRecord,
-	canReassignOwner,
-	isCrmAdmin,
-} from "@crm/auth";
+import { canEditOwnedRecord, canReassignOwner, isCrmAdmin } from "@crm/auth";
 import {
 	ActivityType,
 	type Db,
 	type DealStage,
+	type Priority,
 	type Prisma,
 	Prisma as PrismaNamespace,
 } from "@crm/db";
@@ -20,6 +17,7 @@ import {
 import { ActivityStampService } from "../crm/activity-stamp.service";
 import { fromCents, toCents } from "../crm/values";
 import { InjectDatabase } from "../database/database.constants";
+import { SagePushService } from "../sage/sage-push.service";
 import {
 	countsByKey,
 	FACET_ALL,
@@ -29,8 +27,8 @@ import {
 	resolveOrderBy,
 } from "../trpc/list-input";
 import {
-	certaintyForStage,
 	CLOSED_DEAL_STAGES,
+	certaintyForStage,
 	isClosedStage,
 	LOSING_DEAL_STAGES,
 	OPEN_DEAL_STAGES,
@@ -44,6 +42,9 @@ import type {
 	SetStageInput,
 } from "./deals.contracts";
 import { CLOSING_WINDOWS } from "./deals.contracts";
+
+/** Facet value for deals/tasks with no priority set. */
+const FACET_NONE = "none";
 
 /** Signed-in actor for ownership checks (id + email for admin list). */
 export type DealActor = { id: string; email: string };
@@ -89,6 +90,7 @@ export class DealsService {
 	constructor(
 		@InjectDatabase() private readonly db: Db,
 		private readonly stamp: ActivityStampService,
+		private readonly sagePush: SagePushService,
 	) {}
 
 	async list(input: DealListInput) {
@@ -105,6 +107,7 @@ export class DealsService {
 					id: true,
 					name: true,
 					stage: true,
+					priority: true,
 					amount: true,
 					currency: true,
 					expectedCloseDate: true,
@@ -172,6 +175,7 @@ export class DealsService {
 				name: true,
 				stage: true,
 				stageChangedAt: true,
+				priority: true,
 				amount: true,
 				currency: true,
 				expectedCloseDate: true,
@@ -245,11 +249,14 @@ export class DealsService {
 					weightedAmount,
 					currency: input.currency ?? "USD",
 					expectedCloseDate: parseDate(input.expectedCloseDate),
+					priority: input.priority ?? null,
 				},
 				select: { id: true, name: true, companyId: true },
 			});
 
 			this.logger.log({ message: "Deal created", dealId: deal.id, stage });
+
+			await this.sagePush.enqueueAndKick("deal", deal.id, actor.id);
 
 			return deal;
 		} catch (error) {
@@ -295,6 +302,9 @@ export class DealsService {
 		if (input.expectedCloseDate !== undefined) {
 			data.expectedCloseDate = parseDate(input.expectedCloseDate);
 		}
+		if (input.priority !== undefined) {
+			data.priority = input.priority;
+		}
 
 		const nextAmount =
 			input.amountCents !== undefined
@@ -319,11 +329,24 @@ export class DealsService {
 		}
 
 		try {
-			return await this.db.deal.update({
+			const updated = await this.db.deal.update({
 				where: { id },
 				data,
 				select: { id: true, name: true },
 			});
+
+			if (
+				input.name !== undefined ||
+				input.amountCents !== undefined ||
+				input.probability !== undefined ||
+				input.expectedCloseDate !== undefined ||
+				input.ownerId !== undefined ||
+				input.companyId !== undefined
+			) {
+				await this.sagePush.enqueueAndKick("deal", id, actor.id);
+			}
+
+			return updated;
 		} catch (error) {
 			throw this.translate(error, id);
 		}
@@ -416,6 +439,8 @@ export class DealsService {
 			probability,
 		});
 
+		await this.sagePush.enqueueAndKick("deal", deal.id, actor.id);
+
 		return { ...updated, changed: true };
 	}
 
@@ -477,15 +502,21 @@ export class DealsService {
 			where.companyId = input.company;
 		}
 
+		if (input.priority !== FACET_ALL) {
+			where.priority =
+				input.priority === FACET_NONE ? null : (input.priority as Priority);
+		}
+
 		return where;
 	}
 
 	private async facetCounts(input: DealListInput) {
 		const where = this.searchFilter(input.q);
 
-		const [owners, stages, ...closingCounts] = await Promise.all([
+		const [owners, stages, priorities, ...closingCounts] = await Promise.all([
 			this.db.deal.groupBy({ by: ["ownerId"], where, _count: { _all: true } }),
 			this.db.deal.groupBy({ by: ["stage"], where, _count: { _all: true } }),
+			this.db.deal.groupBy({ by: ["priority"], where, _count: { _all: true } }),
 			...CLOSING_WINDOWS.map((window) =>
 				this.db.deal.count({ where: { ...where, ...closingFilter(window) } }),
 			),
@@ -505,6 +536,7 @@ export class DealsService {
 			status: { open: openCount, closed: closedCount },
 			owner: countsByKey(owners, "ownerId", FACET_UNASSIGNED),
 			stage: stageCounts,
+			priority: countsByKey(priorities, "priority", FACET_NONE),
 			closing: Object.fromEntries(
 				CLOSING_WINDOWS.map((window, index) => [
 					window,

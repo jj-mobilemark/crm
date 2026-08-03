@@ -1,5 +1,6 @@
 import { Module } from "@nestjs/common";
 import { SagePullService } from "./sage-pull.service";
+import { SagePushService } from "./sage-push.service";
 import { SageSoapClient } from "./sage-soap.client";
 import { SageSyncController } from "./sage-sync.controller";
 
@@ -12,7 +13,7 @@ import { SageSyncController } from "./sage-sync.controller";
  */
 @Module({
 	controllers: [SageSyncController],
-	providers: [SageSoapClient, SagePullService],
-	exports: [SageSoapClient, SagePullService],
+	providers: [SageSoapClient, SagePullService, SagePushService],
+	exports: [SageSoapClient, SagePullService, SagePushService],
 })
 export class SageModule {}

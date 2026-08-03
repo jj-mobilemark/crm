@@ -1,11 +1,16 @@
 "use client";
 
+import { authClient } from "@crm/auth/client";
+import { MS_ALL_SCOPES } from "@crm/auth/scopes";
+import MicrosoftLogo from "@crm/ui/components/brand-logos/microsoft";
 import { Button } from "@crm/ui/components/button";
 import { Label } from "@crm/ui/components/label";
+import { Spinner } from "@crm/ui/components/spinner";
 import { StatusIndicator } from "@crm/ui/components/status-indicator";
 import { Switch } from "@crm/ui/components/switch";
 import { relativeTimeFromIso } from "@crm/ui/lib/format";
 import { useMutation, useQuery } from "@tanstack/react-query";
+import { useState } from "react";
 import { toast } from "sonner";
 import { isSyncing, SYNC_POLL_MS } from "@/components/crm/sync-status";
 import { useCrmCache } from "@/lib/trpc/cache";
@@ -31,6 +36,7 @@ const SOURCES = {
 export function MicrosoftConnection() {
 	const trpc = useTRPC();
 	const cache = useCrmCache();
+	const [reconnecting, setReconnecting] = useState(false);
 
 	const status = useQuery({
 		...trpc.microsoft.status.queryOptions(),
@@ -54,9 +60,9 @@ export function MicrosoftConnection() {
 
 	const revoke = useMutation(
 		trpc.microsoft.revokeAccess.mutationOptions({
-			// A full navigation, not a router push: the tokens are gone, so every
-			// cached render is wrong and the gate has to re-evaluate.
-			onSuccess: () => window.location.assign("/"),
+			// Land on /grant-access so the rep can re-link immediately. Settings
+			// alone used to leave them with no reconnect button.
+			onSuccess: () => window.location.assign("/grant-access"),
 			onError: (error) => toast.error(error.message),
 		}),
 	);
@@ -75,9 +81,27 @@ export function MicrosoftConnection() {
 		}),
 	);
 
+	async function reconnect() {
+		setReconnecting(true);
+		const origin = window.location.origin;
+		const { error } = await authClient.linkSocial({
+			provider: "microsoft",
+			scopes: [...MS_ALL_SCOPES],
+			callbackURL: `${origin}/settings`,
+			errorCallbackURL: `${origin}/settings`,
+		});
+		if (error) {
+			toast.error(error.message ?? "Could not reach Microsoft.");
+			setReconnecting(false);
+		}
+	}
+
 	if (!status.data) return null;
 
 	const { sources, hasRefreshToken } = status.data;
+
+	const anyConnected = sources.some((source) => source.connected);
+	const needsReconnect = !hasRefreshToken || !anyConnected;
 
 	const broken = sources.find(
 		(source) => source.status === "NEEDS_RECONNECT" || source.lastError,
@@ -88,7 +112,7 @@ export function MicrosoftConnection() {
 		.sort()
 		.at(-1);
 
-	const healthy = !broken && hasRefreshToken;
+	const healthy = !broken && hasRefreshToken && anyConnected;
 
 	return (
 		<div className="flex max-w-3xl flex-col">
@@ -98,29 +122,55 @@ export function MicrosoftConnection() {
 						<h2 className="font-medium text-sm">Microsoft 365</h2>
 						<StatusIndicator
 							tone={healthy ? "success" : "warning"}
-							label={healthy ? "Connected" : "Needs attention"}
+							label={
+								healthy
+									? "Connected"
+									: needsReconnect
+										? "Not connected"
+										: "Needs attention"
+							}
 						/>
 					</div>
 
-					<Button
-						variant="outline"
-						size="sm"
-						disabled={syncNow.isPending}
-						onClick={() => syncNow.mutate()}
-					>
-						{syncNow.isPending ? "Checking…" : "Check now"}
-					</Button>
+					{needsReconnect ? (
+						<Button
+							size="sm"
+							disabled={reconnecting}
+							onClick={() => {
+								reconnect().catch(() =>
+									toast.error("Could not start Microsoft reconnect."),
+								);
+							}}
+						>
+							{reconnecting ? (
+								<Spinner data-icon="inline-start" />
+							) : (
+								<MicrosoftLogo data-icon="inline-start" className="size-4" />
+							)}
+							Reconnect Microsoft
+						</Button>
+					) : (
+						<Button
+							variant="outline"
+							size="sm"
+							disabled={syncNow.isPending}
+							onClick={() => syncNow.mutate()}
+						>
+							{syncNow.isPending ? "Checking…" : "Check now"}
+						</Button>
+					)}
 				</div>
 
 				<p className="text-pretty text-muted-foreground text-sm/6">
 					New meetings and email threads are added to the matching company as
-					they happen. Nothing from before you connected is imported, and
-					nothing is ever sent on your behalf.
+					they happen. Nothing from before you connected is imported.
+					Sequences can send from your Outlook mailbox when Mail.Send is
+					granted.
 				</p>
 
 				<p className="text-muted-foreground text-xs">
-					{!hasRefreshToken
-						? "Sign out and back in to finish setting up — Microsoft did not return a refresh token."
+					{needsReconnect
+						? "Reconnect Microsoft to restore Outlook sync and sequence sending."
 						: broken?.lastError
 							? broken.lastError
 							: lastSyncedAt
@@ -129,37 +179,42 @@ export function MicrosoftConnection() {
 				</p>
 			</section>
 
-			<section className="flex flex-col gap-5 border-t py-5">
-				{sources.map((source) => {
-					const copy = SOURCES[source.source];
+			{!needsReconnect ? (
+				<section className="flex flex-col gap-5 border-t py-5">
+					{sources.map((source) => {
+						const copy = SOURCES[source.source];
 
-					return (
-						<div
-							key={source.source}
-							className="flex items-center justify-between gap-6"
-						>
-							<Label
-								htmlFor={`ms-auto-create-${source.source}`}
-								className="flex flex-col items-start gap-1"
+						return (
+							<div
+								key={source.source}
+								className="flex items-center justify-between gap-6"
 							>
-								<span className="text-sm">{copy.label}</span>
-								<span className="font-normal text-muted-foreground text-xs">
-									{copy.autoCreate}
-								</span>
-							</Label>
+								<Label
+									htmlFor={`ms-auto-create-${source.source}`}
+									className="flex flex-col items-start gap-1"
+								>
+									<span className="text-sm">{copy.label}</span>
+									<span className="font-normal text-muted-foreground text-xs">
+										{copy.autoCreate}
+									</span>
+								</Label>
 
-							<Switch
-								id={`ms-auto-create-${source.source}`}
-								checked={source.autoCreate}
-								disabled={setAutoCreate.isPending}
-								onCheckedChange={(enabled) =>
-									setAutoCreate.mutate({ source: source.source, enabled })
-								}
-							/>
-						</div>
-					);
-				})}
-			</section>
+								<Switch
+									id={`ms-auto-create-${source.source}`}
+									checked={source.autoCreate}
+									disabled={setAutoCreate.isPending}
+									onCheckedChange={(enabled) =>
+										setAutoCreate.mutate({
+											source: source.source,
+											enabled,
+										})
+									}
+								/>
+							</div>
+						);
+					})}
+				</section>
+			) : null}
 
 			<div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t pt-5 text-muted-foreground text-xs">
 				<button
@@ -180,23 +235,25 @@ export function MicrosoftConnection() {
 					Delete synced data
 				</button>
 
-				<button
-					type="button"
-					className="underline underline-offset-3 hover:text-foreground disabled:opacity-50"
-					disabled={revoke.isPending}
-					onClick={() => {
-						if (
-							!window.confirm(
-								"Revoke Microsoft access? Outlook sync will stop until you sign in with Microsoft again.",
-							)
-						) {
-							return;
-						}
-						revoke.mutate();
-					}}
-				>
-					Revoke Microsoft access
-				</button>
+				{!needsReconnect ? (
+					<button
+						type="button"
+						className="underline underline-offset-3 hover:text-foreground disabled:opacity-50"
+						disabled={revoke.isPending}
+						onClick={() => {
+							if (
+								!window.confirm(
+									"Revoke Microsoft access? Outlook sync will stop until you reconnect.",
+								)
+							) {
+								return;
+							}
+							revoke.mutate();
+						}}
+					>
+						Revoke Microsoft access
+					</button>
+				) : null}
 
 				<a
 					href="https://account.microsoft.com/privacy"

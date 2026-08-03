@@ -3,7 +3,7 @@ import { type BetterAuthOptions, betterAuth } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
 import { APIError } from "better-auth/api";
 import { env } from "./env";
-import { MS_SYNC_SCOPES, SYNC_SCOPES } from "./scopes";
+import { MS_ALL_SCOPES, SYNC_SCOPES } from "./scopes";
 import {
 	hasSignInAllowList,
 	isWorkspaceEmail,
@@ -19,8 +19,8 @@ if (env.microsoft) {
 		// Single-tenant Entra app — never "common" for this CRM.
 		tenantId: env.microsoft.tenantId,
 		// Better Auth already requests openid/profile/email/User.Read/offline_access.
-		// Mail + Calendar are the CRM sync extras.
-		scope: [...MS_SYNC_SCOPES],
+		// Mail + Calendar are the CRM sync extras; Mail.Send powers sequences.
+		scope: [...MS_ALL_SCOPES],
 		prompt: "select_account",
 	};
 }

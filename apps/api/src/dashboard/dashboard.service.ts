@@ -46,7 +46,10 @@ function dealMoneyCents(
  * Month buckets for the trend chart — aligned to the selected closed-won range,
  * not a fixed trailing six months.
  */
-function trendWindow(rangeStart: Date, rangeEnd: Date): {
+function trendWindow(
+	rangeStart: Date,
+	rangeEnd: Date,
+): {
 	start: Date;
 	count: number;
 } {
@@ -116,13 +119,15 @@ type ResolvedRange = {
  * Open pipeline and forecast ignore this. A short preset (Today) still gets a
  * previous period of the same length so the delta label stays comparable.
  */
-function resolveRange(
-	input: DashboardSummaryInput,
-	now: Date,
-): ResolvedRange {
+function resolveRange(input: DashboardSummaryInput, now: Date): ResolvedRange {
 	const end = now;
 
-	if (input.range === "custom" && input.from && input.to && input.from <= input.to) {
+	if (
+		input.range === "custom" &&
+		input.from &&
+		input.to &&
+		input.from <= input.to
+	) {
 		const start = parseDay(input.from);
 		const toDay = parseDay(input.to);
 		const customEnd = dayAfter(toDay);
@@ -341,6 +346,7 @@ export class DashboardService {
 					id: true,
 					subject: true,
 					dueAt: true,
+					priority: true,
 					company: { select: { id: true, name: true } },
 					deal: { select: { id: true, name: true } },
 				},

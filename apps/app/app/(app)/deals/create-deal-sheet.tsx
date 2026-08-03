@@ -35,6 +35,11 @@ import { useId, useState } from "react";
 import { toast } from "sonner";
 import { CompanyPicker } from "@/components/crm/company-picker";
 import { dealStageLabel, OPEN_STAGES } from "@/components/crm/deal-stage";
+import {
+	PRIORITY_NONE,
+	PRIORITY_OPTIONS,
+	type PriorityValue,
+} from "@/components/crm/priority";
 import { useOpenRecord } from "@/components/crm/record-sheet/record-stack";
 import { useCrmCache } from "@/lib/trpc/cache";
 import { useTRPC } from "@/lib/trpc/client";
@@ -60,6 +65,7 @@ export function CreateDealSheet({
 	const [company, setCompany] = useState(companyId ?? UNSET);
 	const [ownerId, setOwnerId] = useState(UNSET);
 	const [stage, setStage] = useState<string>("DEMO_BOOKED");
+	const [priority, setPriority] = useState<string>(PRIORITY_NONE);
 	const [amount, setAmount] = useState("");
 	const [closeDate, setCloseDate] = useState("");
 
@@ -123,6 +129,8 @@ export function CreateDealSheet({
 								? Math.round(parsed * 100)
 								: null,
 							expectedCloseDate: closeDate || null,
+							priority:
+								priority === PRIORITY_NONE ? null : (priority as PriorityValue),
 						});
 					}}
 				>
@@ -189,6 +197,22 @@ export function CreateDealSheet({
 								A new deal is an open deal — close it from the pipeline once
 								there is an outcome to record.
 							</FieldDescription>
+						</Field>
+
+						<Field>
+							<FieldLabel htmlFor="create-deal-priority">Priority</FieldLabel>
+							<Select value={priority} onValueChange={setPriority}>
+								<SelectTrigger id="create-deal-priority">
+									<SelectValue />
+								</SelectTrigger>
+								<SelectContent>
+									{PRIORITY_OPTIONS.map((option) => (
+										<SelectItem key={option.value} value={option.value}>
+											{option.label}
+										</SelectItem>
+									))}
+								</SelectContent>
+							</Select>
 						</Field>
 
 						<Field>

@@ -18,6 +18,7 @@ import { AgentTriggerService } from "../agent/agent-trigger.service";
 import { CompanyDirectoryService } from "../companies/company-directory.service";
 import { blankToNull, toCents } from "../crm/values";
 import { InjectDatabase } from "../database/database.constants";
+import { SagePushService } from "../sage/sage-push.service";
 import {
 	countsByKey,
 	FACET_ALL,
@@ -33,6 +34,9 @@ import type {
 	ContactUpdateInput,
 	FactDecisionInput,
 } from "./contacts.contracts";
+
+/** Signed-in actor for Sage push attribution (human UI only). */
+export type ContactActor = { id: string };
 
 const OWNER_SELECT = {
 	id: true,
@@ -133,6 +137,7 @@ export class ContactsService {
 		private readonly companies: CompanyDirectoryService,
 		private readonly agent: AgentTriggerService,
 		private readonly queue: AgentQueueService,
+		private readonly sagePush: SagePushService,
 	) {}
 
 	async list(input: ContactListInput): Promise<ListResult<ContactRow>> {
@@ -288,11 +293,39 @@ export class ContactsService {
 		};
 	}
 
-	async create(input: ContactCreateInput) {
-		return this.createContact(input, {
-			source: undefined,
-			identifyReason: "Added by a rep, with nothing on the record yet",
+	/**
+	 * Contact pickers (sequence enroll, etc.).
+	 *
+	 * Capped at 100 and searchable — same shape as `companies.options`.
+	 * Prefers contacts that have an email (required for sequences).
+	 */
+	async options(q: string) {
+		return this.db.contact.findMany({
+			where: {
+				...this.searchFilter(q),
+				email: { not: null },
+			},
+			select: {
+				id: true,
+				firstName: true,
+				lastName: true,
+				email: true,
+				company: { select: { id: true, name: true } },
+			},
+			orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
+			take: 100,
 		});
+	}
+
+	async create(input: ContactCreateInput, actor?: ContactActor) {
+		return this.createContact(
+			input,
+			{
+				source: undefined,
+				identifyReason: "Added by a rep, with nothing on the record yet",
+			},
+			actor,
+		);
 	}
 
 	/**
@@ -327,6 +360,7 @@ export class ContactsService {
 			source: RecordSource | undefined;
 			identifyReason: string;
 		},
+		actor?: ContactActor,
 	) {
 		const email = blankToNull(input.email ?? "");
 
@@ -379,10 +413,15 @@ export class ContactsService {
 			await this.enqueueEmailBackfill(email, input.ownerId ?? null);
 		}
 
+		// Only human UI MANUAL creates go to Sage — screening/EMAIL/sync stay out.
+		if (actor && !options.source) {
+			await this.sagePush.enqueueAndKick("contact", contact.id, actor.id);
+		}
+
 		return contact;
 	}
 
-	async update(id: string, input: ContactUpdateInput) {
+	async update(id: string, input: ContactUpdateInput, actor?: ContactActor) {
 		const data: Prisma.ContactUpdateInput = {};
 
 		if (input.firstName !== undefined) data.firstName = input.firstName.trim();
@@ -425,6 +464,16 @@ export class ContactsService {
 				data,
 				select: { id: true, firstName: true, lastName: true, email: true },
 			});
+
+			if (
+				actor &&
+				(input.firstName !== undefined ||
+					input.lastName !== undefined ||
+					input.title !== undefined ||
+					input.companyId !== undefined)
+			) {
+				await this.sagePush.enqueueAndKick("contact", id, actor.id);
+			}
 
 			const nextEmail = updated.email;
 			const previousEmail = previous?.email ?? null;

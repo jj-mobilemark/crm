@@ -35,6 +35,7 @@ import {
 	DealStageIndicator,
 	dealStageColor,
 } from "@/components/crm/deal-stage";
+import { PriorityBadge } from "@/components/crm/priority";
 import { RecordLink } from "@/components/crm/record-sheet/record-link";
 import { useOpenRecord } from "@/components/crm/record-sheet/record-stack";
 import { activityLabel } from "@/components/crm/timeline/activity-icon";
@@ -124,6 +125,7 @@ export function DashboardSummary() {
 	const taskColumns: SimpleTableColumn[] = [
 		{ srLabel: "Done", width: "w-8" },
 		{ header: "Task" },
+		{ header: "Priority", width: "w-24", className: "hidden sm:table-cell" },
 		{ header: "Overdue", width: "w-24", align: "right" },
 	];
 
@@ -251,6 +253,9 @@ export function DashboardSummary() {
 													) : null}
 												</span>
 											</span>
+										</TableCell>
+										<TableCell className={`${CELL} hidden sm:table-cell`}>
+											<PriorityBadge priority={task.priority} />
 										</TableCell>
 										<TableCell className={`${CELL} text-right`}>
 											<StatusIndicator

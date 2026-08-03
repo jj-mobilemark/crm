@@ -1,5 +1,6 @@
 import { Module } from "@nestjs/common";
 import { AgentModule } from "../agent/agent.module";
+import { SageModule } from "../sage/sage.module";
 import { TrpcModule } from "../trpc/trpc.module";
 import { CompaniesRouter } from "./companies.router";
 import { CompaniesService } from "./companies.service";
@@ -7,7 +8,7 @@ import { CompanyDirectoryService } from "./company-directory.service";
 import { FaviconService } from "./favicon.service";
 
 @Module({
-	imports: [TrpcModule, AgentModule],
+	imports: [TrpcModule, AgentModule, SageModule],
 	providers: [
 		CompaniesService,
 		CompanyDirectoryService,

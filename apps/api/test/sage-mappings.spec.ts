@@ -3,6 +3,7 @@ import { DealStage } from "@crm/db";
 import {
 	emailForAcctMgr,
 	emailForSageUser,
+	isPushEcho,
 	mapCompany,
 	mapCompanyTree,
 	mapContact,
@@ -10,6 +11,11 @@ import {
 	mapSageDealStage,
 	matchSageUserByName,
 	sage100Display,
+	sageStageForPush,
+	sageUserIdForEmail,
+	toSageCompanyFields,
+	toSageOpportunityFields,
+	toSagePersonFields,
 } from "../src/sage/sage.mappings";
 
 describe("mapCompany", () => {
@@ -300,5 +306,118 @@ describe("emailForSageUser", () => {
 	it("returns null for a former employee's unknown id", () => {
 		expect(emailForSageUser("999")).toBeNull();
 		expect(emailForSageUser(null)).toBeNull();
+	});
+});
+
+describe("toSageOpportunityFields (local -> Sage)", () => {
+	it("writes forecast/certainty/stage and keeps raw Sage stage when unchanged", () => {
+		const fields = toSageOpportunityFields(
+			{
+				sageCrmOpportunityId: "557",
+				name: "Jordan Test Push From Sales Tool",
+				amount: "100",
+				probability: 50,
+				stage: DealStage.CONTRACT_SENT,
+				sageStage: "Proposal",
+				sageStatus: "In Progress",
+				expectedCloseDate: new Date("2026-09-01T12:00:00"),
+				ownerEmail: "ken@mobilemark.com",
+				sageCrmCompanyId: "24",
+				sageCrmPrimaryPersonId: null,
+			},
+			"update",
+		);
+		const byName = Object.fromEntries(fields.map((f) => [f.name, f.value]));
+		expect(byName.opportunityid).toBe("557");
+		expect(byName.description).toBe("Jordan Test Push From Sales Tool");
+		expect(byName.forecast).toBe("100");
+		expect(byName.certainty).toBe("50");
+		expect(byName.stage).toBe("Proposal");
+		expect(byName.status).toBe("In Progress");
+		expect(byName.assigneduserid).toBe("27");
+	});
+
+	it("derives Sage stage on create when local stage has diverged", () => {
+		const fields = toSageOpportunityFields(
+			{
+				sageCrmOpportunityId: null,
+				name: "New deal",
+				amount: "1",
+				probability: 25,
+				stage: DealStage.QUALIFIED_TO_BUY,
+				sageStage: null,
+				sageStatus: null,
+				expectedCloseDate: null,
+				ownerEmail: null,
+				sageCrmCompanyId: "24",
+				sageCrmPrimaryPersonId: "5",
+			},
+			"create",
+		);
+		const byName = Object.fromEntries(fields.map((f) => [f.name, f.value]));
+		expect(byName.primarycompanyid).toBe("24");
+		expect(byName.primarypersonid).toBe("5");
+		expect(byName.stage).toBe("Investigation/Prospecting");
+		expect(byName.status).toBe("In Progress");
+		expect(byName.opportunityid).toBeUndefined();
+	});
+});
+
+describe("toSageCompanyFields / toSagePersonFields", () => {
+	it("updates a company by companyid", () => {
+		const fields = toSageCompanyFields(
+			{ sageCrmCompanyId: "24", name: "MOBILE MARK INC", website: "https://mobilemark.com" },
+			"update",
+		);
+		expect(fields).toEqual([
+			{ name: "companyid", value: "24" },
+			{ name: "name", value: "MOBILE MARK INC" },
+			{ name: "website", value: "https://mobilemark.com" },
+		]);
+	});
+
+	it("creates a person under a parent company", () => {
+		const fields = toSagePersonFields(
+			{
+				sageCrmContactId: null,
+				firstName: "Pat",
+				lastName: "Tester",
+				title: "Rep",
+				sageCrmCompanyId: "24",
+			},
+			"create",
+		);
+		expect(fields).toEqual([
+			{ name: "companyid", value: "24" },
+			{ name: "firstname", value: "Pat" },
+			{ name: "lastname", value: "Tester" },
+			{ name: "title", value: "Rep" },
+		]);
+	});
+});
+
+describe("sageStageForPush / sageUserIdForEmail / isPushEcho", () => {
+	it("keeps Purchasing when it still maps to CONTRACT_SENT", () => {
+		expect(
+			sageStageForPush({
+				stage: DealStage.CONTRACT_SENT,
+				sageStage: "Purchasing",
+				sageStatus: "In Progress",
+			}),
+		).toEqual({ stage: "Purchasing", status: "In Progress" });
+	});
+
+	it("resolves owner email back to a Sage user id", () => {
+		expect(sageUserIdForEmail("ken@mobilemark.com")).toBe("27");
+		expect(sageUserIdForEmail("nobody@example.com")).toBeNull();
+	});
+
+	it("treats a Sage update at/before sagePushedAt as our own echo", () => {
+		const pushed = new Date("2026-08-03T12:00:00Z");
+		expect(isPushEcho(new Date("2026-08-03T11:59:00Z"), pushed)).toBe(true);
+		expect(isPushEcho(new Date("2026-08-03T12:00:00Z"), pushed)).toBe(true);
+		expect(isPushEcho(new Date("2026-08-03T12:01:00Z"), pushed)).toBe(false);
+		expect(isPushEcho(null, pushed)).toBe(false);
+		expect(isPushEcho(pushed, null)).toBe(false);
 	});
 });

@@ -1,4 +1,4 @@
-import { ActivityType } from "@crm/db";
+import { ActivityType, Priority } from "@crm/db";
 import { z } from "zod";
 
 /** Types a human can log. `STAGE_CHANGE` and `ENRICHMENT` are written by the
@@ -12,6 +12,10 @@ const COMPOSABLE_TYPES = [
 ] as const;
 
 const composableEnum = z.enum(COMPOSABLE_TYPES);
+
+const priorityEnum = z.enum(
+	Object.values(Priority) as [Priority, ...Priority[]],
+);
 
 /**
  * Which slice of a timeline to show.
@@ -68,6 +72,8 @@ export const activityCreateInput = z
 		occurredAt: z.string().optional(),
 		/** ISO-8601. When it is due, for a task. */
 		dueAt: z.string().nullable().optional(),
+		/** Null / omitted = no priority. Only meaningful for TASK. */
+		priority: priorityEnum.nullable().optional(),
 		companyId: z.string().optional(),
 		contactId: z.string().optional(),
 		dealId: z.string().optional(),
@@ -91,9 +97,19 @@ export const completeInput = z.object({
 	completed: z.boolean().default(true),
 });
 
+export const setPriorityInput = z.object({
+	id: z.string(),
+	/** Null clears priority. */
+	priority: priorityEnum.nullable(),
+});
+
 export const myTasksInput = z.object({
-	/** `"overdue"`, `"upcoming"`, or `"all"` open tasks. */
+	/** `"overdue"`, `"upcoming"`, or `"all"` by due date. */
 	window: z.enum(["overdue", "upcoming", "all"]).default("all"),
+	/** Open, done, or everything. Defaults to open — that is the working list. */
+	status: z.enum(["open", "done", "all"]).default("open"),
+	/** A `Priority`, `"none"` (null), or `"all"`. */
+	priority: z.string().default("all"),
 	limit: z.number().int().min(1).max(100).default(25),
 });
 

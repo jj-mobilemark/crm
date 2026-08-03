@@ -18,6 +18,11 @@ import {
 	InlineSelectField,
 	savingField,
 } from "@/components/crm/inline-field";
+import {
+	PRIORITY_NONE,
+	PRIORITY_OPTIONS,
+	type PriorityValue,
+} from "@/components/crm/priority";
 import { SageIdValue } from "@/components/crm/sage-id-value";
 import { DealStageMenu } from "@/components/crm/stage-change";
 import { StageStepper } from "@/components/crm/stage-stepper";
@@ -218,11 +223,7 @@ function DealOverview({ deal }: { deal: Deal }) {
 			 * closing it — is the control in the header; this is the one-click
 			 * nudge to the next step. */}
 			<DetailSheetSection title="Stage">
-				<StageStepper
-					dealId={deal.id}
-					stage={deal.stage}
-					disabled={!canEdit}
-				/>
+				<StageStepper dealId={deal.id} stage={deal.stage} disabled={!canEdit} />
 
 				{/*
 				 * Two properties under the rail rather than an alert of its own.
@@ -290,17 +291,26 @@ function DealOverview({ deal }: { deal: Deal }) {
 						onSave={(next) => {
 							if (next === "") return save({ probability: null });
 							const parsed = Number.parseInt(next, 10);
-							if (
-								!Number.isFinite(parsed) ||
-								parsed < 0 ||
-								parsed > 100
-							) {
+							if (!Number.isFinite(parsed) || parsed < 0 || parsed > 100) {
 								toast.error("Certainty is a whole percent from 0 to 100.");
 								return;
 							}
 							save({ probability: parsed });
 						}}
 						render={(value) => formatPercent(Number(value) / 100)}
+					/>
+					<InlineSelectField
+						label="Priority"
+						value={deal.priority ?? PRIORITY_NONE}
+						options={PRIORITY_OPTIONS}
+						placeholder="No priority"
+						readOnly={!canEdit}
+						onSave={(next) =>
+							save({
+								priority:
+									next === PRIORITY_NONE ? null : (next as PriorityValue),
+							})
+						}
 					/>
 					<InlineField
 						label="Currency"

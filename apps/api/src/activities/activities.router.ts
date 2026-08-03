@@ -14,6 +14,7 @@ import {
 	activityCreateInput,
 	completeInput,
 	myTasksInput,
+	setPriorityInput,
 	timelineCountsInput,
 	timelineInput,
 } from "./activities.contracts";
@@ -55,5 +56,10 @@ export class ActivitiesRouter {
 	@Mutation({ input: completeInput })
 	async complete(@Input() input: z.infer<typeof completeInput>) {
 		return this.activities.complete(input.id, input.completed);
+	}
+
+	@Mutation({ input: setPriorityInput })
+	async setPriority(@Input() input: z.infer<typeof setPriorityInput>) {
+		return this.activities.setPriority(input.id, input.priority);
 	}
 }

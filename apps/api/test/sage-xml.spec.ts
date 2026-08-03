@@ -1,11 +1,13 @@
 import { describe, expect, it } from "bun:test";
 import {
+	parseAddId,
 	parseCompanyPage,
 	parseCompanyTrees,
 	parseFault,
 	parseMore,
 	parseRecords,
 	parseSessionId,
+	parseUpdateResult,
 } from "../src/sage/sage-xml";
 
 const LOGON = `<?xml version="1.0" encoding="UTF-8"?><SOAP-ENV:Envelope xmlns:SOAP-ENV="http://schemas.xmlsoap.org/soap/envelope/"><SOAP-ENV:Body><logonresponsetype xmlns="http://tempuri.org/type"><result><sessionid>199415257756022</sessionid></result></logonresponsetype></SOAP-ENV:Body></SOAP-ENV:Envelope>`;
@@ -93,5 +95,19 @@ describe("sage-xml", () => {
 		const page = parseCompanyPage(COMPANY_WRAPPED);
 		expect(page.more).toBe(true);
 		expect(page.companies).toHaveLength(1);
+	});
+
+	it("reads updatesuccess / numberupdated from an update response", () => {
+		const xml = `<?xml version="1.0"?><SOAP-ENV:Envelope xmlns:SOAP-ENV="http://schemas.xmlsoap.org/soap/envelope/"><SOAP-ENV:Body><updateresponse xmlns="http://tempuri.org/type"><result><numberupdated>1</numberupdated><updatesuccess>true</updatesuccess></result></updateresponse></SOAP-ENV:Body></SOAP-ENV:Envelope>`;
+		expect(parseUpdateResult(xml)).toEqual({
+			success: true,
+			numberUpdated: 1,
+		});
+	});
+
+	it("reads the new crmid from an add response", () => {
+		const xml = `<?xml version="1.0"?><SOAP-ENV:Envelope xmlns:SOAP-ENV="http://schemas.xmlsoap.org/soap/envelope/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><SOAP-ENV:Body><addresponse xmlns="http://tempuri.org/type"><result><records xsi:type="typens:crmid" xmlns:typens="http://tempuri.org/type"><crmid>805</crmid></records></result></addresponse></SOAP-ENV:Body></SOAP-ENV:Envelope>`;
+		expect(parseAddId(xml)).toBe("805");
+		expect(parseAddId(FAULT)).toBeNull();
 	});
 });

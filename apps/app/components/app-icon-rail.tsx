@@ -3,8 +3,10 @@
 import Building from "@carbon/icons-react/es/Building";
 import type { CarbonIconType } from "@carbon/icons-react/es/CarbonIcon";
 import Dashboard from "@carbon/icons-react/es/Dashboard";
+import EmailNew from "@carbon/icons-react/es/EmailNew";
 import Partnership from "@carbon/icons-react/es/Partnership";
 import Settings from "@carbon/icons-react/es/Settings";
+import Task from "@carbon/icons-react/es/Task";
 import TaskStar from "@carbon/icons-react/es/TaskStar";
 import UserFollow from "@carbon/icons-react/es/UserFollow";
 import UserMultiple from "@carbon/icons-react/es/UserMultiple";
@@ -43,6 +45,7 @@ const ITEMS: RailItem[] = [
 		match: "prefix",
 	},
 	{ title: "Deals", href: "/deals", icon: Partnership, match: "prefix" },
+	{ title: "Tasks", href: "/tasks", icon: Task, match: "prefix" },
 	{
 		title: "Follow-ups",
 		href: "/follow-ups",
@@ -53,6 +56,12 @@ const ITEMS: RailItem[] = [
 		title: "Screening",
 		href: "/screening",
 		icon: UserFollow,
+		match: "prefix",
+	},
+	{
+		title: "Sequences",
+		href: "/sequences",
+		icon: EmailNew,
 		match: "prefix",
 	},
 	{ title: "Settings", href: "/settings", icon: Settings, match: "prefix" },

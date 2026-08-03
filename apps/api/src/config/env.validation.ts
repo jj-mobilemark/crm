@@ -173,6 +173,16 @@ export class EnvironmentVariables {
 		message: "CRON_SECRET must be at least 16 characters.",
 	})
 	CRON_SECRET?: string;
+
+	/**
+	 * Absolute origin used in sequence tracking / unsubscribe links inside
+	 * outbound email. Defaults to API_URL (then APP_URL) when unset. Set this
+	 * when the API is not reachable at the URL you want recipients to hit
+	 * (e.g. a public edge in front of Nest).
+	 */
+	@IsOptional()
+	@IsUrl({ require_tld: false })
+	APP_PUBLIC_URL?: string;
 }
 
 export function validateEnv(

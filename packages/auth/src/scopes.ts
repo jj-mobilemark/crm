@@ -46,6 +46,14 @@ export function hasSyncScopes(scope: string | null | undefined): boolean {
 export const MS_MAIL_SCOPE = "Mail.Read";
 /** Microsoft Graph calendar (delegated, read-only). */
 export const MS_CALENDAR_SCOPE = "Calendars.Read";
+/**
+ * Microsoft Graph send mail (delegated).
+ *
+ * Required for email sequences. Sync still works without it — a rep who has
+ * not re-consented can view sequences but cannot enroll or activate them.
+ * Needs Entra admin consent on the app registration.
+ */
+export const MS_MAIL_SEND_SCOPE = "Mail.Send";
 
 /**
  * Read-only Outlook mail and calendar.
@@ -56,7 +64,27 @@ export const MS_CALENDAR_SCOPE = "Calendars.Read";
  */
 export const MS_SYNC_SCOPES = [MS_MAIL_SCOPE, MS_CALENDAR_SCOPE] as const;
 
+/** Sync scopes plus send — requested at Microsoft sign-in / linkSocial. */
+export const MS_ALL_SCOPES = [
+	...MS_SYNC_SCOPES,
+	MS_MAIL_SEND_SCOPE,
+] as const;
+
+/** Just the send scope, for capability checks on the sequences panel. */
+export const MS_SEND_SCOPES = [MS_MAIL_SEND_SCOPE] as const;
+
 const GRAPH_SCOPE_PREFIX = "https://graph.microsoft.com/";
+
+/** Normalise Microsoft scopes to short names (`Mail.Read`, not the full URI). */
+function normalisedMsScopes(scope: string | null | undefined): Set<string> {
+	return new Set(
+		[...parseScopes(scope)].map((entry) =>
+			entry.startsWith(GRAPH_SCOPE_PREFIX)
+				? entry.slice(GRAPH_SCOPE_PREFIX.length)
+				: entry,
+		),
+	);
+}
 
 /**
  * Whether a Microsoft grant covers mail and calendar sync.
@@ -65,14 +93,19 @@ const GRAPH_SCOPE_PREFIX = "https://graph.microsoft.com/";
  * (`https://graph.microsoft.com/Mail.Read`). Both forms count.
  */
 export function hasMsSyncScopes(scope: string | null | undefined): boolean {
-	const granted = new Set(
-		[...parseScopes(scope)].map((entry) =>
-			entry.startsWith(GRAPH_SCOPE_PREFIX)
-				? entry.slice(GRAPH_SCOPE_PREFIX.length)
-				: entry,
-		),
-	);
+	const granted = normalisedMsScopes(scope);
 	return MS_SYNC_SCOPES.every((needed) => granted.has(needed));
+}
+
+/**
+ * Whether a Microsoft grant covers sending mail (sequences).
+ *
+ * Not part of the app-entry gate — missing send only blocks sequence
+ * activation, not the rest of the CRM.
+ */
+export function hasMsSendScopes(scope: string | null | undefined): boolean {
+	const granted = normalisedMsScopes(scope);
+	return MS_SEND_SCOPES.every((needed) => granted.has(needed));
 }
 
 /** `Account.scope` as a set. Google returns it comma- or space-separated. */

@@ -9,9 +9,23 @@
 
 export const SAGE_REQUEST_NS = "http://tempuri.org/";
 
+/**
+ * The response / complex-type namespace. Reads come back as `typens:<field>`
+ * and writes must send typed records (`xsi:type="typens:<entity>"`) with
+ * `typens:`-prefixed field children. Confirmed against production (Phase 0).
+ */
+export const SAGE_TYPE_NS = "http://tempuri.org/type";
+
 /** The three core entities this sync reads. */
 export const SAGE_ENTITIES = ["company", "person", "opportunity"] as const;
 export type SageEntity = (typeof SAGE_ENTITIES)[number];
+
+/**
+ * One field on a Sage write, using the SHORT field name Sage returns on a read
+ * (e.g. `description`, `forecast`, `opportunityid`) — NOT the prefixed
+ * predicate column. An `update` set must include the entity's id field.
+ */
+export type SageWriteField = { name: string; value: string };
 
 /**
  * Sage caps a query at ~100 rows regardless of the predicate. The full pull

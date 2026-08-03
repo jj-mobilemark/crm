@@ -17,6 +17,7 @@ import { OutlookCalendarSyncService } from "./outlook-calendar-sync.service";
 import { OutlookMailClient } from "./outlook-mail.client";
 import { OutlookMailBackfillService } from "./outlook-mail-backfill.service";
 import { OutlookMailSyncService } from "./outlook-mail-sync.service";
+import { OutlookSendClient } from "./outlook-send.client";
 
 /**
  * Outlook mail and calendar.
@@ -47,11 +48,17 @@ import { OutlookMailSyncService } from "./outlook-mail-sync.service";
 		OutlookMailClient,
 		OutlookMailSyncService,
 		OutlookMailBackfillService,
+		OutlookSendClient,
 		MicrosoftSyncService,
 		MicrosoftConnectionService,
 		ConversationService,
 		MicrosoftRouter,
 	],
-	exports: [MicrosoftSyncService, MicrosoftConnectionService],
+	exports: [
+		MicrosoftSyncService,
+		MicrosoftConnectionService,
+		MicrosoftTokenService,
+		OutlookSendClient,
+	],
 })
 export class MicrosoftModule {}

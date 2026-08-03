@@ -18,6 +18,10 @@ import { CompanyPicker } from "@/components/crm/company-picker";
 import { DEAL_STAGE_OPTIONS } from "@/components/crm/deal-stage";
 import { OwnedDealStageMenu } from "@/components/crm/owned-deal-stage-menu";
 import { OwnerCell } from "@/components/crm/owner-cell";
+import {
+	PRIORITY_FACET_OPTIONS,
+	PriorityBadge,
+} from "@/components/crm/priority";
 import { usePrefetchRecord } from "@/components/crm/record-sheet/record-prefetch";
 import { useOpenRecord } from "@/components/crm/record-sheet/record-stack";
 import { SageIdValue } from "@/components/crm/sage-id-value";
@@ -111,6 +115,13 @@ const COLUMNS: DataTableColumn<DealRow>[] = [
 					{formatPercent(row.probability / 100)}
 				</span>
 			),
+	},
+	{
+		id: "priority",
+		header: "Priority",
+		width: "w-[12%]",
+		hideBelow: "md",
+		cell: (row) => <PriorityBadge priority={row.priority} />,
 	},
 	{
 		id: "owner",
@@ -243,6 +254,13 @@ export function DealsTable() {
 			options: CLOSING_OPTIONS.filter(
 				(option) => (facetCounts?.closing?.[option.value] ?? 0) > 0,
 			).map((option) => ({ value: option.value, label: option.label })),
+		},
+		{
+			id: "priority",
+			label: "Priority",
+			options: PRIORITY_FACET_OPTIONS.filter(
+				(option) => (facetCounts?.priority?.[option.value] ?? 0) > 0,
+			),
 		},
 	];
 

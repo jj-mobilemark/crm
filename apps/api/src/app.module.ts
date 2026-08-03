@@ -22,6 +22,7 @@ import { MicrosoftModule } from "./microsoft/microsoft.module";
 import { SageModule } from "./sage/sage.module";
 import { ScreeningModule } from "./screening/screening.module";
 import { SearchModule } from "./search/search.module";
+import { SequencesModule } from "./sequences/sequences.module";
 import { TrpcModule } from "./trpc/trpc.module";
 import { UsersModule } from "./users/users.module";
 
@@ -53,6 +54,7 @@ import { UsersModule } from "./users/users.module";
 		SageModule,
 		ScreeningModule,
 		FollowupsModule,
+		SequencesModule,
 	],
 })
 export class AppModule {}
