@@ -67,8 +67,11 @@ surface on top, syncing bidirectionally (pull first, push later).
   pipeline AI chat. Sage pull (non-echo) appends `DealFieldChange` rows with
   `source: sage`. Plan: `docs/plans/pipeline-pulse.md`.
 - **Companies map (DONE 2026-08-03)**: `/map` — filterable list + Leaflet pins
-  (city-level geocode via Nominatim). Plan: `docs/plans/companies-map.md`.
-  After deploy, run `apps/api/scripts/geocode-companies.ts` so pins appear.
+  (city-level geocode via Nominatim). Prod + local geocoded (~12.1k pins).
+  List follows map viewport / cluster; select flies to pin; **Open company**
+  opens `CompanySheet` on `/map`. Plan: `docs/plans/companies-map.md`.
+  Re-run `apps/api/scripts/geocode-companies.ts` when cities change; optional
+  local copy via `packages/db/scripts/pull-geocode-from-prod.ts`.
 
 ## Where to read more
 

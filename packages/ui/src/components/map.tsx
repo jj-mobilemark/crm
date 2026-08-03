@@ -598,10 +598,13 @@ function MapMarkerClusterGroup({
         className: "fill-foreground stroke-foreground stroke-2",
     },
     icon,
+    eventHandlers,
     ...props
 }: Omit<MarkerClusterGroupProps, "iconCreateFunction"> & {
     children: ReactNode
     icon?: (markerCount: number) => ReactNode
+    /** Leaflet cluster events (`clusterclick`, …) — not on the upstream prop type. */
+    eventHandlers?: Record<string, (event: never) => void>
 }) {
     const { L } = useLeaflet()
     if (!L) return null
@@ -621,6 +624,7 @@ function MapMarkerClusterGroup({
             polygonOptions={polygonOptions}
             spiderLegPolylineOptions={spiderLegPolylineOptions}
             iconCreateFunction={iconCreateFunction}
+            eventHandlers={eventHandlers}
             {...props}
         />
     )
@@ -760,6 +764,69 @@ function MapTooltip({
             />
         </LeafletTooltip>
     )
+}
+
+export type MapLatLngBounds = {
+    north: number
+    south: number
+    east: number
+    west: number
+}
+
+/** Reports the map viewport after load and on pan/zoom. Must render inside `Map`. */
+function MapBoundsListener({
+    onBoundsChange,
+}: {
+    onBoundsChange: (bounds: MapLatLngBounds) => void
+}) {
+    const map = useMap()
+    const onBoundsChangeRef = useRef(onBoundsChange)
+    onBoundsChangeRef.current = onBoundsChange
+
+    function report() {
+        const b = map.getBounds()
+        onBoundsChangeRef.current({
+            north: b.getNorth(),
+            south: b.getSouth(),
+            east: b.getEast(),
+            west: b.getWest(),
+        })
+    }
+
+    useMapEvents({
+        moveend: report,
+        zoomend: report,
+    })
+
+    useEffect(() => {
+        report()
+    }, [map])
+
+    return null
+}
+
+/** Flies the map to a target when `focusKey` changes. Must render inside `Map`. */
+function MapFlyTo({
+    latitude,
+    longitude,
+    focusKey,
+    zoom = 12,
+}: {
+    latitude: number
+    longitude: number
+    /** Re-fly when this changes (e.g. selected company id). */
+    focusKey: string
+    zoom?: number
+}) {
+    const map = useMap()
+
+    useEffect(() => {
+        if (!focusKey) return
+        const nextZoom = Math.max(map.getZoom(), zoom)
+        map.flyTo([latitude, longitude], nextZoom, { duration: 0.7 })
+    }, [focusKey, latitude, longitude, zoom, map])
+
+    return null
 }
 
 function MapZoomControl({
@@ -1520,6 +1587,7 @@ function useDebounceLoadingState(delay = 200) {
 
 export {
     Map,
+    MapBoundsListener,
     MapCircle,
     MapCircleMarker,
     MapControlContainer,
@@ -1533,6 +1601,7 @@ export {
     MapDrawRectangle,
     MapDrawUndo,
     MapFeatureGroup,
+    MapFlyTo,
     MapFullscreenControl,
     MapLayerGroup,
     MapLayers,

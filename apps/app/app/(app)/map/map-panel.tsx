@@ -13,28 +13,75 @@ import { ToggleGroup, ToggleGroupItem } from "@crm/ui/components/toggle-group";
 import { useSearchInput } from "@crm/ui/hooks/use-search-input";
 import { cn } from "@crm/ui/lib/utils";
 import { useQuery } from "@tanstack/react-query";
-import Link from "next/link";
 import { useQueryStates } from "nuqs";
-import { recordHref } from "@/lib/record-href";
+import { useRef, useState } from "react";
+import { useOpenRecord } from "@/components/crm/record-sheet/record-stack";
 import { useTRPC } from "@/lib/trpc/client";
-import { CompaniesMapCanvas } from "./companies-map-canvas";
+import {
+	CompaniesMapCanvas,
+	type MapLatLngBounds,
+} from "./companies-map-canvas";
 import { mapParsers, mapQueryInput } from "./map-search-params";
+
+function inBounds(
+	latitude: number,
+	longitude: number,
+	bounds: MapLatLngBounds,
+): boolean {
+	return (
+		latitude >= bounds.south &&
+		latitude <= bounds.north &&
+		longitude >= bounds.west &&
+		longitude <= bounds.east
+	);
+}
+
+function boundsKey(bounds: MapLatLngBounds): string {
+	return `${bounds.north}:${bounds.south}:${bounds.east}:${bounds.west}`;
+}
 
 export function MapPanel() {
 	const trpc = useTRPC();
+	const openRecord = useOpenRecord();
 	const [params, setParams] = useQueryStates(mapParsers);
 	const input = mapQueryInput(params);
+	/** Company ids inside the last-clicked map cluster; null = use viewport. */
+	const [clusterIds, setClusterIds] = useState<string[] | null>(null);
+	const [mapBounds, setMapBounds] = useState<MapLatLngBounds | null>(null);
+	const lastBoundsKeyRef = useRef<string | null>(null);
 
-	const [searchValue, setSearchValue] = useSearchInput(params.q, (next) =>
-		void setParams({ q: next, selected: "" }),
-	);
+	const [searchValue, setSearchValue] = useSearchInput(params.q, (next) => {
+		setClusterIds(null);
+		void setParams({ q: next, selected: "" });
+	});
 
 	const mapList = useQuery({
 		...trpc.companies.mapList.queryOptions(input),
 	});
 
 	const rows = mapList.data?.rows ?? [];
-	const selected = rows.find((row) => row.id === params.selected) ?? null;
+	const clusterIdSet =
+		clusterIds == null ? null : new Set(clusterIds);
+
+	const listRows = (() => {
+		if (clusterIdSet != null) {
+			return rows.filter((row) => clusterIdSet.has(row.id));
+		}
+		if (mapBounds == null || params.hasLocation === "no") {
+			return rows;
+		}
+		return rows.filter(
+			(row) =>
+				row.latitude != null &&
+				row.longitude != null &&
+				inBounds(row.latitude, row.longitude, mapBounds),
+		);
+	})();
+
+	const selected =
+		listRows.find((row) => row.id === params.selected) ??
+		rows.find((row) => row.id === params.selected) ??
+		null;
 
 	const points = rows.flatMap((row) =>
 		row.latitude != null && row.longitude != null
@@ -51,6 +98,14 @@ export function MapPanel() {
 			: [],
 	);
 
+	function clearMapFocusAndSet(patch: Parameters<typeof setParams>[0]) {
+		setClusterIds(null);
+		void setParams(patch);
+	}
+
+	const viewportActive =
+		clusterIdSet == null && mapBounds != null && params.hasLocation !== "no";
+
 	return (
 		<div className="flex min-h-0 flex-1 flex-col gap-4 lg:flex-row">
 			<aside className="flex min-h-0 w-full shrink-0 flex-col gap-3 lg:w-96">
@@ -66,7 +121,7 @@ export function MapPanel() {
 						value={params.owner}
 						onValueChange={(value) => {
 							if (!value) return;
-							void setParams({
+							clearMapFocusAndSet({
 								owner: value as typeof params.owner,
 								selected: "",
 							});
@@ -84,7 +139,7 @@ export function MapPanel() {
 						value={params.sage}
 						onValueChange={(value) => {
 							if (!value) return;
-							void setParams({
+							clearMapFocusAndSet({
 								sage: value as typeof params.sage,
 								selected: "",
 							});
@@ -102,7 +157,7 @@ export function MapPanel() {
 						value={params.hasLocation}
 						onValueChange={(value) => {
 							if (!value) return;
-							void setParams({
+							clearMapFocusAndSet({
 								hasLocation: value as typeof params.hasLocation,
 								selected: "",
 							});
@@ -119,7 +174,7 @@ export function MapPanel() {
 						<Select
 							value={params.sort}
 							onValueChange={(value) =>
-								void setParams({
+								clearMapFocusAndSet({
 									sort: value as typeof params.sort,
 									selected: "",
 								})
@@ -137,7 +192,7 @@ export function MapPanel() {
 						<Select
 							value={params.dir}
 							onValueChange={(value) =>
-								void setParams({
+								clearMapFocusAndSet({
 									dir: value as typeof params.dir,
 									selected: "",
 								})
@@ -154,14 +209,33 @@ export function MapPanel() {
 					</div>
 				</div>
 
-				<p className="text-muted-foreground text-xs">
-					{mapList.isLoading
-						? "Loading…"
-						: `${rows.length.toLocaleString()} companies · ${points.length.toLocaleString()} on map`}
-				</p>
+				<div className="flex flex-wrap items-center gap-2 text-muted-foreground text-xs">
+					<span>
+						{mapList.isLoading
+							? "Loading…"
+							: clusterIdSet != null
+								? `${listRows.length.toLocaleString()} in cluster · ${rows.length.toLocaleString()} match filters`
+								: viewportActive
+									? `${listRows.length.toLocaleString()} in view · ${points.length.toLocaleString()} on map`
+									: `${rows.length.toLocaleString()} companies · ${points.length.toLocaleString()} on map`}
+					</span>
+					{clusterIdSet != null ? (
+						<Button
+							type="button"
+							variant="outline"
+							size="sm"
+							onClick={() => {
+								setClusterIds(null);
+								void setParams({ selected: "" });
+							}}
+						>
+							Clear cluster
+						</Button>
+					) : null}
+				</div>
 
 				<ul className="min-h-0 flex-1 overflow-y-auto rounded-lg border border-border">
-					{rows.map((row) => {
+					{listRows.map((row) => {
 						const active = selected?.id === row.id;
 						const place = [row.city, row.stateCode].filter(Boolean).join(", ");
 						return (
@@ -200,9 +274,13 @@ export function MapPanel() {
 							</li>
 						);
 					})}
-					{!mapList.isLoading && rows.length === 0 ? (
+					{!mapList.isLoading && listRows.length === 0 ? (
 						<li className="px-3 py-6 text-center text-muted-foreground text-sm">
-							No companies match these filters.
+							{clusterIdSet != null
+								? "No companies in this cluster match the current filters."
+								: viewportActive
+									? "No companies with pins in this map view."
+									: "No companies match these filters."}
 						</li>
 					) : null}
 				</ul>
@@ -234,6 +312,18 @@ export function MapPanel() {
 							points={points}
 							selectedId={selected?.id ?? ""}
 							onSelect={(id) => void setParams({ selected: id })}
+							onClusterSelect={(ids) => {
+								setClusterIds(ids);
+								void setParams({ selected: "" });
+							}}
+							onBoundsChange={(bounds) => {
+								const key = boundsKey(bounds);
+								if (lastBoundsKeyRef.current !== key) {
+									lastBoundsKeyRef.current = key;
+									setClusterIds(null);
+								}
+								setMapBounds(bounds);
+							}}
 						/>
 					)}
 				</div>
@@ -253,10 +343,13 @@ export function MapPanel() {
 									: " · Not in Sage"}
 							</p>
 						</div>
-						<Button asChild>
-							<Link href={recordHref("/companies", "company", selected.id)}>
-								Open company
-							</Link>
+						<Button
+							type="button"
+							onClick={() =>
+								openRecord({ kind: "company", id: selected.id })
+							}
+						>
+							Open company
 						</Button>
 					</div>
 				) : null}

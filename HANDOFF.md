@@ -24,54 +24,138 @@ it before stopping. The rules for maintaining it live in `AGENTS.md`
 ## Current state (keep this section up to date)
 
 - **Git**: `origin` = `jj-mobilemark/crm` (fork); `upstream` = `trycompai/crm`
-  (read-only). Work on `main` — companies map + Dockerfile API_URL fix on
-  `origin/main`.
-- **Active plan**: `docs/plans/companies-map.md` — **DONE**. Next: deploy
-  migration on Railway, full geocode pass, smoke `/map`, then Sage push E2E /
-  sequences Mail.Send.
+  (read-only). Work on `main`.
+- **Active track done recently**: companies map UX polish (viewport list,
+  fly-to, in-place sheet) — commit pending push with this handoff. Next:
+  Sage push E2E / Entra **Mail.Send** for sequences; leave unrelated
+  `sales-dashboard.tsx` KPI tweak uncommitted unless asked.
 - **Companies map (DONE 2026-08-03)**: `/map` split list + Leaflet
   (shadcn-map); `companies.mapList`; Company lat/lng + `GeocodeCache`;
-  Nominatim script `apps/api/scripts/geocode-companies.ts`; Sage pull writes
+  Nominatim `apps/api/scripts/geocode-companies.ts`; Sage pull writes
   state/country and clears coords on location change. Migration
-  `20260803150000_add_company_geocode` applied locally. Sample geocode
-  (`--limit=15`) updated 341 companies; ~3811 unique places still need a
-  full run.
+  `20260803150000_add_company_geocode` applied locally + prod.
+  **UX**: list follows viewport (`MapBoundsListener`) / cluster click;
+  list/pin select flies + highlights; **Open company** → `useOpenRecord`
+  sheet on `/map`. Helper: `packages/db/scripts/pull-geocode-from-prod.ts`.
+- **Prod geocode (DONE)**: full pass via railway ssh —
+  `fetchedOk=3651`, `companiesUpdated=12147`. Local imported same coords
+  (3811 cache / 12319 company rows; **12147** with coords). TCP proxy gone.
 - **Prod DB**: Railway Postgres restored 1:1 from local Docker `crm` dump
   (2026-08-03) — ~14.2k companies / ~24.8k contacts / 525 deals / ~39.5k
-  Sage snapshots. Temporary TCP proxy removed after restore.
+  Sage snapshots.
 - **Prod auth URLs**: `API_URL` / `BETTER_AUTH_URL` =
   `https://api.mobilemarksalestool.com`; `APP_URL` =
-  `https://crm.mobilemarksalestool.com`. Browser bundle verified to point at
-  the real API (not localhost).
-- **Pipeline pulse + agent (DONE, 2026-08-03)**: `DealFieldChange` log; overview
-  strip/movers/feed/stuck; fourth `AgentRecordKind` `pipeline`;
+  `https://crm.mobilemarksalestool.com`.
+- **Pipeline pulse + agent (DONE, 2026-08-03)**: `DealFieldChange` log;
+  overview strip/movers/feed/stuck; `AgentRecordKind` `pipeline`;
   `AgentConversation.pipelineScope`; bridge `x-crm-pipeline` → JWT;
-  `pipelinePreamble` + `read_pipeline_pulse` (shared `loadPipelinePulse` in
-  `@crm/db`); `PipelineAgentPanel` on overview. Migrations
-  `20260803130000_add_deal_field_change` + `20260803140000_add_pipeline_scope`
-  applied locally. No history backfill. Docs: `docs/agent.md`,
-  `docs/plans/pipeline-pulse.md`, project-overview rule.
+  `pipelinePreamble` + `read_pipeline_pulse`; `PipelineAgentPanel`.
+  Migrations `20260803130000` + `20260803140000`. Docs:
+  `docs/agent.md`, `docs/plans/pipeline-pulse.md`.
 - **Local API**: `bun run src/main.ts` in `apps/api` (:3001). App `bun run
-  dev` on :3000. Restart agent if `eve` is running after agent code changes.
-- **Deal/task priority + Tasks page**: nullable `Priority` on Deal/Activity;
-  `/tasks` page. Migration `20260803110000_add_priority`.
+  dev` on :3000. Restart API after new tRPC procedures (no HMR for routers).
+- **Deal/task priority + Tasks page**: nullable `Priority`; `/tasks`.
+  Migration `20260803110000_add_priority`.
 - **Email sequences**: `/sequences` + Nest tick; needs Entra **Mail.Send**.
-- **Verification**: check-types app + api + db + ui green for map work.
-- **Auth / env**: allow-list `ALLOWED_SIGN_IN=mobilemark.com`; Microsoft SSO
-  works. `MICROSOFT_*` + `CRON_SECRET` + `SAGE_SOAP_*` + `AGENT_BRIDGE_SECRET`
-  in root `.env` (never record secrets here).
-- **Local CRM data**: Sage backfill data — do not re-run `bun run db:seed`
+- **Auth / env**: `ALLOWED_SIGN_IN=mobilemark.com`; Microsoft SSO works.
+  Secrets only in root `.env`.
+- **Local CRM data**: Sage backfill — do not re-run `bun run db:seed`
   casually.
 - **Key files (companies map)**:
   - `docs/plans/companies-map.md`
   - `apps/app/app/(app)/map/`
   - `apps/api/src/companies/companies.contracts.ts` (`mapList`)
   - `apps/api/scripts/geocode-companies.ts`
-  - `packages/ui/src/components/map.tsx`
+  - `packages/db/scripts/pull-geocode-from-prod.ts`
+  - `packages/ui/src/components/map.tsx` (`MapBoundsListener`, `MapFlyTo`)
 
 ---
 
 ## Work log
+
+### 2026-08-03 — Map UX polish commit (viewport, fly-to, sheet)
+
+**What was completed**
+- Viewport-driven left list + cluster filter; fly-to / highlight on
+  select; **Open company** via `useOpenRecord` on `/map`.
+- `MapBoundsListener` + `MapFlyTo` in `packages/ui/src/components/map.tsx`.
+- `packages/db/scripts/pull-geocode-from-prod.ts` for prod→local coords.
+- Docs: `docs/plans/companies-map.md`, `.cursor/rules/project-overview.mdc`,
+  this handoff.
+
+**How and why**
+- Map felt disconnected from the list and forced a leave to `/companies`
+  for details.
+
+**Deviations**
+- Left unrelated `sales-dashboard.tsx` "Due this month" KPI edit out of
+  this commit.
+
+**What's next**
+- Deploy app so prod `/map` gets UX polish (geocode already on prod).
+- Sage push E2E / sequences Mail.Send, or commit sales-dashboard KPI if
+  wanted.
+
+### 2026-08-03 — Map opens company sheet in place
+
+**What was completed**
+- Map **Open company** uses `useOpenRecord` so `CompanySheet` opens over
+  `/map` (same `RecordSheetHost` as tables). No navigate to `/companies`.
+- Docs: `docs/plans/companies-map.md`.
+
+**How and why**
+- User wants company details without leaving the map.
+
+**Deviations**
+- None.
+
+**What's next**
+- Smoke: select company on `/map` → Open company → sheet; close → still on map.
+
+### 2026-08-03 — Map list follows viewport / cluster
+
+**What was completed**
+- Left company list filters to pins in the current map bounds
+  (`MapBoundsListener` in `packages/ui/src/components/map.tsx`;
+  `map-panel.tsx` / `companies-map-canvas.tsx`).
+- Status shows `N in view · M on map`. Cluster click still narrows
+  further (Clear cluster); pan/zoom returns to viewport filter.
+- Fixed cluster company ids via marker `title` + coord fallback
+  (`Map` import had shadowed `globalThis.Map`).
+
+**How and why**
+- Zoomed map still listed Dallas/London companies; cluster filter was
+  a no-op when marker ids were missing.
+
+**Deviations**
+- None.
+
+**What's next**
+- Reload `/map`, zoom into a region, confirm the list matches the view.
+
+### 2026-08-03 — Pull prod geocode → local DB
+
+**What was completed**
+- Fixed import path in `packages/db/scripts/pull-geocode-from-prod.ts`
+  (`../src/generated/prisma/client`).
+- Pulled via Railway TCP proxy `sakura.proxy.rlwy.net:28329`: 3811
+  `GeocodeCache` rows + 12319 company geocode fields → local DB.
+  Local companies with coords: **12147**. `missingLocally=0`.
+- Deleted production TCP proxy (`0473c027-…`); `railway tcp-proxy list`
+  now empty.
+
+**How and why**
+- User asked to run the full prod→local copy (SSH `bun -e` + `@crm/db`
+  failed in the container; file-based script against proxy works).
+- Read-only from prod; write only to local `DATABASE_URL`.
+
+**Deviations**
+- None material (transient Python f-string error when re-reading proxy
+  env; existing PROXY_* env still worked).
+
+**What's next**
+- Open `/map` locally and confirm pins. Optionally commit the pull script
+  + cluster-click list filter if still uncommitted.
 
 ### 2026-08-03 — Companies map page (`/map`)
 
