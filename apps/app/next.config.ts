@@ -28,6 +28,17 @@ const apiUrl =
 	process.env.NEXT_PUBLIC_API_URL ??
 	"http://localhost:3001";
 
+// Fail Railway/CI builds early if the browser would still point at localhost —
+// that deploys cleanly, then every auth call CORS-fails in production.
+if (
+	(process.env.RAILWAY_ENVIRONMENT || process.env.CI) &&
+	(/localhost|127\.0\.0\.1/.test(apiUrl) || !apiUrl)
+) {
+	throw new Error(
+		`API_URL must be a public origin for production builds (got ${JSON.stringify(apiUrl)}). Set API_URL on the app service and declare ARG/ENV in Dockerfile.app.`,
+	);
+}
+
 const nextConfig: NextConfig = {
 	env: {
 		NEXT_PUBLIC_API_URL: apiUrl,
