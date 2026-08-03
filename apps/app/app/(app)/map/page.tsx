@@ -39,7 +39,7 @@ export default async function MapPage({
 				<PageShellHeading>
 					<PageShellTitle>Map</PageShellTitle>
 					<PageShellDescription>
-						Companies by city — filter by owner and Sage link.
+						Companies by city — filter by owner and Sage 100 link.
 					</PageShellDescription>
 				</PageShellHeading>
 			</PageShellHeader>

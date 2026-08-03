@@ -17,7 +17,7 @@ export type MapCompanyPoint = {
 	latitude: number;
 	longitude: number;
 	isMine: boolean;
-	sageCrmCompanyId: string | null;
+	sage100CustomerNo: string | null;
 };
 
 export type { MapLatLngBounds };
@@ -32,7 +32,7 @@ type MarkerWithCompany = {
 
 function markerTone(point: MapCompanyPoint): string {
 	if (point.isMine) return "text-primary";
-	if (point.sageCrmCompanyId) return "text-chart-2";
+	if (point.sage100CustomerNo) return "text-chart-2";
 	return "text-warning";
 }
 

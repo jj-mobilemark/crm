@@ -25,9 +25,10 @@ Leaflet pins ([shadcn-map](https://shadcn-map.vercel.app/)).
   (`SOURCE_DATABASE_URL=…`).
 
 - API: `companies.mapList` — filters `owner` (`all`|`me`|`unassigned`|userId),
-  `sage` (`all`|`linked`|`unlinked`), `hasLocation`, sort `name`|`city`|`owner`.
-- UI: rail **Map** → `/map` split view; pins colored mine (primary) / Sage
-  (`chart-2`) / no Sage (`warning`).
+  `sage` (`all`|`linked`|`unlinked` on **Sage 100** `sage100CustomerNo`),
+  `hasLocation`, sort `name`|`city`|`owner`.
+- UI: rail **Map** → `/map` split view; pins colored mine (primary) /
+  Sage 100 (`chart-2`) / no Sage 100 (`warning`).
 - **Map ↔ list**: left list filters to the current viewport (`N in view`);
   cluster click narrows further; selecting a row flies to the pin and
   highlights it; **Open company** opens `CompanySheet` over `/map` via

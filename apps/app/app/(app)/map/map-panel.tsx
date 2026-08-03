@@ -109,7 +109,7 @@ export function MapPanel() {
 						latitude: row.latitude,
 						longitude: row.longitude,
 						isMine: row.isMine,
-						sageCrmCompanyId: row.sageCrmCompanyId,
+						sage100CustomerNo: row.sage100CustomerNo,
 					},
 				]
 			: [],
@@ -178,9 +178,9 @@ export function MapPanel() {
 						size="sm"
 						className="justify-start"
 					>
-						<ToggleGroupItem value="all">Any Sage</ToggleGroupItem>
-						<ToggleGroupItem value="linked">Has Sage ID</ToggleGroupItem>
-						<ToggleGroupItem value="unlinked">No Sage ID</ToggleGroupItem>
+						<ToggleGroupItem value="all">Any Sage 100</ToggleGroupItem>
+						<ToggleGroupItem value="linked">Has Sage 100</ToggleGroupItem>
+						<ToggleGroupItem value="unlinked">No Sage 100</ToggleGroupItem>
 					</ToggleGroup>
 					<ToggleGroup
 						type="single"
@@ -295,7 +295,7 @@ export function MapPanel() {
 												"size-2 shrink-0 rounded-full",
 												row.isMine
 													? "bg-primary"
-													: row.sageCrmCompanyId
+													: row.sage100CustomerNo
 														? "bg-chart-2"
 														: "bg-warning",
 											)}
@@ -334,11 +334,11 @@ export function MapPanel() {
 					</span>
 					<span className="inline-flex items-center gap-1.5">
 						<span className="size-2 rounded-full bg-chart-2" aria-hidden />
-						Has Sage ID
+						Has Sage 100
 					</span>
 					<span className="inline-flex items-center gap-1.5">
 						<span className="size-2 rounded-full bg-warning" aria-hidden />
-						No Sage ID
+						No Sage 100
 					</span>
 				</div>
 
@@ -384,9 +384,9 @@ export function MapPanel() {
 									.join(", ") || "No location on file"}
 								{selected.domain ? ` · ${selected.domain}` : ""}
 								{selected.owner ? ` · ${selected.owner.name}` : " · Unassigned"}
-								{selected.sageCrmCompanyId
-									? ` · Sage ${selected.sageCrmCompanyId}`
-									: " · Not in Sage"}
+								{selected.sage100CustomerNo
+									? ` · Sage 100 ${selected.sage100CustomerNo}`
+									: " · No Sage 100"}
 							</p>
 						</div>
 						<Button

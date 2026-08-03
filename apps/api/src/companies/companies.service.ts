@@ -121,7 +121,8 @@ export type CompanyMapRow = {
 	country: string | null;
 	latitude: number | null;
 	longitude: number | null;
-	sageCrmCompanyId: string | null;
+	/** Sage 100 customer number (`mas_customerno`), not Sage CRM id. */
+	sage100CustomerNo: string | null;
 	owner: {
 		id: string;
 		name: string;
@@ -256,7 +257,7 @@ export class CompaniesService {
 				country: true,
 				latitude: true,
 				longitude: true,
-				sageCrmCompanyId: true,
+				sage100CustomerNo: true,
 				owner: { select: OWNER_SELECT },
 			},
 		});
@@ -272,7 +273,7 @@ export class CompaniesService {
 				country: row.country,
 				latitude: row.latitude,
 				longitude: row.longitude,
-				sageCrmCompanyId: row.sageCrmCompanyId,
+				sage100CustomerNo: row.sage100CustomerNo,
 				owner: row.owner,
 				isMine: row.owner?.id === userId,
 			})),
@@ -671,15 +672,16 @@ export class CompaniesService {
 		};
 
 		if (input.sage === "linked") {
-			// Non-null and non-empty — empty string is not a real Sage id.
+			// Sage 100 customer # (ERP), not Sage CRM companyid — most CRM
+			// companies have a CRM id; only ~1/3 have a Sage 100 link.
 			where.AND = [
 				...(Array.isArray(where.AND)
 					? where.AND
 					: where.AND
 						? [where.AND]
 						: []),
-				{ sageCrmCompanyId: { not: null } },
-				{ NOT: { sageCrmCompanyId: "" } },
+				{ sage100CustomerNo: { not: null } },
+				{ NOT: { sage100CustomerNo: "" } },
 			];
 		} else if (input.sage === "unlinked") {
 			where.AND = [
@@ -689,7 +691,7 @@ export class CompaniesService {
 						? [where.AND]
 						: []),
 				{
-					OR: [{ sageCrmCompanyId: null }, { sageCrmCompanyId: "" }],
+					OR: [{ sage100CustomerNo: null }, { sage100CustomerNo: "" }],
 				},
 			];
 		}

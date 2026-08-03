@@ -32,7 +32,7 @@ export const companyMapListInput = z.object({
 	q: z.string().default(""),
 	/** A user id, `"me"`, `"unassigned"`, or `"all"`. */
 	owner: z.string().default("all"),
-	/** `"all"` | `"linked"` (has Sage CRM id) | `"unlinked"`. */
+	/** `"all"` | `"linked"` (has Sage 100 customer #) | `"unlinked"`. */
 	sage: z.enum(["all", "linked", "unlinked"]).default("all"),
 	/** `"all"` | `"yes"` (has lat/lng) | `"no"`. */
 	hasLocation: z.enum(["all", "yes", "no"]).default("all"),

@@ -43,8 +43,9 @@ it before stopping. The rules for maintaining it live in `AGENTS.md`
   sheet on `/map`. Helper: `packages/db/scripts/pull-geocode-from-prod.ts`.
   **Filter empty flash (FIXED 2026-08-03)**: keep previous
   `mapList` data while refetching; reset stale Leaflet bounds on
-  filter change; ignore degenerate bounds; surface query errors;
-  Sage linked/unlinked treat `""` as unlinked.
+  filter change; ignore degenerate bounds; surface query errors.
+  **Sage filter = Sage 100** (`sage100CustomerNo`), not CRM id —
+  ~4.8k linked / ~9.5k unlinked locally.
 - **Prod geocode (DONE)**: full pass via railway ssh —
   `fetchedOk=3651`, `companiesUpdated=12147`. Local imported same coords
   (3811 cache / 12319 company rows; **12147** with coords). TCP proxy gone.
@@ -80,6 +81,29 @@ it before stopping. The rules for maintaining it live in `AGENTS.md`
 ---
 
 ## Work log
+
+### 2026-08-03 — Map Sage filter uses Sage 100, not CRM
+
+**What was completed**
+- Map `sage=linked|unlinked` now filters on `Company.sage100CustomerNo`
+  (ERP customer #), not `sageCrmCompanyId`.
+- Pins / list dots / legend / selected footer / page blurb say
+  Sage 100. `CompanyMapRow` returns `sage100CustomerNo`.
+- Files: `companies.service.ts`, `companies.contracts.ts`,
+  `map-panel.tsx`, `companies-map-canvas.tsx`, `map/page.tsx`,
+  `docs/plans/companies-map.md`.
+
+**How and why**
+- Every company has a Sage CRM id after the full pull, so “Has Sage
+  ID” was a no-op. Reps care about Sage 100 (~4.8k with / ~9.5k
+  without).
+
+**Deviations**
+- URL param stays `sage=linked|unlinked` (same values, new meaning).
+
+**What's next**
+- Restart local Nest; smoke `/map` → Has Sage 100 (~4.5k pins) vs
+  No Sage 100 (~7.6k pins).
 
 ### 2026-08-03 — Map filter “Has Sage ID” empty results
 
