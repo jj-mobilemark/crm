@@ -25,6 +25,32 @@ it before stopping. The rules for maintaining it live in `AGENTS.md`
 
 - **Git**: `origin` = `jj-mobilemark/crm` (fork); `upstream` = `trycompai/crm`
   (read-only). Work on `main`.
+- **Map re-geocode after state/country (DONE local + prod 2026-08-04)**:
+  Stale city-only place keys (`englewood||`) pinned wrong cities
+  (Englewood CO→NJ, etc.). Cleared with `--refresh-stale`; re-ran with
+  **Open-Meteo** (`concurrency=4`, `--no-fallback`). Local ~5.5 min
+  (4888 places → 7375 companies); prod ~20 min (5436 places → 10931
+  companies). Spot-check: Englewood/Aurora CO in Denver bbox. ~1k
+  unique places still uncached-as-fail (junk/odd city strings). Code
+  not fully committed: `open-meteo.geocoder.ts` + geocode script edits.
+  Docs: `docs/plans/companies-map.md`. TCP proxy deleted after.
+- **Trip Planner UI polish (DONE local 2026-08-04)**: `/trip-planner`
+  rebuilt to match CRM density — Empty state, trip list with
+  StatusIndicator, focused create form (FieldSet / ToggleGroup),
+  edit workspace with brief + itinerary + agent. Files:
+  `trip-planner-client.tsx`, `trip-planner/page.tsx`. Plan:
+  `docs/plans/trip-planner.md`.
+- **Trip Planner (DONE local 2026-08-04)**: New `/trip-planner` nav
+  (Carbon Plane). Persisted `TripPlan` + agent kind `trip`
+  (`x-crm-trip` → `tripPlanId`). Deal-only ACTIVE/SALVAGE ranking via
+  shared `@crm/db` helpers; no owner filter. Agent tools
+  `read_trip_plan` / `search_trip_candidates` / `write_trip_itinerary`.
+  Client PDF via `jspdf`. Plan: `docs/plans/trip-planner.md`.
+  Migration `20260804150000_add_trip_plan` applied locally.
+- **TEMPORARY agent model (2026-08-04)**: research agent on
+  `deepseek/deepseek-v4-pro` for cheaper testing; **revert to
+  `anthropic/claude-sonnet-5` when done**. Files:
+  `apps/agent/agent/agent.ts`, `.cursor/rules/project-overview.mdc`.
 - **Fact accept → Sage push (DONE local 2026-08-04)**: Accepting a
   contact fact for `title` or `name` enqueues `SageOutbox` the same way
   as editing those fields in Details (`contacts.decideFact` →
@@ -237,6 +263,119 @@ it before stopping. The rules for maintaining it live in `AGENTS.md`
 ---
 
 ## Work log
+
+### 2026-08-04 — Map re-geocode (Open-Meteo, faster)
+
+**What was completed**
+- Stale geocodes (place key without state, e.g. `englewood||`) cleared
+  via `--refresh-stale` on local + prod.
+- Default geocoder switched to Open-Meteo with concurrency 4; Photon
+  and Nominatim kept as `--provider=` options. Retryable errors (429)
+  are not permanently cached.
+- Local: 4888 places in ~330s → 7375 companies updated (3870 ok /
+  1008 fail). Prod: 5436 places in ~1218s → 10931 companies updated
+  (4367 ok / 1068 fail). TCP proxy deleted after.
+- Files: `apps/api/scripts/geocode-companies.ts`,
+  `apps/api/src/geocode/open-meteo.geocoder.ts` (new),
+  `photon.geocoder.ts`, `docs/plans/companies-map.md`.
+
+**How and why**
+- Nominatim at 1 req/s would take ~90 min for ~5k unique places.
+  Open-Meteo allows parallel lookups and finished local in ~5.5 min.
+- State/country snapshot backfill left old lat/lng; map showed
+  Englewood CO near NYC until keys were refreshed.
+
+**Deviations**
+- Photon hit 429 / was unreachable from this IP; Open-Meteo became
+  the default instead. Ran prod with `--no-fallback` to avoid
+  Nominatim rate limits during the bulk pass.
+
+**What's next**
+- Commit/push Open-Meteo + script changes if desired.
+- Optional: clear failed `GeocodeCache` rows and retry with Nominatim
+  fallback for the ~1k miss places.
+- Reload `/map` and confirm CO / ambiguous cities look right.
+
+### 2026-08-04 — Trip Planner UI polish
+
+**What was completed**
+- Rebuilt `/trip-planner` client UX to match CRM patterns
+  (`Empty`, `StatusIndicator`, `FieldSet` / `FieldGroup`,
+  `ToggleGroup` for Active/Salvage, numbered itinerary stops).
+- Flow: list → focused create → edit workspace (brief | itinerary
+  + agent) with back navigation, PDF/Delete in the trip header.
+- Files: `apps/app/app/(app)/trip-planner/trip-planner-client.tsx`,
+  `page.tsx`; status note in `docs/plans/trip-planner.md`.
+
+**How and why**
+- First-pass form was functional but sparse; polish uses the same
+  composition as Sequences / Follow-ups so the page reads as part
+  of the product, not a wireframe.
+
+**Deviations**
+- None vs locked trip-planner decisions (still CRM density, `@crm/ui`
+  only — no marketing layout).
+
+**What's next**
+- Smoke-test the polished flows locally (empty → create → agent →
+  PDF).
+- Apply `TripPlan` migration on Railway when deploying API.
+- Optional later: map overlay of itinerary stops.
+
+### 2026-08-04 — Trip Planner (v1)
+
+**What was completed**
+- Schema: `TripPlan` + `TripActivityMode` / `TripPlanStatus` +
+  `AgentConversation.tripPlanId` (migration `20260804150000`).
+- Shared loaders: `packages/db/src/trip-plan.ts` (haversine,
+  ACTIVE/SALVAGE deals-only, must-visits, itinerary write).
+- Nest: `apps/api/src/trip-plans/*` CRUD + hub geocode;
+  `companies.nearHub` for the must-visit picker; Sage 100 # in
+  company search filter.
+- App: `/trip-planner` page, nav Plane icon, multi company picker,
+  `TripAgentPanel`, client PDF (`jspdf`).
+- Agent: kind `trip` end-to-end (record / bridge / proxy /
+  conversations / preamble / tools / transcript VERBS /
+  instructions.md).
+- Docs: `docs/plans/trip-planner.md`.
+
+**How and why**
+- Mirrors pipeline agent specialization: persist brief, pass
+  `tripPlanId` in JWT, mechanical candidate query in DB, agent
+  sequences days and writes itinerary JSON for PDF.
+
+**Deviations**
+- Nav icon is Carbon `Plane` (no `Airplane` in the icon set).
+- PDF via `jspdf` rather than `@react-pdf/renderer`.
+
+**What's next**
+- Smoke-test locally: create trip → agent plan → PDF download.
+- Apply migration on Railway when deploying API.
+- Optional later: map overlay of itinerary stops.
+
+### 2026-08-04 — Temporary cheaper agent model (DeepSeek V4 Pro)
+
+**What was completed**
+- Switched research agent model from `anthropic/claude-sonnet-5` to
+  `deepseek/deepseek-v4-pro` for cheaper testing / token burn.
+- Clear TEMPORARY + revert comments in
+  `apps/agent/agent/agent.ts` and
+  `.cursor/rules/project-overview.mdc`.
+
+**How and why**
+- Need a cheaper model while iterating; still want agentic tool use.
+- Skipped `openai/gpt-5.6-luna` (economy tier, not a Sonnet peer).
+- Skipped Kimi K3 (often pricier than Sonnet on Gateway).
+- DeepSeek V4 Pro is tagged for agentic tool orchestration and is far
+  cheaper (~$0.44/$0.87 vs Sonnet ~$2/$10). Safer peer if quality
+  drops: `openai/gpt-5.6-terra`.
+
+**Deviations**
+- Temporary only — plan is to revert to `anthropic/claude-sonnet-5`.
+
+**What's next**
+- Redeploy / restart the Railway `agent` service so the new model
+  loads. Watch identity-matching quality; revert when testing ends.
 
 ### 2026-08-04 — Accepting title/name facts enqueues Sage push
 

@@ -1,4 +1,9 @@
-import { db, loadPipelinePulse, type PipelinePulseScope } from "@crm/db";
+import {
+	db,
+	loadPipelinePulse,
+	loadTripPlan,
+	type PipelinePulseScope,
+} from "@crm/db";
 import { capabilitiesMarkdown } from "./capabilities";
 import { loadFollowupPrefs } from "./followups";
 
@@ -46,6 +51,7 @@ export async function sessionPreamble(
 		companyId?: string | null;
 		dealId?: string | null;
 		pipelineScope?: string | null;
+		tripPlanId?: string | null;
 		/** Acting rep — needed for Me-scoped pipeline pulse. */
 		actingUserId?: string | null;
 		userId?: string | null;
@@ -62,6 +68,7 @@ export async function sessionPreamble(
 			opened,
 		);
 	}
+	if (record.tripPlanId) return tripPreamble(record.tripPlanId, opened);
 	if (record.userId) return followupsPreamble(record.userId, opened);
 	return noRecordPreamble();
 }
@@ -422,6 +429,74 @@ export async function pipelinePreamble(
 		"",
 		capabilitiesMarkdown(),
 	].join("\n");
+
+	return { markdown, focus: {} };
+}
+
+/**
+ * Trip Planner session — hub, days, activity mode, and must-visits from the
+ * saved TripPlan. Candidate ranking and itinerary write are tools.
+ */
+export async function tripPreamble(
+	tripPlanId: string,
+	opened: Opened,
+): Promise<Preamble> {
+	const plan = await loadTripPlan(db, tripPlanId);
+
+	if (!plan) {
+		return {
+			markdown: [
+				"## This session",
+				"",
+				`Trip plan \`${tripPlanId}\` was not found. Ask the rep to reopen Trip Planner.`,
+				"",
+				capabilitiesMarkdown(),
+			].join("\n"),
+			focus: {},
+		};
+	}
+
+	const modeLabel =
+		plan.activityMode === "ACTIVE"
+			? `active customers (deal opened or closed in the last ${plan.activityYears} year(s))`
+			: `salvage (no deal opened or closed in the last ${plan.activityYears} year(s))`;
+
+	const markdown = [
+		"## This session",
+		"",
+		"A rep is planning a **sales trip** in Trip Planner.",
+		`Trip plan id: \`${plan.id}\`.`,
+		`Hub: **${plan.hubCity}, ${plan.hubStateCode}** (${plan.hubLatitude.toFixed(4)}, ${plan.hubLongitude.toFixed(4)}).`,
+		`${plan.dayCount} day(s), ${plan.radiusMiles} mile radius, mode: ${modeLabel}.`,
+		plan.maxVisitsPerDay
+			? `Max visits per day: ${plan.maxVisitsPerDay}.`
+			: "No max visits per day set.",
+		plan.mustVisitCompanyIds.length > 0
+			? `Must-visit company ids (${plan.mustVisitCompanyIds.length}): ${plan.mustVisitCompanyIds.map((id) => `\`${id}\``).join(", ")}.`
+			: "No must-visit companies selected — propose from candidates.",
+		plan.notes ? `Rep notes: ${plan.notes}` : "",
+		plan.itinerary
+			? "An itinerary is already saved — refine it if asked, then call `write_trip_itinerary` again."
+			: "No itinerary saved yet.",
+		"",
+		opening(
+			opened,
+			"who to visit near the hub, how to sequence days, or finalize the itinerary",
+		),
+		"",
+		"**Which tool:**",
+		`- **Read the brief** → \`read_trip_plan\` with tripPlanId \`${plan.id}\`.`,
+		`- **Rank nearby companies** → \`search_trip_candidates\` with tripPlanId \`${plan.id}\`. Returns a capped ranked list (must-visits first, then open pipeline, deal activity, distance). Never invent companies.`,
+		`- **Save the day plan** → \`write_trip_itinerary\` with structured days/stops. Call this when the plan is ready so the rep can download a PDF.`,
+		"",
+		"Ask clarifying questions (hotel city, drive vs fly between stops) with `ask_question` when needed.",
+		"Prefer must-visits and higher open-pipeline / recent-deal activity within the radius.",
+		"Do not filter by owner — every account in the region is in scope.",
+		"",
+		capabilitiesMarkdown(),
+	]
+		.filter(Boolean)
+		.join("\n");
 
 	return { markdown, focus: {} };
 }

@@ -93,6 +93,7 @@ export class ConversationsService {
 				...(input.pipelineScope
 					? { pipelineScope: input.pipelineScope }
 					: {}),
+				...(input.tripPlanId ? { tripPlanId: input.tripPlanId } : {}),
 			},
 			orderBy: { lastMessageAt: "desc" },
 			take: 20,
@@ -144,6 +145,7 @@ export class ConversationsService {
 				companyId: input.companyId ?? null,
 				dealId: input.dealId ?? null,
 				pipelineScope: input.pipelineScope ?? null,
+				tripPlanId: input.tripPlanId ?? null,
 			},
 			update: {
 				continuationToken: input.continuationToken ?? null,
@@ -214,6 +216,7 @@ export class ConversationsService {
 				companyId: true,
 				dealId: true,
 				pipelineScope: true,
+				tripPlanId: true,
 				sessionId: true,
 			},
 		});
@@ -237,7 +240,9 @@ export class ConversationsService {
 					conversation.dealId ??
 					(conversation.pipelineScope
 						? `pipeline:${conversation.pipelineScope}`
-						: ""),
+						: null) ??
+					conversation.tripPlanId ??
+					"",
 			),
 		);
 
@@ -252,17 +257,19 @@ export class ConversationsService {
 		companyId?: string;
 		dealId?: string;
 		pipelineScope?: string;
+		tripPlanId?: string;
 	}): string {
 		const keys = [
 			input.contactId,
 			input.companyId,
 			input.dealId,
 			input.pipelineScope ? `pipeline:${input.pipelineScope}` : undefined,
+			input.tripPlanId,
 		].filter(Boolean);
 
 		if (keys.length !== 1) {
 			throw new BadRequestException(
-				"A conversation belongs to a contact, a company, a deal, or the pipeline.",
+				"A conversation belongs to a contact, a company, a deal, the pipeline, or a trip plan.",
 			);
 		}
 

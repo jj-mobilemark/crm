@@ -39,3 +39,15 @@ export {
 	type PipelineReportMode,
 	type PipelineReportScope,
 } from "./pipeline-report";
+export {
+	loadTripPlan,
+	searchTripCandidates,
+	writeTripItinerary,
+	TRIP_CANDIDATE_LIMIT,
+	type SearchTripCandidatesInput,
+	type TripCandidate,
+	type TripItinerary,
+	type TripItineraryDay,
+	type TripItineraryStop,
+	type TripPlanSummary,
+} from "./trip-plan";

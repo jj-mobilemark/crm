@@ -69,10 +69,12 @@ async function handler(request: Request): Promise<Response> {
 	const companyId = request.headers.get("x-crm-company");
 	const dealId = request.headers.get("x-crm-deal");
 	const pipelineScope = request.headers.get("x-crm-pipeline");
+	const tripPlanId = request.headers.get("x-crm-trip");
 	headers.delete("x-crm-contact");
 	headers.delete("x-crm-company");
 	headers.delete("x-crm-deal");
 	headers.delete("x-crm-pipeline");
+	headers.delete("x-crm-trip");
 
 	headers.set(
 		"authorization",
@@ -88,6 +90,7 @@ async function handler(request: Request): Promise<Response> {
 				dealId: cuid(dealId),
 				// Scope is `me` / `everyone` — not a cuid. Drop anything else.
 				pipelineScope: pipelineScopeLiteral(pipelineScope),
+				tripPlanId: cuid(tripPlanId),
 			},
 		)}`,
 	);

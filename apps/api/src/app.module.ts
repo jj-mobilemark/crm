@@ -23,6 +23,7 @@ import { SageModule } from "./sage/sage.module";
 import { ScreeningModule } from "./screening/screening.module";
 import { SearchModule } from "./search/search.module";
 import { SequencesModule } from "./sequences/sequences.module";
+import { TripPlansModule } from "./trip-plans/trip-plans.module";
 import { TrpcModule } from "./trpc/trpc.module";
 import { UsersModule } from "./users/users.module";
 
@@ -55,6 +56,7 @@ import { UsersModule } from "./users/users.module";
 		ScreeningModule,
 		FollowupsModule,
 		SequencesModule,
+		TripPlansModule,
 	],
 })
 export class AppModule {}

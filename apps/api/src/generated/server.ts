@@ -14,7 +14,7 @@ import { z } from "zod";
 const t = initTRPC.create();
 const publicProcedure = t.procedure;
 import { timelineInput, timelineCountsInput, myTasksInput, activityCreateInput, completeInput, setPriorityInput } from "../activities/activities.contracts";
-import { companyListInput, companyMapListInput, companyIdInput, companyOptionsInput, companySimilarInput, companyCreateInput, companyUpdateArgs, setPrimaryContactInput } from "../companies/companies.contracts";
+import { companyListInput, companyMapListInput, companyIdInput, companyOptionsInput, companyNearHubInput, companySimilarInput, companyCreateInput, companyUpdateArgs, setPrimaryContactInput } from "../companies/companies.contracts";
 import { contactListInput, contactIdInput, contactOptionsInput, contactCreateInput, contactUpdateArgs, factDecisionInput } from "../contacts/contacts.contracts";
 import { conversationListInput, conversationEventsInput, conversationSaveInput, conversationIdInput } from "../conversations/conversations.contracts";
 import { dashboardSummaryInput, dashboardRepSummaryInput, dashboardCertaintyByRepInput } from "../dashboard/dashboard.contracts";
@@ -24,6 +24,7 @@ import { setAutoCreateInput, suppressDomainInput, threadInput, calendarEventInpu
 import { msSetAutoCreateInput, msSuppressDomainInput, msThreadInput, msCalendarEventInput } from "../microsoft/microsoft.contracts";
 import { screeningDecideInput } from "../screening/screening.contracts";
 import { sequenceIdInput, enrollmentListInput, sequenceCreateInput, sequenceUpdateInput, sequenceReplaceStepsInput, sequenceEnrollInput, enrollmentIdInput } from "../sequences/sequences.contracts";
+import { tripPlanIdInput, tripPlanCreateInput, tripPlanUpdateInput, tripPlanCandidatesInput } from "../trip-plans/trip-plans.contracts";
 import type { ActivitiesRouter } from "../activities/activities.router";
 import type { CompaniesRouter } from "../companies/companies.router";
 import type { ContactsRouter } from "../contacts/contacts.router";
@@ -36,6 +37,7 @@ import type { MicrosoftRouter } from "../microsoft/microsoft.router";
 import type { ScreeningRouter } from "../screening/screening.router";
 import type { SearchRouter } from "../search/search.router";
 import type { SequencesRouter } from "../sequences/sequences.router";
+import type { TripPlansRouter } from "../trip-plans/trip-plans.router";
 import type { UsersRouter } from "../users/users.router";
 
 const appRouter = t.router({
@@ -72,6 +74,9 @@ const appRouter = t.router({
     options: publicProcedure
       .input(companyOptionsInput)
       .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<CompaniesRouter["options"]>>),
+    nearHub: publicProcedure
+      .input(companyNearHubInput)
+      .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<CompaniesRouter["nearHub"]>>),
     similar: publicProcedure
       .input(companySimilarInput)
       .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<CompaniesRouter["similar"]>>),
@@ -259,6 +264,25 @@ const appRouter = t.router({
     stopEnrollment: publicProcedure
       .input(enrollmentIdInput)
       .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<SequencesRouter["stopEnrollment"]>>)
+    }),
+  tripPlans: t.router({
+    list: publicProcedure
+      .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<TripPlansRouter["list"]>>),
+    get: publicProcedure
+      .input(tripPlanIdInput)
+      .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<TripPlansRouter["get"]>>),
+    create: publicProcedure
+      .input(tripPlanCreateInput)
+      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<TripPlansRouter["create"]>>),
+    update: publicProcedure
+      .input(tripPlanUpdateInput)
+      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<TripPlansRouter["update"]>>),
+    delete: publicProcedure
+      .input(tripPlanIdInput)
+      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<TripPlansRouter["delete"]>>),
+    candidates: publicProcedure
+      .input(tripPlanCandidatesInput)
+      .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<TripPlansRouter["candidates"]>>)
     }),
   users: t.router({
     me: publicProcedure

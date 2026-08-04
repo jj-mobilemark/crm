@@ -80,10 +80,18 @@ surface on top, syncing bidirectionally (pull first, push later).
   opens `CompanySheet` on `/map`. Plan: `docs/plans/companies-map.md`.
   Re-run `apps/api/scripts/geocode-companies.ts` when cities change; optional
   local copy via `packages/db/scripts/pull-geocode-from-prod.ts`.
+- **Trip Planner (DONE 2026-08-04)**: `/trip-planner` — hub city/days, optional
+  must-visits, ACTIVE/SALVAGE deal windows, agent itinerary + client PDF.
+  Plan: `docs/plans/trip-planner.md`.
 - **Research agent on Railway (DONE 2026-08-03)**: always-on `agent`
   service; `Dockerfile.agent` + Node 24 start script; app
   `AGENT_URL` / `AGENT_BRIDGE_SECRET`. Ops notes:
   `docs/plans/agent-railway.md`.
+- **TEMPORARY agent model (2026-08-04)**: `apps/agent/agent/agent.ts` is on
+  `deepseek/deepseek-v4-pro` (cheaper while testing / burning tokens). **Plan
+  to change back to `anthropic/claude-sonnet-5`** when testing is done. Luna
+  was considered but skipped — economy tier, not a Sonnet peer. DeepSeek V4
+  Pro is agentic-capable and far cheaper (~$0.44/$0.87 vs Sonnet ~$2/$10).
 
 ## Prod Postgres from a laptop (temporary TCP proxy)
 
@@ -125,5 +133,6 @@ writes — interactive Prisma transactions of 100 rows time out over the proxy.
 - `docs/plans/pipeline-pulse.md` — overview pulse + pipeline agent
 - `docs/plans/pipeline-agent-reports.md` — month / stage / closing reports
 - `docs/plans/companies-map.md` — companies map + geocode script
+- `docs/plans/trip-planner.md` — sales trip planner + agent itinerary
 - `docs/plans/agent-railway.md` — eve agent on Railway (ops runbook)
 - `HANDOFF.md` — running agent handoff (current state + work log)

@@ -8,6 +8,7 @@ export const conversationListInput = z.object({
 	companyId: z.string().optional(),
 	dealId: z.string().optional(),
 	pipelineScope: pipelineScope.optional(),
+	tripPlanId: z.string().optional(),
 });
 
 export type ConversationListInput = z.infer<typeof conversationListInput>;
@@ -23,6 +24,7 @@ export const conversationSaveInput = z.object({
 	companyId: z.string().optional(),
 	dealId: z.string().optional(),
 	pipelineScope: pipelineScope.optional(),
+	tripPlanId: z.string().optional(),
 	sessionId: z.string(),
 	continuationToken: z.string().nullish(),
 	streamIndex: z.number().int().min(0).optional(),

@@ -43,6 +43,22 @@ Leaflet pins ([shadcn-map](https://shadcn-map.vercel.app/)).
   coords (`fetchedOk=3651` unique places).
 - Local: same coords imported with `pull-geocode-from-prod.ts`.
 
+## Re-geocode after state/country backfill (2026-08-04)
+
+City-only pins (`city||`) were wrong for ambiguous names (Englewood CO →
+NJ, etc.). Clear stale keys and re-run with state in the place key:
+
+```sh
+cd apps/api
+bun run scripts/geocode-companies.ts --refresh-stale --dry-run
+bun run scripts/geocode-companies.ts --refresh-stale   # clear + geocode
+# or, if coords already cleared:
+bun run scripts/geocode-companies.ts --concurrency=4
+```
+
+Default provider is **Open-Meteo** (fast, free). `--provider=photon` or
+`--provider=nominatim` (1 req/s) are available. Do not cache HTTP 429.
+
 ## Out of scope
 
 Street-level geocode / pin precision, live geocode on every Sage pull, agent

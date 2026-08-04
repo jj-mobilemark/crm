@@ -140,6 +140,20 @@ export function PipelineAgentPanel({
 	);
 }
 
+/** Trip Planner chat — thread in the trip page URL (`?thread=`). */
+export function TripAgentPanel({ tripPlanId }: { tripPlanId: string }) {
+	const [{ thread }, setParams] = useQueryStates({
+		thread: parseAsString,
+	});
+	return (
+		<AgentPanelBody
+			record={{ kind: "trip", id: tripPlanId }}
+			thread={thread}
+			setThread={(next) => void setParams({ thread: next })}
+		/>
+	);
+}
+
 function AgentPanelBody({
 	record,
 	thread,

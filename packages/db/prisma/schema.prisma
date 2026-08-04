@@ -39,6 +39,7 @@ model User {
   enrolledSequences    SequenceEnrollment[] @relation("SequenceEnroller")
   dealFieldChanges     DealFieldChange[]    @relation("DealFieldChangeActor")
   pendingContacts      PendingContact[]     @relation("PendingContactRep")
+  tripPlans            TripPlan[]           @relation("TripPlanOwner")
 
   @@unique([email])
   @@map("user")
@@ -560,8 +561,8 @@ model AgentConversation {
   id String @id @default(cuid())
 
   /// Which record it is about. Exactly one of contact/company/deal is set —
-  /// unless this is a pipeline (overview) session, which sets `pipelineScope`
-  /// instead and leaves the three FKs null.
+  /// unless this is a pipeline (overview) or trip-planner session, which set
+  /// `pipelineScope` / `tripPlanId` instead and leave the three FKs null.
   contactId String?
   contact   Contact? @relation(fields: [contactId], references: [id], onDelete: Cascade)
   companyId String?
@@ -570,8 +571,12 @@ model AgentConversation {
   deal      Deal?    @relation(fields: [dealId], references: [id], onDelete: Cascade)
 
   /// Overview pipeline chat: `"me"` or `"everyone"`. Mutually exclusive with
-  /// the three record FKs above.
+  /// the three record FKs and `tripPlanId` above.
   pipelineScope String?
+
+  /// Trip Planner chat — filed under the saved trip, not a CRM record.
+  tripPlanId String?
+  tripPlan   TripPlan? @relation(fields: [tripPlanId], references: [id], onDelete: Cascade)
 
   /// Whose conversation. Two reps asking about the same contact are having two
   /// different conversations, and neither should see the other's half-finished
@@ -595,7 +600,55 @@ model AgentConversation {
   @@index([companyId, lastMessageAt])
   @@index([dealId, lastMessageAt])
   @@index([userId, pipelineScope, lastMessageAt])
+  @@index([userId, tripPlanId, lastMessageAt])
   @@map("agentConversation")
+}
+
+/// Saved sales-trip brief for Trip Planner. The agent reads this via
+/// `tripPlanId` (JWT claim) and writes a structured itinerary JSON.
+enum TripActivityMode {
+  /// Companies with a deal created or closed within `activityYears`.
+  ACTIVE
+  /// Companies with no deal created or closed within `activityYears`.
+  SALVAGE
+}
+
+enum TripPlanStatus {
+  DRAFT
+  PLANNED
+}
+
+model TripPlan {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation("TripPlanOwner", fields: [userId], references: [id], onDelete: Cascade)
+
+  hubCity            String
+  hubStateCode       String
+  hubLatitude        Float
+  hubLongitude       Float
+  hubGeocodePlaceKey String?
+
+  dayCount       Int              @default(3)
+  radiusMiles    Int              @default(200)
+  activityMode   TripActivityMode @default(ACTIVE)
+  activityYears  Int              @default(3)
+  /// Company ids the rep already plans to visit (may be outside the radius).
+  mustVisitCompanyIds String[]    @default([])
+  maxVisitsPerDay Int?
+  notes           String?
+
+  /// Structured day→stops plan written by `write_trip_itinerary`.
+  itinerary Json?
+  status    TripPlanStatus @default(DRAFT)
+
+  conversations AgentConversation[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, updatedAt])
+  @@map("tripPlan")
 }
 
 model Deal {

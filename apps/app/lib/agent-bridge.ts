@@ -80,6 +80,7 @@ export async function mintBridgeToken(
 		dealId?: string;
 		/** Overview Me/Everyone — not a cuid; do not run through cuid(). */
 		pipelineScope?: string;
+		tripPlanId?: string;
 	} = {},
 ): Promise<string> {
 	const secret = process.env.AGENT_BRIDGE_SECRET;
@@ -98,6 +99,7 @@ export async function mintBridgeToken(
 		...(record.companyId ? { companyId: record.companyId } : {}),
 		...(record.dealId ? { dealId: record.dealId } : {}),
 		...(record.pipelineScope ? { pipelineScope: record.pipelineScope } : {}),
+		...(record.tripPlanId ? { tripPlanId: record.tripPlanId } : {}),
 		iat: now,
 		// `nbf` a little in the past: the agent allows clock skew, but there is no
 		// reason to hand it a token that is not valid yet.

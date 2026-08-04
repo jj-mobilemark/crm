@@ -1,6 +1,7 @@
 import "@crm/env/load";
 import { db, GeocodeCacheStatus } from "@crm/db";
 import { NominatimGeocoder } from "../src/geocode/nominatim.geocoder";
+import { OpenMeteoGeocoder } from "../src/geocode/open-meteo.geocoder";
 import {
 	mapPool,
 	PhotonGeocoder,
@@ -15,14 +16,13 @@ import { buildPlaceKey } from "../src/geocode/place-key";
  * Groups by place key so ~14k rows only hit the geocoder once per unique
  * city/state/country. Successful and failed lookups are cached forever.
  *
- * Default provider is Photon (Komoot / OSM) with concurrency — much faster
- * than Nominatim's 1 req/s. Use `--provider=nominatim` for the strict path.
+ * Default provider is Open-Meteo (free, fast). Photon / Nominatim remain
+ * available via `--provider=`.
  *
- *   bun run scripts/geocode-companies.ts --refresh-stale --dry-run
  *   bun run scripts/geocode-companies.ts --refresh-stale
  *   bun run scripts/geocode-companies.ts --limit=50
  *   bun run scripts/geocode-companies.ts --provider=nominatim
- *   bun run scripts/geocode-companies.ts --concurrency=8
+ *   bun run scripts/geocode-companies.ts --concurrency=4
  */
 const args = process.argv.slice(2);
 const dryRun = args.includes("--dry-run");
@@ -33,9 +33,10 @@ const limit = limitArg ? Number(limitArg.slice("--limit=".length)) : null;
 const concurrencyArg = args.find((arg) => arg.startsWith("--concurrency="));
 const concurrency = concurrencyArg
 	? Number(concurrencyArg.slice("--concurrency=".length))
-	: 8;
+	: 4;
 const providerArg = args.find((arg) => arg.startsWith("--provider="));
-const provider = (providerArg?.slice("--provider=".length) ?? "photon") as
+const provider = (providerArg?.slice("--provider=".length) ?? "open-meteo") as
+	| "open-meteo"
 	| "photon"
 	| "nominatim";
 
@@ -148,7 +149,8 @@ if (limit != null && Number.isFinite(limit) && limit > 0) {
 	places = places.slice(0, limit);
 }
 
-const effectiveConcurrency = provider === "nominatim" ? 1 : Math.max(1, concurrency);
+const effectiveConcurrency =
+	provider === "nominatim" ? 1 : Math.max(1, concurrency);
 
 console.log(
 	`Companies needing coords: ${companies.length}; unique places: ${buckets.size}; will process: ${places.length}; provider=${provider}; concurrency=${effectiveConcurrency}${dryRun ? " (dry-run)" : ""}`,
@@ -157,15 +159,19 @@ if (skippedNoKey > 0) {
 	console.log(`Skipped (no usable city): ${skippedNoKey}`);
 }
 
+const openMeteo = new OpenMeteoGeocoder();
 const photon = new PhotonGeocoder();
 const nominatim = new NominatimGeocoder();
 
 async function resolvePlace(parts: GeocodeParts): Promise<GeocodeResult> {
-	if (provider === "nominatim") {
+	if (provider === "nominatim") return nominatim.geocode(parts);
+	if (provider === "photon") {
+		const primary = await photon.geocode(parts);
+		if (primary.ok || noFallback || primary.retryable) return primary;
 		return nominatim.geocode(parts);
 	}
-	const primary = await photon.geocode(parts);
-	if (primary.ok || noFallback) return primary;
+	const primary = await openMeteo.geocode(parts);
+	if (primary.ok || noFallback || primary.retryable) return primary;
 	return nominatim.geocode(parts);
 }
 
@@ -174,8 +180,9 @@ let fetchedOk = 0;
 let fetchedFail = 0;
 let companiesUpdated = 0;
 let progressed = 0;
+const startedAt = Date.now();
 
-await mapPool(places, effectiveConcurrency, async (place) => {
+async function processPlace(place: PlaceBucket): Promise<void> {
 	const cached = await db.geocodeCache.findUnique({
 		where: { placeKey: place.placeKey },
 	});
@@ -207,24 +214,44 @@ await mapPool(places, effectiveConcurrency, async (place) => {
 			longitude = result.longitude;
 			status = GeocodeCacheStatus.ok;
 			fetchedOk += 1;
-			await db.geocodeCache.create({
-				data: {
+			await db.geocodeCache.upsert({
+				where: { placeKey: place.placeKey },
+				create: {
 					placeKey: place.placeKey,
 					latitude,
 					longitude,
 					status,
 					rawLabel: result.rawLabel,
 				},
+				update: {
+					latitude,
+					longitude,
+					status,
+					rawLabel: result.rawLabel,
+				},
 			});
+		} else if (result.retryable) {
+			fetchedFail += 1;
+			console.log(
+				`retry later ${place.placeKey} (${result.detail ?? result.reason})`,
+			);
+			return;
 		} else {
 			fetchedFail += 1;
 			status =
 				result.reason === "empty"
 					? GeocodeCacheStatus.skipped
 					: GeocodeCacheStatus.failed;
-			await db.geocodeCache.create({
-				data: {
+			await db.geocodeCache.upsert({
+				where: { placeKey: place.placeKey },
+				create: {
 					placeKey: place.placeKey,
+					latitude: null,
+					longitude: null,
+					status,
+					rawLabel: result.detail ?? result.reason,
+				},
+				update: {
 					latitude: null,
 					longitude: null,
 					status,
@@ -238,7 +265,7 @@ await mapPool(places, effectiveConcurrency, async (place) => {
 
 	if (status === GeocodeCacheStatus.ok && latitude != null && longitude != null) {
 		const now = new Date();
-		const result = await db.company.updateMany({
+		const updated = await db.company.updateMany({
 			where: { id: { in: place.companyIds } },
 			data: {
 				latitude,
@@ -247,21 +274,38 @@ await mapPool(places, effectiveConcurrency, async (place) => {
 				geocodedAt: now,
 			},
 		});
-		companiesUpdated += result.count;
+		companiesUpdated += updated.count;
 	} else {
 		await db.company.updateMany({
 			where: { id: { in: place.companyIds }, geocodePlaceKey: null },
 			data: { geocodePlaceKey: place.placeKey },
 		});
 	}
+}
 
-	progressed += 1;
-	if (progressed % 200 === 0 || progressed === places.length) {
-		console.log(
-			`  progress ${progressed}/${places.length} (ok=${fetchedOk} fail=${fetchedFail} cache=${cacheHits})`,
-		);
+if (effectiveConcurrency <= 1) {
+	for (const place of places) {
+		await processPlace(place);
+		progressed += 1;
+		if (progressed % 100 === 0 || progressed === places.length) {
+			const elapsedSec = Math.round((Date.now() - startedAt) / 1000);
+			console.log(
+				`  progress ${progressed}/${places.length} (${elapsedSec}s) ok=${fetchedOk} fail=${fetchedFail} cache=${cacheHits}`,
+			);
+		}
 	}
-});
+} else {
+	await mapPool(places, effectiveConcurrency, async (place) => {
+		await processPlace(place);
+		progressed += 1;
+		if (progressed % 100 === 0 || progressed === places.length) {
+			const elapsedSec = Math.round((Date.now() - startedAt) / 1000);
+			console.log(
+				`  progress ${progressed}/${places.length} (${elapsedSec}s) ok=${fetchedOk} fail=${fetchedFail} cache=${cacheHits}`,
+			);
+		}
+	});
+}
 
 console.log(
 	`\nDone. cacheHits=${cacheHits} fetchedOk=${fetchedOk} fetchedFail=${fetchedFail} companiesUpdated=${companiesUpdated}`,

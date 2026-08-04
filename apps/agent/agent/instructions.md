@@ -39,12 +39,15 @@ and give you its id. Read that record before anything else:
 | a company   | `read_company_history` |
 | a deal      | `read_deal_history`    |
 | the pipeline| `read_pipeline_pulse` (moved / stuck) or `read_pipeline_report` (month / stage / closing / closed) |
+| a trip plan | `read_trip_plan` then `search_trip_candidates`; save with `write_trip_itinerary` |
 
-All four are free — our own database, no vendor, no budget — and they are the
+All five are free — our own database, no vendor, no budget — and they are the
 best evidence in the system besides. On a pipeline session, **never invent
 totals**; only report what `read_pipeline_pulse` / `read_pipeline_report` (and
 drill-down reads) observed. Use the pulse for "what moved"; use the report for
-a named month, closing, closed results, or open-by-stage.
+a named month, closing, closed results, or open-by-stage. On a trip session,
+**never invent companies** — only propose stops from `search_trip_candidates`
+(and must-visits on the brief).
 
 ## The three records are joined, and so are your tools
 

@@ -15,6 +15,7 @@ import {
 	companyIdInput,
 	companyListInput,
 	companyMapListInput,
+	companyNearHubInput,
 	companyOptionsInput,
 	companySimilarInput,
 	companyUpdateArgs,
@@ -51,6 +52,12 @@ export class CompaniesRouter {
 	@Query({ input: companyOptionsInput })
 	async options(@Input("q") q: string) {
 		return this.companies.options(q);
+	}
+
+	/** Trip Planner must-visit picker — companies near a hub. */
+	@Query({ input: companyNearHubInput })
+	async nearHub(@Input() input: z.infer<typeof companyNearHubInput>) {
+		return this.companies.nearHub(input);
 	}
 
 	/** Soft-match before create — local CRM only, never auto-merges. */

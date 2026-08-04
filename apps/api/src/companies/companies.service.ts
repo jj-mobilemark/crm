@@ -31,6 +31,7 @@ import type {
 	CompanyCreateInput,
 	CompanyListInput,
 	CompanyMapListInput,
+	CompanyNearHubInput,
 	CompanySimilarInput,
 	CompanyUpdateInput,
 } from "./companies.contracts";
@@ -447,6 +448,75 @@ export class CompaniesService {
 	}
 
 	/**
+	 * Company picker for Trip Planner must-visits: geocoded companies within
+	 * `radiusMiles` of a hub, searchable by name / domain / Sage 100 #.
+	 */
+	async nearHub(input: CompanyNearHubInput) {
+		const EARTH_MI = 3958.8;
+		const latDelta = input.radiusMiles / 69.0;
+		const lngDelta =
+			input.radiusMiles /
+			(Math.cos((input.hubLatitude * Math.PI) / 180) * 69.172 || 69.172);
+
+		const rows = await this.db.company.findMany({
+			where: {
+				AND: [
+					this.searchFilter(input.q),
+					{ latitude: { not: null, gte: input.hubLatitude - latDelta, lte: input.hubLatitude + latDelta } },
+					{
+						longitude: {
+							not: null,
+							gte: input.hubLongitude - lngDelta,
+							lte: input.hubLongitude + lngDelta,
+						},
+					},
+				],
+			},
+			select: {
+				id: true,
+				name: true,
+				domain: true,
+				iconUrl: true,
+				sage100CustomerNo: true,
+				latitude: true,
+				longitude: true,
+				_count: { select: { contacts: true } },
+			},
+			orderBy: { name: "asc" },
+			take: 250,
+		});
+
+		const toRad = (deg: number) => (deg * Math.PI) / 180;
+		const miles = (lat: number, lng: number) => {
+			const dLat = toRad(lat - input.hubLatitude);
+			const dLon = toRad(lng - input.hubLongitude);
+			const a =
+				Math.sin(dLat / 2) ** 2 +
+				Math.cos(toRad(input.hubLatitude)) *
+					Math.cos(toRad(lat)) *
+					Math.sin(dLon / 2) ** 2;
+			return 2 * EARTH_MI * Math.asin(Math.min(1, Math.sqrt(a)));
+		};
+
+		return rows
+			.filter(
+				(row) =>
+					row.latitude != null &&
+					row.longitude != null &&
+					miles(row.latitude, row.longitude) <= input.radiusMiles + 0.01,
+			)
+			.slice(0, 100)
+			.map((row) => ({
+				id: row.id,
+				name: row.name,
+				domain: row.domain,
+				iconUrl: row.iconUrl,
+				sage100CustomerNo: row.sage100CustomerNo,
+				contactCount: row._count.contacts,
+			}));
+	}
+
+	/**
 	 * Possible duplicates for the create form. Domain match is hard (create
 	 * would fail); name match is soft and needs a human confirm.
 	 */
@@ -776,7 +846,7 @@ export class CompaniesService {
 		}
 	}
 
-	/** `q` matches the name or the domain — the two things a rep would type. */
+	/** `q` matches the name, domain, or Sage 100 customer #. */
 	private searchFilter(q: string): Prisma.CompanyWhereInput {
 		const term = q.trim();
 		if (!term) return {};
@@ -785,6 +855,7 @@ export class CompaniesService {
 			OR: [
 				{ name: { contains: term, mode: "insensitive" } },
 				{ domain: { contains: term, mode: "insensitive" } },
+				{ sage100CustomerNo: { contains: term, mode: "insensitive" } },
 			],
 		};
 	}

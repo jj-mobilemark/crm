@@ -6,6 +6,7 @@ import Dashboard from "@carbon/icons-react/es/Dashboard";
 import EmailNew from "@carbon/icons-react/es/EmailNew";
 import Map from "@carbon/icons-react/es/Map";
 import Partnership from "@carbon/icons-react/es/Partnership";
+import Plane from "@carbon/icons-react/es/Plane";
 import Settings from "@carbon/icons-react/es/Settings";
 import Task from "@carbon/icons-react/es/Task";
 import TaskStar from "@carbon/icons-react/es/TaskStar";
@@ -52,6 +53,12 @@ const ITEMS: RailItem[] = [
 		match: "prefix",
 	},
 	{ title: "Deals", href: "/deals", icon: Partnership, match: "prefix" },
+	{
+		title: "Trip Planner",
+		href: "/trip-planner",
+		icon: Plane,
+		match: "prefix",
+	},
 	{ title: "Tasks", href: "/tasks", icon: Task, match: "prefix" },
 	{
 		title: "Follow-ups",

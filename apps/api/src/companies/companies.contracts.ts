@@ -108,6 +108,19 @@ export const companyOptionsInput = z.object({
 });
 
 /**
+ * Company picker near a hub (Trip Planner must-visits). Filters to geocoded
+ * companies within `radiusMiles` of the hub when lat/lng are provided.
+ */
+export const companyNearHubInput = z.object({
+	q: z.string().default(""),
+	hubLatitude: z.number(),
+	hubLongitude: z.number(),
+	radiusMiles: z.number().int().min(25).max(500).default(200),
+});
+
+export type CompanyNearHubInput = z.infer<typeof companyNearHubInput>;
+
+/**
  * Soft-match existing companies before create. Local CRM only — after the Sage
  * pull, that already covers almost every real org. Never auto-merges.
  */

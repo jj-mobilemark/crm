@@ -7,7 +7,13 @@ export type GeocodeResult =
 			longitude: number;
 			rawLabel: string | null;
 	  }
-	| { ok: false; reason: "empty" | "not_found" | "error"; detail?: string };
+	| {
+			ok: false;
+			reason: "empty" | "not_found" | "error";
+			detail?: string;
+			/** Transient (429 / 5xx) — do not write a permanent GeocodeCache miss. */
+			retryable?: boolean;
+	  };
 
 export type GeocodeParts = {
 	city: string | null;
@@ -21,9 +27,13 @@ export type GeocodeParts = {
  * Much faster than Nominatim's 1 req/s for city-level re-geocodes.
  */
 export class PhotonGeocoder {
+	private chain: Promise<void> = Promise.resolve();
+
 	constructor(
 		private readonly userAgent = "MM-CRM/1.0 (internal; geocode-companies)",
 		private readonly baseUrl = "https://photon.komoot.io/api/",
+		/** Minimum gap between request starts (shared across concurrent callers). */
+		private readonly minIntervalMs = 200,
 	) {}
 
 	async geocode(parts: GeocodeParts): Promise<GeocodeResult> {
@@ -34,6 +44,8 @@ export class PhotonGeocoder {
 			parts.countryCode,
 		);
 		if (!query) return { ok: false, reason: "empty" };
+
+		await this.throttle();
 
 		const url = new URL(this.baseUrl);
 		url.searchParams.set("q", query);
@@ -51,6 +63,7 @@ export class PhotonGeocoder {
 					ok: false,
 					reason: "error",
 					detail: `HTTP ${response.status}`,
+					retryable: response.status === 429 || response.status >= 500,
 				};
 			}
 			const body = (await response.json()) as {
@@ -88,8 +101,18 @@ export class PhotonGeocoder {
 				ok: false,
 				reason: "error",
 				detail: error instanceof Error ? error.message : String(error),
+				retryable: true,
 			};
 		}
+	}
+
+	private throttle(): Promise<void> {
+		const run = this.chain.then(async () => {
+			await Bun.sleep(this.minIntervalMs);
+		});
+		// Keep the chain alive even if a caller abandons.
+		this.chain = run.catch(() => undefined);
+		return run;
 	}
 }
 

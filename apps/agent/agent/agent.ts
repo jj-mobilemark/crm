@@ -6,9 +6,14 @@ import { capabilities } from "./lib/capabilities";
 /**
  * The people-research agent.
  *
- * Sonnet rather than a frontier model: the hard part here is not reasoning, it
- * is refusing to accept a plausible-looking wrong answer, and that is enforced
- * by the tools and the skill rather than by model strength. Revisit if the
+ * TEMPORARY (testing / token burn): using `deepseek/deepseek-v4-pro` instead of
+ * `anthropic/claude-sonnet-5`. Plan to change back to Sonnet 5 when testing is
+ * done — see `.cursor/rules/project-overview.mdc`. Do not treat this as the
+ * permanent default.
+ *
+ * Default (Sonnet) rationale: the hard part here is not reasoning, it is
+ * refusing to accept a plausible-looking wrong answer, and that is enforced by
+ * the tools and the skill rather than by model strength. Revisit if the
  * identity-matching evals say otherwise.
  *
  * A plain model id routes through the Vercel AI Gateway, authenticated by
@@ -32,5 +37,6 @@ for (const capability of capabilities()) {
 }
 
 export default defineAgent({
-	model: "anthropic/claude-sonnet-5",
+	// TEMPORARY — revert to "anthropic/claude-sonnet-5" after testing.
+	model: "deepseek/deepseek-v4-pro",
 });
