@@ -3,10 +3,11 @@
 [Better Auth](https://better-auth.com) configuration for the monorepo, backed by
 `@crm/db`.
 
-Enabled: Google sign-in, account linking, cookie-cached sessions, and
-database-backed rate limiting. This is an internal, single-tenant app — there
-are no organizations, and email + password is switched off so the only way in
-is a Google account.
+Enabled: Microsoft sign-in (with optional Google), account linking,
+cookie-cached sessions, and database-backed rate limiting. This is an
+internal, single-tenant app — there are no organizations. Email + password is
+off; the usual way in is a Microsoft account on `ALLOWED_SIGN_IN`. First
+Microsoft sign-in creates the user when the address passes the allow-list.
 
 ## Topology
 

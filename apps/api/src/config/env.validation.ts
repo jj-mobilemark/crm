@@ -78,9 +78,9 @@ export class EnvironmentVariables {
 	CRM_ADMIN_EMAILS?: string;
 
 	/**
-	 * Google OAuth is optional now that email/password sign-in is enabled. Set
-	 * both to turn Google sign-in on; leave both empty to run on email/password
-	 * only. `@crm/auth` enforces that they are set together.
+	 * Google OAuth is optional. Sign-in is Microsoft-first; set both Google
+	 * values to show the Google button. `@crm/auth` enforces that they are set
+	 * together.
 	 */
 	@IsOptional()
 	@IsString()

@@ -12,7 +12,7 @@ export default async function AppLayout({
 }>) {
 	// A valid session is enough to enter the app. Gmail/Calendar sync is a
 	// Google-only capability, so gating on granted mailbox scopes
-	// (`requireGoogleAccess`) would lock out email/password users entirely.
+	// (`requireGoogleAccess`) would lock out Microsoft SSO users entirely.
 	const { user } = await requireSession();
 
 	return (

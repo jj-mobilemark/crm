@@ -159,10 +159,10 @@ it before stopping. The rules for maintaining it live in `AGENTS.md`
   `AGENT_URL=http://agent.railway.internal:2000` + matching
   `AGENT_BRIDGE_SECRET`. Optional: `RAPIDAPI_KEY` (LinkedIn) on
   **agent** only. Plan: `docs/plans/agent-railway.md`.
-- **Auth registration (LOCKED 2026-08-03)**: welcome page is sign-in only.
-  `emailAndPassword.disableSignUp: true`; Microsoft/Google
-  `disableImplicitSignUp: true`. Existing users only — seed/invite
-  out-of-band.
+- **Auth registration (OPEN for @mobilemark.com via Microsoft,
+  2026-08-04)**: email/password removed. Microsoft first sign-in creates
+  the user when `ALLOWED_SIGN_IN` matches (domain allow-list hook).
+  Google still has `disableImplicitSignUp: true` if configured.
 - **Prod tRPC proxy (FIXED 2026-08-03)**: Settings "Check now" was failing
   with `Unexpected token '<', "<!doctype "...` because the Next proxy
   hairpinned through Cloudflare (`API_URL`) and got Error 1000 HTML.
@@ -222,6 +222,34 @@ it before stopping. The rules for maintaining it live in `AGENTS.md`
 ---
 
 ## Work log
+
+### 2026-08-04 — Microsoft auto-provision + drop email/password
+
+**Completed**
+- Microsoft OAuth may create users on first sign-in
+  (`packages/auth/src/auth.ts` — removed `disableImplicitSignUp` for
+  Microsoft). `databaseHooks.user.create` still enforces
+  `ALLOWED_SIGN_IN` (e.g. `mobilemark.com`).
+- Email/password auth disabled (`emailAndPassword.enabled: false`).
+- Sign-in UI is Microsoft-only: removed credentials form + “or”
+  separator (`apps/app/app/(auth)/sign-in/page.tsx`; deleted
+  `credentials-form.tsx`). Copy explains first visit creates the account.
+- Docs: `docs/local-setup.md`, `packages/auth/README.md`; env comment in
+  `apps/api/src/config/env.validation.ts`.
+
+**How / why**
+Colleagues at mobilemark.com should get in with Continue with Microsoft
+without an admin pre-creating rows. Entra is already single-tenant; the
+allow-list is the second gate for domain emails.
+
+**Deviations**
+None. Google button still appears if `GOOGLE_*` is set (hidden here).
+
+**What's next**
+Restart the API so auth config reloads. Smoke: a new @mobilemark.com
+Microsoft user lands in the app with a new `user` row; a non-domain
+account still gets 403. Deploy API + app when ready for prod.
+
 
 ### 2026-08-04 — Certainty by rep grid + lock certainty to stage
 

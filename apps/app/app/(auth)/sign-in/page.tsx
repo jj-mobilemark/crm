@@ -1,9 +1,8 @@
-import { FieldSeparator } from "@crm/ui/components/field";
+import { primaryWorkspaceDomain } from "@crm/auth/workspace";
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { AuthHeading, AuthShell } from "@/components/auth-shell";
 import { getSession } from "@/lib/session";
-import { CredentialsForm } from "./credentials-form";
 import { GoogleSignIn } from "./google-sign-in";
 import { MicrosoftSignIn } from "./microsoft-sign-in";
 
@@ -39,25 +38,32 @@ export default async function SignInPage() {
 		redirect("/");
 	}
 
-	const hasSocial = microsoftEnabled || googleEnabled;
+	const domain = primaryWorkspaceDomain();
+	const domainHint = domain ? `@${domain}` : "your company";
 
 	return (
 		<AuthShell>
 			<AuthHeading
 				title="Welcome back"
-				description="Sign in with your email and password to continue."
+				description={`Sign in with your ${domainHint} Microsoft account to continue.`}
 			/>
 
-			<CredentialsForm />
+			{microsoftEnabled ? (
+				<MicrosoftSignIn />
+			) : (
+				<p className="text-center text-muted-foreground text-sm/5">
+					Microsoft sign-in is not configured. Set MICROSOFT_CLIENT_ID,
+					MICROSOFT_CLIENT_SECRET, and MICROSOFT_TENANT_ID, then restart.
+				</p>
+			)}
 
-			{hasSocial && <FieldSeparator>or</FieldSeparator>}
-
-			{microsoftEnabled && <MicrosoftSignIn />}
+			{/* Optional Google button for installs that still configure it. */}
 			{googleEnabled && <GoogleSignIn />}
 
 			<p className="text-center text-muted-foreground text-sm/5">
-				Mobile Mark CRM is internal. Sign-in is for existing accounts only —
-				ask an admin if you need access.
+				{domain
+					? `Anyone with an @${domain} account can sign in. Your first visit creates your CRM account.`
+					: "This CRM is private. Sign-in creates your account when your address is on the allow-list."}
 			</p>
 		</AuthShell>
 	);

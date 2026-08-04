@@ -22,8 +22,8 @@ if (env.microsoft) {
 		// Mail + Calendar are the CRM sync extras; Mail.Send powers sequences.
 		scope: [...MS_ALL_SCOPES],
 		prompt: "select_account",
-		// Existing accounts only — no first-time OAuth user create.
-		disableImplicitSignUp: true,
+		// First Microsoft sign-in creates the user. The database hook below still
+		// refuses anyone outside ALLOWED_SIGN_IN (e.g. mobilemark.com).
 	};
 }
 
@@ -75,12 +75,11 @@ export const auth = betterAuth({
 		provider: "postgresql",
 	}),
 
+	// Microsoft SSO only. Email/password is off — no credential form and no
+	// /sign-up/email path. New @ALLOWED_SIGN_IN users are created on first
+	// Microsoft sign-in (see socialProviders.microsoft + user.create hook).
 	emailAndPassword: {
-		// Sign-in for existing users only. Public registration is off so prod
-		// customer data cannot gain new accounts from the welcome page (or a
-		// direct /sign-up/email call). Seed / invite users out-of-band.
-		enabled: true,
-		disableSignUp: true,
+		enabled: false,
 	},
 
 	socialProviders,
@@ -89,9 +88,8 @@ export const auth = betterAuth({
 		accountLinking: {
 			enabled: true,
 			trustedProviders: ["microsoft", "google"],
-			// Credential sign-up does not run an email-verify loop in this CRM
-			// (ALLOWED_SIGN_IN is the door). Without this, Microsoft SSO cannot
-			// link onto an existing email/password user and returns
+			// Email/password is disabled. Without this, Microsoft SSO cannot
+			// link onto an older credential user row and returns
 			// account_not_linked. Prefer marking new users verified in the
 			// create hook below; this covers rows that already exist unverified.
 			requireLocalEmailVerified: false,
