@@ -16,9 +16,9 @@ import type * as React from "react";
 
 /**
  * An elevated KPI strip: one bordered surface holding several {@link StatCard}s
- * separated by hairline dividers (stacked + horizontal on narrow widths, a
- * single divided row on wide). This is the premium alternative to a row of
- * standalone boxes — see the surfaces guideline.
+ * separated by hairline dividers (2-up on narrow, 4-up on wide — wraps to a
+ * second row for eight KPIs). The premium alternative to a row of standalone
+ * boxes — see the surfaces guideline.
  */
 function StatGroup({
 	className,
@@ -34,8 +34,11 @@ function StatGroup({
 			<div
 				className={cn(
 					"grid grid-cols-2 @2xl/stats:grid-cols-4",
-					"[&:nth-child(2n)]:border-l [&:nth-child(n+3)]:border-t",
-					"@2xl/stats:[&>*]:border-t-0 @2xl/stats:[&>*]:border-l @2xl/stats:[&>*:first-child]:border-l-0",
+					// Narrow: vertical rule on even cells, horizontal on row 2+.
+					"[&>*:nth-child(2n)]:border-l [&>*:nth-child(n+3)]:border-t",
+					// Wide: vertical rules between columns; horizontal between rows.
+					"@2xl/stats:[&>*]:border-l @2xl/stats:[&>*:nth-child(4n+1)]:border-l-0",
+					"@2xl/stats:[&>*:nth-child(n+5)]:border-t",
 				)}
 			>
 				{children}
@@ -211,7 +214,7 @@ function DashboardSection({
  * page paints instantly while server data streams in.
  */
 function DashboardSkeleton({
-	stats = 4,
+	stats = 8,
 	className,
 }: {
 	stats?: number;

@@ -1,8 +1,8 @@
 # Pipeline agent advanced reports
 
-Give the overview pipeline agent mechanical DB report tools beyond the 7-day
-pulse so questions like “pipeline for August 2026” can be answered from real
-deal data — without inventing numbers.
+Give the overview pipeline agent mechanical DB report tools beyond the pulse
+change log so questions like “pipeline for August 2026” can be answered from
+real deal data — without inventing numbers.
 
 ## Status
 
@@ -54,6 +54,6 @@ Redeploy Railway `agent` before expecting this in prod.
 ## Out of scope
 
 - Custom SQL / chart generation
-- Extending the pulse window (still 7 days)
+- Changing stuck 14d threshold without product ask
 - Alert digests / Slack
-- Changing Nest `dashboard.summary` shape
+- Changing Nest `dashboard.summary` shape beyond pulse range wiring

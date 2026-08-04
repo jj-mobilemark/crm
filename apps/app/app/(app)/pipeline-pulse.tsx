@@ -10,17 +10,14 @@ import {
 	CardTitle,
 } from "@crm/ui/components/card";
 import { CardTableEmpty } from "@crm/ui/components/card-table";
-import { StatGroup } from "@crm/ui/components/dashboard";
 import {
 	SimpleTable,
 	type SimpleTableColumn,
 	SimpleTableRow,
 } from "@crm/ui/components/simple-table";
-import { StatCard } from "@crm/ui/components/stat-card";
 import { StatusIndicator } from "@crm/ui/components/status-indicator";
 import { TableCell } from "@crm/ui/components/table";
 import {
-	formatCount,
 	formatMoneyCompact,
 	formatPercent,
 	relativeTimeFromIso,
@@ -40,6 +37,7 @@ const EMPTY_PULSE: Pulse = {
 	windowDays: 7,
 	stuckDays: 14,
 	since: new Date(0).toISOString(),
+	until: new Date(0).toISOString(),
 	scope: "me",
 	counts: {
 		won: 0,
@@ -59,13 +57,13 @@ const EMPTY_PULSE: Pulse = {
 };
 
 /**
- * Manager pulse: what moved on deals in the last 7 days, biggest movers, and
- * open deals stuck 14+ days. Feeds off `DealFieldChange` (app + Sage).
+ * Manager pulse tables: biggest movers, stuck deals, and the change feed.
+ * KPI counts live in the sales dashboard strip (same `pulse` payload).
  */
 export function PipelinePulse({ pulse }: { pulse: Pulse | undefined }) {
 	const data = pulse ?? EMPTY_PULSE;
 	const openRecord = useOpenRecord();
-	const { counts, movers, recent, stuck } = data;
+	const { movers, recent, stuck } = data;
 
 	const moverColumns: SimpleTableColumn[] = [
 		{ header: "Deal" },
@@ -91,29 +89,6 @@ export function PipelinePulse({ pulse }: { pulse: Pulse | undefined }) {
 
 	return (
 		<div className="flex flex-col gap-6">
-			<StatGroup>
-				<StatCard
-					label="Won"
-					value={String(counts.won)}
-					description={`Last ${data.windowDays} days`}
-				/>
-				<StatCard
-					label="Lost"
-					value={String(counts.lost)}
-					description={`Last ${data.windowDays} days`}
-				/>
-				<StatCard
-					label="Certainty moves"
-					value={String(counts.certainty)}
-					description={`${formatCount(counts.stage, "stage move")} · ${formatCount(counts.amount, "amount move")}`}
-				/>
-				<StatCard
-					label="Stuck"
-					value={String(stuck.length)}
-					description={`Open, no stage/certainty move in ${data.stuckDays}d+`}
-				/>
-			</StatGroup>
-
 			<div className="grid gap-6 @3xl/page-content:grid-cols-2">
 				<Card className="min-w-0">
 					<CardHeader>

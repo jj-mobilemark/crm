@@ -14,6 +14,8 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const PULSE_FEED_LIMIT = 24;
 const PULSE_MOVERS_LIMIT = 10;
 const PULSE_STUCK_LIMIT = 10;
+/** Cap for mover/feed candidate scan inside the selected window. */
+const PULSE_CHANGE_SCAN = 800;
 
 const OPEN_DEAL_STAGES = [
 	DealStage.DEMO_BOOKED,
@@ -35,6 +37,7 @@ export type PipelinePulse = {
 	windowDays: number;
 	stuckDays: number;
 	since: string;
+	until: string;
 	scope: PipelinePulseScope;
 	counts: {
 		won: number;
@@ -104,8 +107,11 @@ function toCents(amount: Prisma.Decimal | null): number | null {
 }
 
 /**
- * Last-7-day deal field changes + 14-day stuck open deals for a Me/Everyone
- * scope. Call from dashboard and agent tools alike.
+ * Deal-field moves inside a time window + stuck open deals (fixed 14d+).
+ *
+ * Defaults to the last 7 days when `since` / `until` are omitted (agent tool).
+ * The overview passes the selected closed-won range so pulse counts track the
+ * date control; stuck stays on {@link STUCK_DAYS} regardless.
  */
 export async function loadPipelinePulse(
 	db: PrismaClient,
@@ -114,6 +120,10 @@ export async function loadPipelinePulse(
 		/** Required when `scope` is `"me"`. */
 		userId?: string | null;
 		now?: Date;
+		/** Inclusive start of the change window. Defaults to now − 7 days. */
+		since?: Date;
+		/** Exclusive end of the change window. Defaults to now. */
+		until?: Date;
 	},
 ): Promise<PipelinePulse> {
 	const now = input.now ?? new Date();
@@ -123,17 +133,31 @@ export async function loadPipelinePulse(
 	}
 
 	const owned = mine && input.userId ? { ownerId: input.userId } : {};
-	const pulseSince = new Date(now.getTime() - PULSE_WINDOW_DAYS * DAY_MS);
+	const pulseSince =
+		input.since ?? new Date(now.getTime() - PULSE_WINDOW_DAYS * DAY_MS);
+	const pulseUntil = input.until ?? now;
+	const windowDays = Math.max(
+		1,
+		Math.ceil((pulseUntil.getTime() - pulseSince.getTime()) / DAY_MS),
+	);
 	const stuckBefore = new Date(now.getTime() - STUCK_DAYS * DAY_MS);
 
-	const [changes, stuckCandidates] = await Promise.all([
+	const changeWhere = {
+		createdAt: { gte: pulseSince, lt: pulseUntil },
+		...(mine && input.userId ? { deal: { ownerId: input.userId } } : {}),
+	};
+
+	const [fieldCounts, changes, stuckCandidates] = await Promise.all([
+		// Exact totals for the KPI strip — not capped by the feed scan.
+		db.dealFieldChange.groupBy({
+			by: ["field", "toValue"],
+			where: changeWhere,
+			_count: { _all: true },
+		}),
 		db.dealFieldChange.findMany({
-			where: {
-				createdAt: { gte: pulseSince },
-				...(mine && input.userId ? { deal: { ownerId: input.userId } } : {}),
-			},
+			where: changeWhere,
 			orderBy: [{ createdAt: "desc" }],
-			take: 400,
+			take: PULSE_CHANGE_SCAN,
 			select: {
 				id: true,
 				field: true,
@@ -193,8 +217,40 @@ export async function loadPipelinePulse(
 		owner: 0,
 		priority: 0,
 		sageStage: 0,
-		total: changes.length,
+		total: 0,
 	};
+
+	for (const row of fieldCounts) {
+		const n = row._count._all;
+		counts.total += n;
+		switch (row.field) {
+			case "stage":
+				if (row.toValue === DealStage.CLOSED_WON) counts.won += n;
+				else if (row.toValue === DealStage.CLOSED_LOST) counts.lost += n;
+				else counts.stage += n;
+				break;
+			case "probability":
+				counts.certainty += n;
+				break;
+			case "amount":
+				counts.amount += n;
+				break;
+			case "expectedCloseDate":
+				counts.expectedClose += n;
+				break;
+			case "ownerId":
+				counts.owner += n;
+				break;
+			case "priority":
+				counts.priority += n;
+				break;
+			case "sageStage":
+				counts.sageStage += n;
+				break;
+			default:
+				break;
+		}
+	}
 
 	const moverCandidates: Array<{
 		change: (typeof changes)[number];
@@ -204,13 +260,9 @@ export async function loadPipelinePulse(
 	for (const change of changes) {
 		switch (change.field) {
 			case "stage":
-				if (change.toValue === DealStage.CLOSED_WON) counts.won += 1;
-				else if (change.toValue === DealStage.CLOSED_LOST) counts.lost += 1;
-				else counts.stage += 1;
 				moverCandidates.push({ change, magnitude: 1 });
 				break;
 			case "probability":
-				counts.certainty += 1;
 				moverCandidates.push({
 					change,
 					magnitude: Math.abs(
@@ -219,25 +271,12 @@ export async function loadPipelinePulse(
 				});
 				break;
 			case "amount":
-				counts.amount += 1;
 				moverCandidates.push({
 					change,
 					magnitude: Math.abs(
 						(Number(change.toValue) || 0) - (Number(change.fromValue) || 0),
 					),
 				});
-				break;
-			case "expectedCloseDate":
-				counts.expectedClose += 1;
-				break;
-			case "ownerId":
-				counts.owner += 1;
-				break;
-			case "priority":
-				counts.priority += 1;
-				break;
-			case "sageStage":
-				counts.sageStage += 1;
 				break;
 			default:
 				break;
@@ -279,9 +318,10 @@ export async function loadPipelinePulse(
 		});
 
 	return {
-		windowDays: PULSE_WINDOW_DAYS,
+		windowDays,
 		stuckDays: STUCK_DAYS,
 		since: pulseSince.toISOString(),
+		until: pulseUntil.toISOString(),
 		scope: input.scope,
 		counts,
 		movers,

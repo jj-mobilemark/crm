@@ -25,6 +25,24 @@ it before stopping. The rules for maintaining it live in `AGENTS.md`
 
 - **Git**: `origin` = `jj-mobilemark/crm` (fork); `upstream` = `trycompai/crm`
   (read-only). Work on `main`.
+- **Overview 8-KPI strip (DONE 2026-08-03)**: one `StatGroup` with sales +
+  pulse counts (Closed won / Due / Open / Win rate / Won / Lost /
+  Certainty / Stuck). Won/Lost/Certainty follow the overview date range
+  via `loadPipelinePulse({ since, until })`; Stuck stays 14d+. Static
+  KPIs use `tone="static"` (`bg-muted/45`); range-bound values animate
+  (`StatCount` CSS counter / `StatTick`). Files:
+  `sales-dashboard.tsx`, `pipeline-pulse.tsx`, `stat-card.tsx`,
+  `pipeline-pulse.ts`, `dashboard.service.ts`.
+- **Sage extra-module probe (DONE 2026-08-03)**: live SOAP check of UI tabs
+  beyond company/person/opportunity. **Actively used + not synced:**
+  `communication` (tasks/calls/email, 2026), `notes` (2026), `lead`
+  (2026, same-day updates). Already covered via company nest: `address` /
+  `phone` / `email`. `users` (~27) works as entity name `users`. Cases
+  empty; documents (`library`) / forecast / campaign not WS-enabled;
+  relationships / consent / selfservice have no SOAP entity. Quotes /
+  orders / Mas* still "Query failed" even with `1=1`. Scripts:
+  `apps/api/scripts/sage-probe-entities.ts`, `sage-probe-recency.ts`.
+  Plan table updated: `docs/plans/sage-crm-sync.md` §1 Entity availability.
 - **Company create duplicate guard (DONE 2026-08-03)**: before
   `companies.create`, UI calls `companies.similar` (local name/domain
   soft-match). Domain hit → must use existing; name hit → confirm Use this
@@ -122,6 +140,75 @@ it before stopping. The rules for maintaining it live in `AGENTS.md`
 ---
 
 ## Work log
+
+### 2026-08-03 — Overview: 8-KPI grid + range-aware pulse counts
+
+**What was completed**
+- Merged pulse KPIs (Won / Lost / Certainty / Stuck) into the sales
+  `StatGroup` as a second row — one 8-cell strip above the charts.
+- `loadPipelinePulse` accepts optional `since` / `until`; overview passes
+  the selected dashboard range. Stuck stays fixed at 14d+. Exact counts
+  via `groupBy` (not capped by the feed scan).
+- `StatCard` gains `tone="static"` (muted cell + title hint) and
+  `animate` (`StatCount` CSS `@property` integer counter;
+  `StatTick` enter motion for money/percent). `StatGroup` borders fixed
+  for wrapped rows.
+- Pulse tables stay below charts; copy uses `windowDays` from the payload.
+- Files: `packages/db/src/pipeline-pulse.ts`,
+  `apps/api/src/dashboard/dashboard.service.ts`,
+  `apps/app/app/(app)/sales-dashboard.tsx`,
+  `apps/app/app/(app)/pipeline-pulse.tsx`,
+  `packages/ui/src/components/stat-card.tsx`,
+  `packages/ui/src/components/dashboard.tsx`,
+  `packages/ui/src/styles/globals.css`,
+  `apps/agent/agent/tools/read_pipeline_pulse.ts` (description only).
+
+**How and why**
+- Reps wanted the newer pulse KPIs next to the sales KPIs, and for
+  change counts to track the date control. Static metrics (due this
+  month, open pipeline, stuck) stay visually quieter so range flips
+  read clearly; animated values make the reactive cells obvious.
+
+**Deviations**
+- Agent `read_pipeline_pulse` still defaults to 7 days (unchanged call
+  shape). Overview is the surface that passes the selected range.
+
+**What's next**
+- Soft visual pass in the browser (range flip + static mute). Optional:
+  apply pending screening migration `20260803200000` locally + Railway.
+  Sage module follow-ups from the SOAP probe stay design-only until
+  scoped (`docs/plans/sage-crm-sync.md`).
+
+### 2026-08-03 — Sage SOAP probe: other modules beyond the triad
+
+**What was completed**
+- Live read-only SOAP probe of record-tab / plan §3c entities against
+  production (`crm.mobilemark.com`).
+- Scripts: `apps/api/scripts/sage-probe-entities.ts` (availability +
+  sample fields) and `apps/api/scripts/sage-probe-recency.ts` (2024–2026
+  date filters). Uses `node:https` + public DNS (local DNS cannot resolve
+  the host).
+- Updated entity table in `docs/plans/sage-crm-sync.md` §1.
+
+**How and why**
+- Screenshot tabs (Notes, Communications, Cases, Addresses, Phone/email,
+  Documents, Relationships, Consent, Self Service) + plan extras (lead,
+  quotes, orders, users, forecast, campaign, Mas*) were queried with
+  common predicates, then re-checked for recent `updateddate` /
+  `comm_datetime`.
+- Goal: confirm we did not miss an actively used module after syncing
+  only company / person / opportunity.
+
+**Deviations**
+- None from scope. Local default DNS cannot resolve
+  `crm.mobilemark.com`; probes force `8.8.8.8` / `1.1.1.1`.
+
+**What's next**
+- Decide with the team whether to pull **communications** (→ local
+  `Activity`) and/or **notes** / **leads** next (`docs/plans/sage-crm-sync.md`
+  §3c / §4 item 5). Do not sync address/phone/email standalone — already
+  nested under company. Quotes/orders/Mas* need admin/WS investigation
+  if order history matters.
 
 ### 2026-08-03 — Company create: confirm possible matches
 

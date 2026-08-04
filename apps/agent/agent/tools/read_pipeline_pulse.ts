@@ -10,7 +10,7 @@ import { z } from "zod";
  */
 export default defineTool({
 	description:
-		"Read the overview pipeline pulse for Me or Everyone: 7-day change counts, biggest movers, recent feed, and deals stuck 14+ days without a stage/certainty move. Same data as the overview strip. Call this first on a pipeline session; never invent totals.",
+		"Read the pipeline pulse for Me or Everyone: change counts (default last 7 days), biggest movers, recent feed, and deals stuck 14+ days without a stage/certainty move. The overview strip uses the same helper but passes the selected date range for change counts; stuck stays 14d+. Call this first on a pipeline session; never invent totals.",
 	inputSchema: z.object({
 		scope: z
 			.enum(["me", "everyone"])

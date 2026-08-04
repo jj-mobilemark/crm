@@ -37,6 +37,29 @@ const EMPTY_FORECAST: Summary["forecast"] = {
 	byOwner: [],
 };
 
+const EMPTY_PULSE: NonNullable<Summary["pulse"]> = {
+	windowDays: 7,
+	stuckDays: 14,
+	since: new Date(0).toISOString(),
+	until: new Date(0).toISOString(),
+	scope: "me",
+	counts: {
+		won: 0,
+		lost: 0,
+		certainty: 0,
+		stage: 0,
+		amount: 0,
+		expectedClose: 0,
+		owner: 0,
+		priority: 0,
+		sageStage: 0,
+		total: 0,
+	},
+	movers: [],
+	recent: [],
+	stuck: [],
+};
+
 const CELL = "px-3 py-2.5 align-middle";
 
 /**
@@ -70,8 +93,11 @@ function changeDelta(
 }
 
 /**
- * The KPI strip and the two charts behind it: six months of closed-won against
- * new pipeline, and where the open pipeline currently sits.
+ * The KPI strip (eight cells) and the charts behind it: closed-won against new
+ * pipeline, and where the open pipeline currently sits.
+ *
+ * Cells that ignore the date range (due this month, open pipeline, stuck) use
+ * `tone="static"`. Cells that follow the range animate on change.
  */
 export function SalesDashboard({ summary }: { summary: Summary }) {
 	const {
@@ -85,6 +111,7 @@ export function SalesDashboard({ summary }: { summary: Summary }) {
 	// Stale dehydrated/cached summaries (pre-forecast API) omit this field —
 	// fall back so the overview still paints while the query refetches.
 	const forecast = summary.forecast ?? EMPTY_FORECAST;
+	const pulse = summary.pulse ?? EMPTY_PULSE;
 	const rangeLabel = summary.range?.label ?? "Year to date";
 	// Unweighted close-this-month total. Fall back to weighted only when amount
 	// is empty — same idea as dealMoneyCents, so a Sage deal that only has
@@ -123,12 +150,15 @@ export function SalesDashboard({ summary }: { summary: Summary }) {
 		{ header: "Weighted", width: "w-24", align: "right" },
 	];
 
+	const { counts, stuck } = pulse;
+
 	return (
 		<div className="flex flex-col gap-6">
 			<StatGroup>
 				<StatCard
 					label="Closed won"
 					value={formatMoneyCompact(wonThisMonth.valueCents)}
+					animate
 					delta={changeDelta(
 						wonThisMonth.valueCents,
 						wonPrevMonth.valueCents,
@@ -138,11 +168,13 @@ export function SalesDashboard({ summary }: { summary: Summary }) {
 				/>
 				<StatCard
 					label="Due this month"
+					tone="static"
 					value={formatMoneyCompact(dueThisMonthCents)}
 					description={`${formatCount(closingThisMonthTotal.count, "open deal")} with a close date this month`}
 				/>
 				<StatCard
 					label="Open pipeline"
+					tone="static"
 					value={formatMoneyCompact(pipeline.totalCents)}
 					description={`${formatCount(pipeline.totalDeals, "deal")} in progress · ${formatMoneyCompact(forecast.totals.weightedCents)} weighted`}
 				/>
@@ -153,11 +185,36 @@ export function SalesDashboard({ summary }: { summary: Summary }) {
 							? "—"
 							: formatPercent(performance.winRate)
 					}
+					animate
 					description={
 						performance.wins + performance.losses === 0
 							? "Nothing has closed yet"
 							: `${performance.wins} won · ${performance.losses} lost`
 					}
+				/>
+				<StatCard
+					label="Won"
+					value={counts.won}
+					animate
+					description={`${rangeLabel} · stage moves to won`}
+				/>
+				<StatCard
+					label="Lost"
+					value={counts.lost}
+					animate
+					description={`${rangeLabel} · stage moves to lost`}
+				/>
+				<StatCard
+					label="Certainty moves"
+					value={counts.certainty}
+					animate
+					description={`${formatCount(counts.stage, "stage move")} · ${formatCount(counts.amount, "amount move")}`}
+				/>
+				<StatCard
+					label="Stuck"
+					tone="static"
+					value={stuck.length}
+					description={`Open, no stage/certainty move in ${pulse.stuckDays}d+`}
 				/>
 			</StatGroup>
 

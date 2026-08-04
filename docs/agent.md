@@ -213,9 +213,11 @@ amount, the close date and who is on it, rather than spending its first two tool
 calls finding out. A **pipeline** session (`AgentRecordKind = "pipeline"`, id =
 `me` | `everyone`) carries Me/Everyone from the overview URL, files under
 `AgentConversation.pipelineScope`, and opens with pulse counts plus
-`read_pipeline_pulse` (7-day moves / stuck) and `read_pipeline_report` (open by
+`read_pipeline_pulse` (change log / stuck; tool defaults to 7 days) and
+`read_pipeline_report` (open by
 stage, forecast by close month, closing / closed in a month) — never invents
-totals. Shared queries: `packages/db/src/pipeline-pulse.ts`,
+totals. On the overview UI, pulse change counts follow the selected date range;
+stuck stays 14d+. Shared queries: `packages/db/src/pipeline-pulse.ts`,
 `packages/db/src/pipeline-report.ts`. Plans: `docs/plans/pipeline-pulse.md`,
 `docs/plans/pipeline-agent-reports.md`.
 

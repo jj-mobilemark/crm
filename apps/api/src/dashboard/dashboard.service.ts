@@ -375,10 +375,13 @@ export class DashboardService {
 				},
 			}),
 			// Pulse: shared helper — same shape the agent tool reads.
+			// Change counts follow the overview date range; stuck stays 14d+.
 			loadPipelinePulse(this.db, {
 				scope: input.scope,
 				userId: actingUserId,
 				now,
+				since: range.start,
+				until: range.end,
 			}),
 		]);
 
@@ -495,8 +498,8 @@ export class DashboardService {
 			 */
 			forecast,
 			/**
-			 * Deal-field moves in the last 7 days + stuck open deals (14d+).
-			 * Independent of the closed-won range control.
+			 * Deal-field moves in the selected range + stuck open deals (14d+).
+			 * Stuck ignores the date control; change counts follow it.
 			 */
 			pulse,
 			biggestOpen: biggestOpen.map(
