@@ -303,7 +303,13 @@ export function CompanySheet({ companyId }: { companyId: string }) {
 				company ? (
 					<EnrichmentActions
 						companyId={company.id}
-						hasDomain={company.domain !== null}
+						hasDomain={
+							company.domain !== null ||
+							(company.website !== null &&
+								!/\s/.test(company.website) &&
+								(company.website.includes(".") ||
+									/^https?:\/\//i.test(company.website)))
+						}
 					/>
 				) : null
 			}

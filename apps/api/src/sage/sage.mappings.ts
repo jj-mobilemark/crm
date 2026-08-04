@@ -1,4 +1,5 @@
 import { DealStage } from "@crm/db";
+import { domainFromEmail, normalizeDomain } from "../companies/domain";
 import type { SageWriteField } from "./sage.constants";
 import type { SageCompanyTree, SageRecord } from "./sage-xml";
 
@@ -9,6 +10,9 @@ import type { SageCompanyTree, SageRecord } from "./sage-xml";
  * Sage OWNS are mapped; agent-owned enrichment (logo, industry, brief) is never
  * touched by a pull. Everything is normalised to `string | null` so a blank
  * Sage value becomes a real null rather than an empty string.
+ *
+ * Sage `website` is often a free-text credit/account note in this tenant
+ * ("FORMERLY …", "NET 30 …"), not a URL. Only URL-shaped values are kept.
  */
 
 export type MappedCompany = {
@@ -83,7 +87,10 @@ export function mapCompany(record: SageRecord): MappedCompany | null {
 	const name = clean(record.name) ?? clean(record.companyname);
 	if (!id || !name) return null;
 
-	const website = clean(record.website);
+	const rawWebsite = clean(record.website);
+	// Reject Sage "website" notes (terms, formerly-name, do-not-sell, …).
+	const website =
+		rawWebsite && normalizeDomain(rawWebsite) ? rawWebsite : null;
 	const email = normaliseEmail(record.emailaddress);
 	const { country, countryCode } = mapCountryFields(record.country);
 	return {
@@ -92,7 +99,7 @@ export function mapCompany(record: SageRecord): MappedCompany | null {
 		sage100CustomerNo: clean(record.mas_customerno),
 		sage100ArDivisionNo: clean(record.mas_ardivisionno),
 		website,
-		domain: domainFrom(website) ?? domainFrom(email),
+		domain: normalizeDomain(website) ?? domainFromEmail(email),
 		email,
 		phone: joinPhone(record.areacode, record.number),
 		city: clean(record.city),
@@ -454,7 +461,6 @@ export function toSageOpportunityFields(
 export type CompanyPushInput = {
 	sageCrmCompanyId: string | null;
 	name: string;
-	website: string | null;
 };
 
 export function toSageCompanyFields(
@@ -469,7 +475,9 @@ export function toSageCompanyFields(
 		fields.push({ name: "companyid", value: input.sageCrmCompanyId });
 	}
 	fields.push({ name: "name", value: input.name });
-	if (input.website) fields.push({ name: "website", value: input.website });
+	// Never push `website`. In this tenant Sage uses that field for free-text
+	// credit/account notes ("FORMERLY …", "NET 30 …"), not URLs. Pushing would
+	// overwrite those notes.
 	return fields;
 }
 
@@ -627,25 +635,6 @@ function joinPhone(
 		(part): part is string => part !== null,
 	);
 	return parts.length > 0 ? parts.join(" ") : null;
-}
-
-/** Bare host from a website or an email address, lower-cased. */
-function domainFrom(value: string | null | undefined): string | null {
-	const cleaned = clean(value);
-	if (!cleaned) return null;
-
-	const fromEmail = cleaned.includes("@") ? cleaned.split("@").pop() : cleaned;
-	if (!fromEmail) return null;
-
-	const host = fromEmail
-		.replace(/^https?:\/\//i, "")
-		.replace(/^www\./i, "")
-		.split("/")[0]
-		?.trim()
-		.toLowerCase();
-
-	if (!host?.includes(".")) return null;
-	return host;
 }
 
 /** Decimal string for Prisma, or null when blank / not a number. */

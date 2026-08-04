@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { domainFromEmail, normalizeDomain } from "../src/companies/domain";
+import { domainFromEmail, majorityWorkDomain, normalizeDomain } from "../src/companies/domain";
 
 /**
  * Domain parsing stayed on this side when enrichment left.
@@ -58,5 +58,23 @@ describe("domainFromEmail", () => {
 		]) {
 			expect(domainFromEmail(email)).toBeNull();
 		}
+	});
+});
+
+describe("majorityWorkDomain", () => {
+	it("picks the most common work domain", () => {
+		expect(
+			majorityWorkDomain([
+				"a@cleverdevices.com",
+				"b@cleverdevices.com",
+				"c@other.com",
+				"d@gmail.com",
+				null,
+			]),
+		).toBe("cleverdevices.com");
+	});
+
+	it("returns null when nothing qualifies", () => {
+		expect(majorityWorkDomain(["a@gmail.com", null, ""])).toBeNull();
 	});
 });

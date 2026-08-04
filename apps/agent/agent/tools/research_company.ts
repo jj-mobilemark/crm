@@ -1,8 +1,10 @@
 import { ActivityType, db } from "@crm/db";
 import { defineTool } from "eve/tools";
 import { z } from "zod";
+import { enabled } from "../lib/capabilities";
 import { extract } from "../lib/context-dev";
 import { spend } from "../lib/focus";
+import { ask } from "../lib/perplexity";
 
 /** The shape the brief is extracted into. */
 const RESEARCH_SCHEMA = {
@@ -40,17 +42,16 @@ const RESEARCH_INSTRUCTIONS =
 	"guessing.";
 
 /**
- * Reads a company's own site and writes a brief to its timeline.
+ * Writes a research brief to a company's timeline.
  *
- * Ported from the API unchanged, schema and all. The one difference is who
- * calls it: this used to be a tRPC mutation that ran a vendor extraction inside
- * the request, and is now something the agent does when it decides a company is
- * worth understanding — including on its own initiative, which the old one
- * could never do.
+ * Prefers reading the company's own site (Context.dev extract) when we have a
+ * URL. When Sage left no website/domain — common for note-filled Sage
+ * `website` fields — falls back to Perplexity by company name so Research
+ * still works on installs that have `PERPLEXITY_API_KEY`.
  */
 export default defineTool({
 	description:
-		"Read a company's marketing site and write a research brief to its timeline: positioning, pricing, who they sell to, notable customers, recent news.",
+		"Read a company's marketing site (or open-web sources when there is no site) and write a research brief to its timeline: positioning, pricing, who they sell to, notable customers, recent news.",
 	inputSchema: z.object({
 		companyId: z.string(),
 	}),
@@ -72,29 +73,6 @@ export default defineTool({
 		const url =
 			company.website ?? (company.domain ? `https://${company.domain}` : null);
 
-		if (!url) {
-			return {
-				written: false as const,
-				reason: "This company has no website.",
-			};
-		}
-
-		const charge = spend(2);
-		if (!charge.ok) return { written: false as const, reason: charge.reason };
-
-		const result = await extract(
-			url,
-			RESEARCH_SCHEMA as unknown as Record<string, unknown>,
-			RESEARCH_INSTRUCTIONS,
-		);
-
-		if (result.outcome === "failed") {
-			return { written: false as const, reason: result.reason };
-		}
-
-		// `Activity.createdById` is required. Attribute to the company's owner, or
-		// to any user if it is unowned; the meta marks it agent-written so the UI
-		// never claims a person typed it.
 		const author =
 			company.ownerId ??
 			(await db.user.findFirst({ select: { id: true } }))?.id ??
@@ -103,32 +81,107 @@ export default defineTool({
 		if (!author)
 			return { written: false as const, reason: "No user to attribute to." };
 
-		const activity = await db.activity.create({
-			data: {
-				type: ActivityType.ENRICHMENT,
-				subject: `Research brief — ${company.name}`,
-				body: formatBrief(result.data),
-				occurredAt: new Date(),
+		if (url) {
+			const charge = spend(2);
+			if (!charge.ok) return { written: false as const, reason: charge.reason };
+
+			const result = await extract(
+				url,
+				RESEARCH_SCHEMA as unknown as Record<string, unknown>,
+				RESEARCH_INSTRUCTIONS,
+			);
+
+			if (result.outcome === "failed") {
+				return { written: false as const, reason: result.reason };
+			}
+
+			return writeBrief({
 				companyId: company.id,
-				createdById: author,
+				companyName: company.name,
+				authorId: author,
+				body: formatBrief(result.data),
 				meta: {
 					source: "context.dev",
 					endpoint: "web/extract",
 					creditCost: 10,
 					agent: "people-research",
 				},
+			});
+		}
+
+		if (!enabled("PERPLEXITY_API_KEY")) {
+			return {
+				written: false as const,
+				reason:
+					"This company has no website or domain, and PERPLEXITY_API_KEY is not set.",
+			};
+		}
+
+		const charge = spend(2);
+		if (!charge.ok) return { written: false as const, reason: charge.reason };
+
+		const answer = await ask(
+			`Prepare a B2B sales brief on the company "${company.name}". Cover: what they sell and who to; how they price if public; notable customers; recent news or announcements. Be specific and factual. Leave gaps rather than guessing.`,
+			{
+				model: "sonar-pro",
+				system:
+					"You are researching for a B2B sales rep preparing for a first call. " +
+					"State only what your sources support. Prefer recent information. " +
+					"Never invent customers, pricing, or news.",
 			},
-			select: { id: true },
-		});
+		);
 
-		await db.company.update({
-			where: { id: companyId },
-			data: { lastActivityAt: new Date() },
-		});
+		if (!answer.ok) {
+			return { written: false as const, reason: answer.reason };
+		}
 
-		return { written: true as const, activityId: activity.id };
+		const citations =
+			answer.data.citations.length > 0
+				? `\n\nSources:\n${answer.data.citations.map((c) => `• ${c}`).join("\n")}`
+				: "";
+
+		return writeBrief({
+			companyId: company.id,
+			companyName: company.name,
+			authorId: author,
+			body: `${answer.data.text.trim()}${citations}`,
+			meta: {
+				source: "perplexity",
+				endpoint: "chat/completions",
+				model: "sonar-pro",
+				agent: "people-research",
+			},
+		});
 	},
 });
+
+async function writeBrief(input: {
+	companyId: string;
+	companyName: string;
+	authorId: string;
+	body: string;
+	meta: Record<string, unknown>;
+}) {
+	const activity = await db.activity.create({
+		data: {
+			type: ActivityType.ENRICHMENT,
+			subject: `Research brief — ${input.companyName}`,
+			body: input.body,
+			occurredAt: new Date(),
+			companyId: input.companyId,
+			createdById: input.authorId,
+			meta: input.meta,
+		},
+		select: { id: true },
+	});
+
+	await db.company.update({
+		where: { id: input.companyId },
+		data: { lastActivityAt: new Date() },
+	});
+
+	return { written: true as const, activityId: activity.id };
+}
 
 function formatBrief(data: unknown): string {
 	if (typeof data !== "object" || data === null) return String(data ?? "");

@@ -188,8 +188,8 @@ a pull. `source` is set to `RecordSource.SAGE` on new rows.
 | `sage100ArDivisionNo` | `mas_ardivisionno` | Sage 100 AR division (always `00` here). Kept as the join key to `MasHeader` / `MasOrderDetailHistory` for the later order-history phase. **CORRECTED 2026-08-02:** NOT shown in the UI — the team does not use the division, so the Sage 100 id displays as the customer number alone (`0011246`, not `00-0011246`). See `formatSage100Id`. |
 | `name` | `name` | |
 | `ownerId` | `acctmgr` | **ADDED 2026-08-02.** Company owner is a free-text account-manager NAME (not a user id). Resolved to a local user by unique last name + first initial (`matchSageUserByName`). Unmatched names (former reps, blanks, junk) leave the company owner-less. Only 3 current reps appear as `acctmgr`. |
-| `domain` | `website` | parse host; else domain of primary `person.emailaddress`. Used to match an existing local company before creating one. |
-| `website` | `website` | as-is |
+| `domain` | `website` (URL-shaped only) | parse host via `normalizeDomain`; else domain of primary `person.emailaddress`. **CORRECTED 2026-08-03:** Sage `website` is often a free-text credit/account note in this tenant ("FORMERLY …", "NET 30 …", "DO NOT SELL …") — non-URL values are dropped. |
+| `website` | `website` | only when URL-shaped (passes `normalizeDomain`); notes → null. Push never writes this field (would overwrite Sage notes). |
 | `city` | nested `address.city` / `city` | primary address |
 | `stateCode` | nested `address.state` | Sage stores free-text state, not a code — keep as-is |
 | `country` / `countryCode` | nested `address.country` / `phone.countrycode` | |

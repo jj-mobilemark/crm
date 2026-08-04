@@ -154,8 +154,11 @@ export function DomainLink({
 	domain: string | null;
 	website: string | null;
 }) {
-	const href = website ?? (domain ? `https://${domain}` : null);
-	const label = domain ?? website;
+	// Prefer the canonical domain. Website may be a legacy Sage note string —
+	// never use it as an href unless it is URL-shaped.
+	const websiteHref = websiteHrefOrNull(website);
+	const href = domain ? `https://${domain}` : websiteHref;
+	const label = domain ?? (websiteHref ? website : null);
 	if (!href || !label) return null;
 
 	return (
@@ -169,4 +172,17 @@ export function DomainLink({
 			{label}
 		</a>
 	);
+}
+
+function websiteHrefOrNull(website: string | null): string | null {
+	if (!website?.trim()) return null;
+	const trimmed = website.trim();
+	if (/\s/.test(trimmed)) return null;
+	if (/^https?:\/\//i.test(trimmed)) return trimmed;
+	if (/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+(\/.*)?$/i.test(
+		trimmed,
+	)) {
+		return `https://${trimmed}`;
+	}
+	return null;
 }

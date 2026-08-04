@@ -25,6 +25,16 @@ it before stopping. The rules for maintaining it live in `AGENTS.md`
 
 - **Git**: `origin` = `jj-mobilemark/crm` (fork); `upstream` = `trycompai/crm`
   (read-only). Work on `main`.
+- **Sage website notes (DONE local 2026-08-03; prod cleanup pending)**:
+  Sage `website` is often a credit/account note, not a URL. Pull now
+  keeps only URL-shaped values; push never writes `website`. Local
+  cleanup + contact-email backfill via
+  `apps/api/scripts/fix-sage-website-notes.ts` (not a Prisma migration —
+  data repair). **Prod:** run the same script against Railway Postgres
+  (`DATABASE_URL=… bun run scripts/fix-sage-website-notes.ts` from
+  `apps/api`, or `railway run -s api -- …`). Research no longer requires
+  a domain (Perplexity fallback by name); Re-enrich still needs a domain.
+  Plan: `docs/plans/sage-crm-sync.md` §3.1.
 - **Screening company match (DONE 2026-08-03)**: Approve calls
   `companies.similar` (domain→name guess + related-host scoring) and offers
   Use this / Create from domain (`preferDomainCompany` skips soft-attach).
@@ -157,6 +167,73 @@ it before stopping. The rules for maintaining it live in `AGENTS.md`
 ---
 
 ## Work log
+
+### 2026-08-03 — Research/Re-enrich without Sage website notes
+
+**What was completed**
+- **Why buttons were disabled:** both gated on `Company.domain`. Hitachi had
+  none after clearing the Sage note; `cleverdevices.com` is already owned by
+  another company row, so domain could not be claimed.
+- **Research:** always enabled. API no longer requires domain.
+  `research_company` falls back to Perplexity by company name when there is
+  no URL (`PERPLEXITY_API_KEY` on the agent).
+- **Re-enrich:** enabled when domain **or** URL-shaped website exists.
+  `enrich_company` looks up via `domain ?? host(website)`. Soft-claims a
+  free domain / fills website from contact emails on click.
+- **Prod data repair (not a migration):**
+  `apps/api/scripts/fix-sage-website-notes.ts` — clears junk websites/
+  domains, then backfills from contact work emails. Local already run
+  (Hitachi → `website=https://cleverdevices.com`, domain null).
+  Prod: `DATABASE_URL=… bun run scripts/fix-sage-website-notes.ts`
+  from `apps/api` (dry-run first).
+- LinkedIn RapidAPI is for **people**, not these company buttons.
+  Company brand Re-enrich still uses `CONTEXT_DEV_API_KEY`.
+
+**How and why**
+- Domain uniqueness blocked the naive "set domain from emails" fix for
+  renamed accounts. Website is not unique, so Research/Re-enrich can use
+  it; Perplexity covers the no-URL case.
+
+**Deviations**
+- None.
+
+**What's next**
+- Run the repair script on **prod**. Deploy API/app/agent so Research
+  works without domain. Confirm `PERPLEXITY_API_KEY` (+ optional
+  `CONTEXT_DEV_API_KEY`) on Railway `agent`.
+
+### 2026-08-03 — Sage `website` was credit notes, not URLs
+
+**What was completed**
+- Root cause: Sage `comp_website` in this tenant holds free-text notes
+  ("FORMERLY CLEVER DEVICES 7/1/26", "NET 30 …", "DO NOT SELL …"). Pull
+  mapped them as-is into `Company.website`; the sheet subtitle used that
+  string as a link. Weak `domainFrom` also produced junk domains from
+  notes that contained a `.`.
+- **Mapping**: `mapCompany` keeps `website` only when `normalizeDomain`
+  accepts it; domain falls back to email. Push no longer writes
+  `website` (would overwrite Sage notes).
+- **UI**: `DomainLink` only uses URL-shaped website values as href.
+- **Cleanup (local)**: `apps/api/scripts/fix-sage-website-notes.ts`
+  cleared 1,272 websites + 108 domains. Hitachi Rail CD US LTD now has
+  `website=null`, `domain=null`.
+- Docs: `docs/plans/sage-crm-sync.md` §3.1. Tests in
+  `sage-mappings.spec.ts`.
+
+**How and why**
+- Full Sage resync not needed: local columns were wrong, Sage data is
+  fine as notes. One SQL-style pass + stricter pull is enough. Nightly
+  incremental will keep rejecting notes.
+
+**Deviations**
+- None vs intent. Did not migrate Sage notes into a local notes column
+  (quick display fix only).
+
+**What's next**
+- Run `bun run scripts/fix-sage-website-notes.ts` against **prod**
+  (`DATABASE_URL` → Railway). Deploy mapping/push/UI changes so prod
+  pull does not re-pollute. Optional later: derive domains from contact
+  emails where `domain` is null.
 
 ### 2026-08-03 — Screening company match + Hitachi cleanup
 

@@ -274,7 +274,7 @@ export class SagePushService {
 	private async pushCompany(localId: string): Promise<RowOutcome> {
 		const company = await this.db.company.findUnique({
 			where: { id: localId },
-			select: { id: true, name: true, website: true, sageCrmCompanyId: true },
+			select: { id: true, name: true, sageCrmCompanyId: true },
 		});
 		if (!company) return { kind: "skip" };
 
@@ -282,7 +282,6 @@ export class SagePushService {
 		const input: CompanyPushInput = {
 			sageCrmCompanyId: company.sageCrmCompanyId,
 			name: company.name,
-			website: company.website,
 		};
 		const fields = toSageCompanyFields(input, op);
 

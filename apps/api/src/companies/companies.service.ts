@@ -36,7 +36,7 @@ import type {
 } from "./companies.contracts";
 import { MAP_LIST_MAX } from "./companies.contracts";
 import { findSimilarCompanies } from "./company-similar";
-import { normalizeDomain } from "./domain";
+import { majorityWorkDomain, normalizeDomain } from "./domain";
 import { FaviconService } from "./favicon.service";
 
 /** Signed-in actor for Sage push attribution (human UI only). */
@@ -599,11 +599,37 @@ export class CompaniesService {
 	async enrich(id: string): Promise<{ id: string; queued: boolean }> {
 		const company = await this.db.company.findUnique({
 			where: { id },
-			select: { id: true },
+			select: {
+				id: true,
+				domain: true,
+				website: true,
+				contacts: { select: { email: true }, take: 200 },
+			},
 		});
 
 		if (!company) {
 			throw new NotFoundException(`No company with id ${id}.`);
+		}
+
+		// Brand lookup needs a domain or URL-shaped website. Soft-claim a
+		// domain from contact emails when Sage left both empty.
+		if (!company.domain) {
+			await this.claimDomainFromContacts(
+				id,
+				company.contacts.map((c) => c.email),
+			);
+			const refreshed = await this.db.company.findUnique({
+				where: { id },
+				select: { domain: true, website: true },
+			});
+			const canLookup =
+				Boolean(refreshed?.domain) ||
+				Boolean(refreshed?.website && normalizeDomain(refreshed.website));
+			if (!canLookup) {
+				throw new BadRequestException(
+					"Add a domain or website first — brand lookup needs one.",
+				);
+			}
 		}
 
 		await this.db.company.update({
@@ -619,16 +645,24 @@ export class CompaniesService {
 	async research(id: string, actingUserId: string) {
 		const company = await this.db.company.findUnique({
 			where: { id },
-			select: { id: true, domain: true },
+			select: {
+				id: true,
+				domain: true,
+				website: true,
+				contacts: { select: { email: true }, take: 200 },
+			},
 		});
 
 		if (!company) {
 			throw new NotFoundException(`No company with id ${id}.`);
 		}
 
-		if (!company.domain) {
-			throw new BadRequestException(
-				"There is nothing to read without a domain — add one first.",
+		// Best-effort: claim a free domain / set a research URL from contacts so
+		// Context.dev extract can run when Perplexity is not the only option.
+		if (!company.domain && !company.website) {
+			await this.claimDomainFromContacts(
+				id,
+				company.contacts.map((c) => c.email),
 			);
 		}
 
@@ -638,6 +672,45 @@ export class CompaniesService {
 		);
 
 		return { ok: true as const, queued: true as const };
+	}
+
+	/**
+	 * When `Company.domain` is empty, set it from the majority work-email
+	 * domain among contacts — only if that domain is not already taken.
+	 * Also fills `website` with `https://{domain}` when website is empty
+	 * (even if the unique domain slot is taken), so Research has a URL.
+	 */
+	private async claimDomainFromContacts(
+		companyId: string,
+		emails: readonly (string | null)[],
+	): Promise<string | null> {
+		const inferred = majorityWorkDomain(emails);
+		if (!inferred) return null;
+
+		const current = await this.db.company.findUnique({
+			where: { id: companyId },
+			select: { domain: true, website: true },
+		});
+		if (!current) return null;
+		if (current.domain) return current.domain;
+
+		const taken = await this.db.company.findUnique({
+			where: { domain: inferred },
+			select: { id: true },
+		});
+		const canClaim = !taken || taken.id === companyId;
+		const website = current.website ? undefined : `https://${inferred}`;
+
+		if (!canClaim && !website) return null;
+
+		await this.db.company.update({
+			where: { id: companyId },
+			data: {
+				...(canClaim ? { domain: inferred } : {}),
+				...(website ? { website } : {}),
+			},
+		});
+		return canClaim ? inferred : null;
 	}
 
 	/**

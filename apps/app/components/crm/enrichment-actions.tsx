@@ -16,6 +16,9 @@ import { useTRPC } from "@/lib/trpc/client";
  * Both are background work with no immediate result to show, so neither
  * navigates or blocks: the enrichment chip in the header goes to "Enriching"
  * and the page polls until it settles, and the brief appears on the timeline.
+ *
+ * Re-enrich needs a domain (Context.dev brand lookup). Research does not —
+ * with no site it falls back to Perplexity by company name when configured.
  */
 export function EnrichmentActions({
 	companyId,
@@ -44,8 +47,11 @@ export function EnrichmentActions({
 	const research = useMutation(
 		trpc.companies.research.mutationOptions({
 			onSuccess: async () => {
+				await cache.company(companyId);
 				await cache.activity();
-				toast.success("Brief added to the timeline.");
+				toast.success(
+					"Research queued — the brief will land on the timeline.",
+				);
 			},
 			onError: (error) => toast.error(error.message),
 		}),
@@ -59,9 +65,12 @@ export function EnrichmentActions({
 			<Button
 				variant="outline"
 				size="sm"
-				// Without a domain there is nothing to look up, and the API would only
-				// come back and say so.
 				disabled={!hasDomain || enrich.isPending}
+				title={
+					hasDomain
+						? "Refresh brand data from the domain"
+						: "Add a domain or website first — brand lookup needs one"
+				}
 				onClick={() => enrich.mutate({ id: companyId })}
 			>
 				{enrich.isPending ? (
@@ -76,7 +85,8 @@ export function EnrichmentActions({
 			 * Re-enrich beside it is the quieter "do that again". */}
 			<Button
 				size="sm"
-				disabled={!hasDomain || research.isPending}
+				disabled={research.isPending}
+				title="Write a research brief to the timeline"
 				onClick={() => research.mutate({ id: companyId })}
 			>
 				{research.isPending ? (

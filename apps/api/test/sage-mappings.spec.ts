@@ -57,6 +57,27 @@ describe("mapCompany", () => {
 		expect(mapped?.domain).toBe("acme.co.uk");
 	});
 
+	it("drops Sage website notes that are not URLs", () => {
+		const mapped = mapCompany({
+			companyid: "1253",
+			name: "HITACHI RAIL CD US LTD",
+			website: "FORMERLY CLEVER DEVICES 7/1/26",
+			emailaddress: "sales@cleverdevices.com",
+		});
+		expect(mapped?.website).toBeNull();
+		expect(mapped?.domain).toBe("cleverdevices.com");
+	});
+
+	it("drops credit-terms notes in website and does not invent a domain", () => {
+		const mapped = mapCompany({
+			companyid: "1",
+			name: "NET 30 Co",
+			website: "NET 30 OK PER GP 3/19/25",
+		});
+		expect(mapped?.website).toBeNull();
+		expect(mapped?.domain).toBeNull();
+	});
+
 	it("returns null without a usable id or name", () => {
 		expect(mapCompany({ name: "No id" })).toBeNull();
 		expect(mapCompany({ companyid: "1", name: "  " })).toBeNull();
@@ -365,15 +386,14 @@ describe("toSageOpportunityFields (local -> Sage)", () => {
 });
 
 describe("toSageCompanyFields / toSagePersonFields", () => {
-	it("updates a company by companyid", () => {
+	it("updates a company by companyid without pushing website", () => {
 		const fields = toSageCompanyFields(
-			{ sageCrmCompanyId: "24", name: "MOBILE MARK INC", website: "https://mobilemark.com" },
+			{ sageCrmCompanyId: "24", name: "MOBILE MARK INC" },
 			"update",
 		);
 		expect(fields).toEqual([
 			{ name: "companyid", value: "24" },
 			{ name: "name", value: "MOBILE MARK INC" },
-			{ name: "website", value: "https://mobilemark.com" },
 		]);
 	});
 

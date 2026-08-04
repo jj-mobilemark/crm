@@ -43,6 +43,7 @@ export default defineTool({
 				id: true,
 				name: true,
 				domain: true,
+				website: true,
 				description: true,
 				logoUrl: true,
 				logoDarkUrl: true,
@@ -68,7 +69,12 @@ export default defineTool({
 
 		if (!company)
 			return { enriched: false as const, reason: "No such company." };
-		if (!company.domain) {
+
+		const lookupDomain =
+			company.domain ??
+			domainFromWebsite(company.website);
+
+		if (!lookupDomain) {
 			await settle(
 				companyId,
 				EnrichmentStatus.SKIPPED,
@@ -90,7 +96,7 @@ export default defineTool({
 
 		// `fresh` asks for a cache bypass; anything else takes whatever the vendor
 		// has, because a 90-day-old logo is still the logo.
-		const result = await brandByDomain(company.domain, fresh ? 0 : undefined);
+		const result = await brandByDomain(lookupDomain, fresh ? 0 : undefined);
 
 		if (result.outcome === "skipped") {
 			await settle(companyId, EnrichmentStatus.SKIPPED, result.reason);
@@ -110,7 +116,8 @@ export default defineTool({
 			...company,
 			// A company the sync created is named after its domain until we know
 			// better, and that is the one non-null field a lookup may replace.
-			nameIsPlaceholder: company.name === company.domain,
+			nameIsPlaceholder:
+				company.name === company.domain || company.name === lookupDomain,
 		});
 		const filled = filledFields(update);
 
@@ -151,4 +158,21 @@ async function settle(
 		where: { id: companyId },
 		data: { enrichmentStatus: status, enrichmentError: error },
 	});
+}
+
+/** Bare host from a stored website URL, or null when it is not URL-shaped. */
+function domainFromWebsite(website: string | null): string | null {
+	const trimmed = website?.trim();
+	if (!trimmed || /\s/.test(trimmed)) return null;
+	const withScheme = /^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed)
+		? trimmed
+		: `https://${trimmed}`;
+	try {
+		const host = new URL(withScheme).hostname
+			.replace(/^www\./i, "")
+			.toLowerCase();
+		return /^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(host) ? host : null;
+	} catch {
+		return null;
+	}
 }
