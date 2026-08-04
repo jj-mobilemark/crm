@@ -8,7 +8,8 @@ import {
  * Shared Trip Planner loaders — Nest tRPC and agent tools call the same
  * helpers so candidate lists and itinerary shapes cannot drift.
  *
- * Mechanical only: distance + deal windows. No judgements about who to visit.
+ * Mechanical only: distance + deal windows + open-pipeline size.
+ * No judgements about who to visit beyond that ranking.
  */
 
 export const TRIP_CANDIDATE_LIMIT = 60;
@@ -20,6 +21,8 @@ const OPEN_DEAL_STAGES = [
 	DealStage.CONTRACT_SENT,
 	DealStage.IN_PURCHASING,
 ] as const;
+
+const OPEN_DEAL_STAGE_LIST = [...OPEN_DEAL_STAGES];
 
 /** Earth radius in miles (mean). */
 const EARTH_RADIUS_MI = 3958.8;
@@ -80,6 +83,9 @@ export type TripCandidate = {
 	outsideRadius: boolean;
 	mustVisit: boolean;
 	dealCountInWindow: number;
+	/** Count of deals still in an open CRM stage (not won/lost/unqualified). */
+	openDealCount: number;
+	/** Sum of open-deal `amount` (deal size). Null when there are no open deals. */
 	openPipelineAmount: number | null;
 	yearsSinceLastDeal: number | null;
 	lastDealAt: string | null;
@@ -215,9 +221,17 @@ export async function searchTripCandidates(
 		OR: [{ createdAt: { gte: cutoff } }, { closedAt: { gte: cutoff } }],
 	};
 
+	// ACTIVE includes anyone with recent deal activity OR a still-open deal
+	// (even if that deal was opened before the look-back window). Open deals
+	// are the main reason to swing by a neighbour on a trip.
 	const activityFilter =
 		input.activityMode === TripActivityMode.ACTIVE
-			? { deals: { some: dealInWindow } }
+			? {
+					OR: [
+						{ deals: { some: dealInWindow } },
+						{ deals: { some: { stage: { in: OPEN_DEAL_STAGE_LIST } } } },
+					],
+				}
 			: { NOT: { deals: { some: dealInWindow } } };
 
 	const inBox = await db.company.findMany({
@@ -300,6 +314,7 @@ export async function searchTripCandidates(
 		if (!mustVisit && outsideRadius) continue;
 
 		let dealCountInWindow = 0;
+		let openDealCount = 0;
 		let openPipelineAmount = 0;
 		let lastDealMs: number | null = null;
 
@@ -314,11 +329,11 @@ export async function searchTripCandidates(
 				(deal.closedAt != null && deal.closedAt >= cutoff);
 			if (inWindow) dealCountInWindow += 1;
 
-			if (
-				(OPEN_DEAL_STAGES as readonly string[]).includes(deal.stage) &&
-				deal.amount != null
-			) {
-				openPipelineAmount += Number(deal.amount);
+			if ((OPEN_DEAL_STAGES as readonly string[]).includes(deal.stage)) {
+				openDealCount += 1;
+				if (deal.amount != null) {
+					openPipelineAmount += Number(deal.amount);
+				}
 			}
 		}
 
@@ -339,8 +354,9 @@ export async function searchTripCandidates(
 			outsideRadius,
 			mustVisit,
 			dealCountInWindow,
+			openDealCount,
 			openPipelineAmount:
-				openPipelineAmount > 0
+				openDealCount > 0
 					? Math.round(openPipelineAmount * 100) / 100
 					: null,
 			yearsSinceLastDeal:
@@ -351,11 +367,19 @@ export async function searchTripCandidates(
 		});
 	}
 
+	// Must-visits first, then open-deal accounts by deal size, then activity /
+	// salvage signals, then nearer to the hub.
 	candidates.sort((a, b) => {
 		if (a.mustVisit !== b.mustVisit) return a.mustVisit ? -1 : 1;
+		const aOpen = a.openDealCount > 0;
+		const bOpen = b.openDealCount > 0;
+		if (aOpen !== bOpen) return aOpen ? -1 : 1;
 		const aAmt = a.openPipelineAmount ?? 0;
 		const bAmt = b.openPipelineAmount ?? 0;
 		if (aAmt !== bAmt) return bAmt - aAmt;
+		if (a.openDealCount !== b.openDealCount) {
+			return b.openDealCount - a.openDealCount;
+		}
 		if (input.activityMode === TripActivityMode.ACTIVE) {
 			if (a.dealCountInWindow !== b.dealCountInWindow) {
 				return b.dealCountInWindow - a.dealCountInWindow;

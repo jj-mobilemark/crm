@@ -9,7 +9,7 @@ import { z } from "zod";
  */
 export default defineTool({
 	description:
-		"Search companies near a trip hub within the plan's radius and activity mode (ACTIVE = deal created/closed in the last N years; SALVAGE = no such deal). Returns a ranked shortlist (must-visits first, then open pipeline amount, deal activity, distance). Cap ~60. Never invent companies or totals.",
+		"Search companies near a trip hub within the plan's radius and activity mode (ACTIVE = deal created/closed in the last N years OR any still-open deal; SALVAGE = no deal in that window). Returns a ranked shortlist: must-visits first, then accounts with open deals by deal size (openPipelineAmount), then other activity, then distance. Cap ~60. Never invent companies or totals.",
 	inputSchema: z.object({
 		tripPlanId: z.string().describe("The trip plan id from the session preamble."),
 		limit: z
@@ -51,7 +51,7 @@ export default defineTool({
 			note:
 				candidates.length === 0
 					? "No companies matched the radius and activity filter. Say so plainly — do not invent stops."
-					: "Use company ids from this list when building the itinerary. Call write_trip_itinerary when ready.",
+					: "Rank order is intentional: must-visits, then open-deal accounts by deal size, then the rest. Prefer filling leftover day slots with nearby open-deal companies (largest openPipelineAmount first). Use company ids from this list when building the itinerary. Call write_trip_itinerary when ready.",
 		};
 	},
 });

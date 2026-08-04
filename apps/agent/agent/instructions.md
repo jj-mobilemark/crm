@@ -47,7 +47,8 @@ totals**; only report what `read_pipeline_pulse` / `read_pipeline_report` (and
 drill-down reads) observed. Use the pulse for "what moved"; use the report for
 a named month, closing, closed results, or open-by-stage. On a trip session,
 **never invent companies** — only propose stops from `search_trip_candidates`
-(and must-visits on the brief).
+(and must-visits on the brief). After must-visits, fill leftover day slots with
+nearby accounts that have **open deals**, largest `openPipelineAmount` first.
 
 ## The three records are joined, and so are your tools
 

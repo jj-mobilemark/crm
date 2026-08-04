@@ -38,8 +38,13 @@ Mechanical data only in Nest/DB. Intelligence stays in the agent.
 
 ## Ranking (mechanical)
 
-Must-visit first → open pipeline amount → deal count in window (ACTIVE) or
+Must-visit first → accounts with **open deals** (any open CRM stage) by
+`openPipelineAmount` (deal size) descending → deal count in window (ACTIVE) or
 years since last deal (SALVAGE) → distance ascending. Cap ~60 for the agent.
+
+ACTIVE mode also includes companies that only have a still-open deal even if
+that deal was opened before the look-back window — so trip fill-ins are not
+limited to recent creates/closes.
 
 ## Key files
 

@@ -34,6 +34,13 @@ it before stopping. The rules for maintaining it live in `AGENTS.md`
   unique places still uncached-as-fail (junk/odd city strings). Code
   not fully committed: `open-meteo.geocoder.ts` + geocode script edits.
   Docs: `docs/plans/companies-map.md`. TCP proxy deleted after.
+- **Trip Planner open-deal priority (DONE local 2026-08-04)**: Candidate
+  ranking keeps must-visits first, then **open-deal accounts by deal
+  size**; ACTIVE mode also includes still-open deals outside the
+  look-back window. Agent preamble/tools tell the model to fill leftover
+  day slots that way. Files: `packages/db/src/trip-plan.ts`,
+  `search_trip_candidates.ts`, `preamble.ts`, `instructions.md`,
+  `docs/plans/trip-planner.md`.
 - **Trip Planner UI polish (DONE local 2026-08-04)**: `/trip-planner`
   rebuilt to match CRM density — Empty state, trip list with
   StatusIndicator, focused create form (FieldSet / ToggleGroup),
@@ -263,6 +270,29 @@ it before stopping. The rules for maintaining it live in `AGENTS.md`
 ---
 
 ## Work log
+
+### 2026-08-04 — Trip Planner: prioritize nearby open deals by size
+
+**What was completed**
+- `searchTripCandidates`: ACTIVE includes still-open deals even outside
+  the look-back window; sort is must-visit → open deals by
+  `openPipelineAmount` → other activity → distance; expose
+  `openDealCount`.
+- Agent copy: preamble, tool note, and `instructions.md` tell the model
+  to fill leftover day slots with nearby open-deal accounts (largest
+  first).
+- Docs: `docs/plans/trip-planner.md` ranking section.
+
+**How and why**
+- Reps want trip fill-ins to be other accounts in the area with open
+  pipeline, ordered by deal size — not only recent create/close activity.
+
+**Deviations**
+- None vs locked decisions (still mechanical ranking in `@crm/db`).
+
+**What's next**
+- Redeploy agent + api so prod picks up the ranking/prompt change
+  (no new migration).
 
 ### 2026-08-04 — Map re-geocode (Open-Meteo, faster)
 
