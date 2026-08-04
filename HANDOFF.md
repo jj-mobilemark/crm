@@ -165,6 +165,28 @@ it before stopping. The rules for maintaining it live in `AGENTS.md`
 
 ## Work log
 
+### 2026-08-04 — Prod user: Robert Johnson
+
+**What was completed**
+- Created prod `User` for Robert Johnson
+  (`rjohnson@mobilemark.com`, `emailVerified: true`, id
+  `invite-8a6b8239aca7a3374ba17508`) via temporary Railway TCP proxy.
+- Added reusable `apps/api/scripts/ensure-user.ts` (idempotent by email).
+
+**How and why**
+- Public signup is disabled (`disableSignUp` /
+  `disableImplicitSignUp`). Microsoft SSO needs an existing user row;
+  account linking attaches the Entra account on first sign-in. No
+  separate manager role — same shape as other teammates.
+
+**Deviations**
+- None.
+
+**What's next**
+- Robert signs in at prod with Microsoft as `rjohnson@mobilemark.com`.
+  If `ALLOWED_SIGN_IN` is not the whole `mobilemark.com` domain, add his
+  address there on Railway.
+
 ### 2026-08-03 — Deploy + prod Sage website repair
 
 **What was completed**
