@@ -10,6 +10,7 @@ import {
 	CardTitle,
 } from "@crm/ui/components/card";
 import { CardTableEmpty } from "@crm/ui/components/card-table";
+import { EmptyCellValue } from "@crm/ui/components/empty-cell";
 import {
 	SimpleTable,
 	type SimpleTableColumn,
@@ -74,6 +75,7 @@ export function PipelinePulse({ pulse }: { pulse: Pulse | undefined }) {
 
 	const feedColumns: SimpleTableColumn[] = [
 		{ header: "Deal" },
+		{ header: "Amount", width: "w-24", align: "right" },
 		{ header: "Change", width: "w-48" },
 		{ header: "Rep", width: "w-32", className: "hidden md:table-cell" },
 		{ header: "Source", width: "w-20", className: "hidden sm:table-cell" },
@@ -234,6 +236,19 @@ export function PipelinePulse({ pulse }: { pulse: Pulse | undefined }) {
 										name={change.deal.name}
 										company={change.deal.company.name}
 									/>
+								</TableCell>
+								<TableCell
+									className={`${CELL} text-right tabular-nums`}
+								>
+									{change.deal.amountCents === null ||
+									change.deal.amountCents === 0 ? (
+										<EmptyCellValue />
+									) : (
+										formatMoneyCompact(
+											change.deal.amountCents,
+											change.deal.currency,
+										)
+									)}
 								</TableCell>
 								<TableCell className={CELL}>
 									<ChangeLines change={change} />

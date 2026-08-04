@@ -75,6 +75,8 @@ type PulseChange = {
 		id: string;
 		name: string;
 		currency: string;
+		/** Current deal total (unweighted) — context for every feed row. */
+		amountCents: number | null;
 		company: { id: string; name: string };
 		owner: {
 			id: string;
@@ -172,6 +174,7 @@ export async function loadPipelinePulse(
 						id: true,
 						name: true,
 						currency: true,
+						amount: true,
 						company: { select: { id: true, name: true } },
 						owner: { select: OWNER_SELECT },
 					},
@@ -340,10 +343,18 @@ function serializeChange(
 		source: string;
 		createdAt: Date;
 		actor: PulseChange["actor"];
-		deal: PulseChange["deal"];
+		deal: {
+			id: string;
+			name: string;
+			currency: string;
+			amount: Prisma.Decimal | null;
+			company: PulseChange["deal"]["company"];
+			owner: PulseChange["deal"]["owner"];
+		};
 	},
 	magnitude?: number,
 ): PulseChange {
+	const { amount, ...deal } = change.deal;
 	return {
 		id: change.id,
 		field: change.field,
@@ -353,6 +364,9 @@ function serializeChange(
 		createdAt: change.createdAt.toISOString(),
 		magnitude: magnitude ?? null,
 		actor: change.actor,
-		deal: change.deal,
+		deal: {
+			...deal,
+			amountCents: toCents(amount),
+		},
 	};
 }

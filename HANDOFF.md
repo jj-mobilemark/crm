@@ -25,6 +25,10 @@ it before stopping. The rules for maintaining it live in `AGENTS.md`
 
 - **Git**: `origin` = `jj-mobilemark/crm` (fork); `upstream` = `trycompai/crm`
   (read-only). Work on `main`.
+- **Recent deal moves Amount column (DONE local 2026-08-04)**: Pulse
+  feed includes current deal `amountCents`; Overview Recent deal moves
+  shows an Amount column after Deal. Shared loader:
+  `packages/db/src/pipeline-pulse.ts`; UI: `pipeline-pulse.tsx`.
 - **Company picker disambiguation (DONE local 2026-08-04)**:
   `CompanyPicker` and screening/create-company match dialogs show
   Sage 100 customer # + contact count on the secondary line (no domain
@@ -212,6 +216,28 @@ it before stopping. The rules for maintaining it live in `AGENTS.md`
 ---
 
 ## Work log
+
+### 2026-08-04 — Recent deal moves: Amount column
+
+**What was completed**
+- `loadPipelinePulse` now selects deal `amount` and serializes
+  `deal.amountCents` on movers/recent rows
+  (`packages/db/src/pipeline-pulse.ts`).
+- Overview Recent deal moves table adds an Amount column (current
+  unweighted total) between Deal and Change
+  (`apps/app/app/(app)/pipeline-pulse.tsx`).
+
+**How and why**
+- Managers scanning Everyone moves need deal size at a glance; amount
+  only appeared when the change itself was an amount edit.
+
+**Deviations**
+- None. Biggest movers / stuck unchanged (stuck already shows amount
+  under the company line).
+
+**What's next**
+- Smoke Everyone overview: Amount column populated for deals with
+  totals; empty cell when null/zero.
 
 ### 2026-08-04 — Forecast month window: last / this / next 12
 
