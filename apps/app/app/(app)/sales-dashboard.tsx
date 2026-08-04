@@ -311,7 +311,8 @@ export function SalesDashboard({ summary }: { summary: Summary }) {
 					<CardHeader>
 						<CardTitle>Forecast by close month</CardTitle>
 						<CardDescription>
-							Last 12 months and upcoming — weighted vs unweighted
+							Last month, this month, and the next 12 — weighted vs
+							unweighted
 						</CardDescription>
 					</CardHeader>
 					{forecast.months.length === 0 ? (

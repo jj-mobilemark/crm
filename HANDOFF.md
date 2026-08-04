@@ -59,10 +59,10 @@ it before stopping. The rules for maintaining it live in `AGENTS.md`
   `createdAt` or `closedAt` within that window. URL +
   `companies.mapList`. Docs: `docs/plans/companies-map.md`.
 - **Forecast by close month window (DONE local 2026-08-04)**: Overview
-  month table keeps the last 12 months + upcoming closes (and "No date");
-  older overdue months drop out. Totals / Forecast by rep still use all
-  open deals. `buildForecast` in `dashboard.service.ts`; copy in
-  `sales-dashboard.tsx`.
+  month table keeps last month + this month + next 12 months (and
+  "No date"); older overdue and far-future months drop out. Totals /
+  Forecast by rep still use all open deals. `buildForecast` in
+  `dashboard.service.ts`; copy in `sales-dashboard.tsx`.
 - **Sales-rep sheet + deal stages (DONE local 2026-08-04)**: Five open
   stages — Leads / Investigation / Quote / Negotiation / In Purchasing
   (`IN_PURCHASING` enum) with certainty defaults 10/25/50/75/90. Sage map
@@ -212,6 +212,26 @@ it before stopping. The rules for maintaining it live in `AGENTS.md`
 ---
 
 ## Work log
+
+### 2026-08-04 — Forecast month window: last / this / next 12
+
+**What was completed**
+- Tightened `buildForecast` to last month + this month + next 12
+  months (`FORECAST_MONTHS_LOOKBACK=1`, `LOOKAHEAD=12`). Far-future
+  buckets (e.g. Nov 2027 from Aug 2026) drop out; "No date" kept.
+- Card copy: "Last month, this month, and the next 12".
+
+**How and why**
+- Prior "last 12 months + all upcoming" still left a long overdue
+  tail and sparse far-future rows. This matches how reps scan the
+  live book.
+
+**Deviations**
+- None.
+
+**What's next**
+- Smoke overview: expect ~Jul 2026 … Aug 2027 (+ No date) in Aug 2026.
+- Still pending: apply stage migrations on Railway `api`.
 
 ### 2026-08-04 — Drop "Sage 100" label from picker meta
 

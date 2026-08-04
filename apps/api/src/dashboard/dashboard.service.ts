@@ -797,19 +797,19 @@ const FORECAST_MONTH_LABEL = new Intl.DateTimeFormat("en-US", {
 });
 
 /**
- * How far back the close-month table keeps overdue buckets. Older open deals
- * still count in totals / by-rep; they just leave the month list so 2021
- * close dates do not bury the live forecast.
+ * Close-month table window relative to the current month: one month back,
+ * then this month through twelve months ahead. Older overdue and far-future
+ * buckets leave the list; totals / by-rep still count every open deal.
  */
-const FORECAST_MONTHS_LOOKBACK = 11;
+const FORECAST_MONTHS_LOOKBACK = 1;
+const FORECAST_MONTHS_LOOKAHEAD = 12;
 
 /**
  * Bucket open deals by expected-close month (server calendar) and by owner.
  *
  * Months sort chronologically; deals with no close date land in a trailing
- * "No date" bucket. The month table keeps the last 12 months (including the
- * current month) plus any upcoming close months — older overdue months drop
- * out. Totals and by-owner still cover every open deal.
+ * "No date" bucket. The month table keeps last month, this month, and the
+ * next 12 months. Totals and by-owner still cover every open deal.
  */
 function buildForecast(deals: ForecastDeal[], now: Date) {
 	const monthBuckets = new Map<
@@ -880,6 +880,7 @@ function buildForecast(deals: ForecastDeal[], now: Date) {
 
 	const thisMonthKey = monthKey(now);
 	const oldestMonthKey = monthKey(monthStart(now, -FORECAST_MONTHS_LOOKBACK));
+	const newestMonthKey = monthKey(monthStart(now, FORECAST_MONTHS_LOOKAHEAD));
 
 	return {
 		totals: {
@@ -888,7 +889,11 @@ function buildForecast(deals: ForecastDeal[], now: Date) {
 			dealCount: deals.length,
 		},
 		months: [...monthBuckets.values()]
-			.filter((month) => month.key === "none" || month.sort >= oldestMonthKey)
+			.filter(
+				(month) =>
+					month.key === "none" ||
+					(month.sort >= oldestMonthKey && month.sort <= newestMonthKey),
+			)
 			.sort((a, b) => a.sort - b.sort)
 			.map(({ sort, ...month }) => ({
 				...month,
