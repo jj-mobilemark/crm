@@ -153,7 +153,7 @@ export function DashboardSummary() {
 						change log, not guesses
 					</CardDescription>
 				</CardHeader>
-				<CardPanel className="flex h-96 flex-col overflow-hidden p-0">
+				<CardPanel className="flex h-[500px] flex-col overflow-hidden p-0">
 					<PipelineAgentPanel key={scope} scope={scope} />
 				</CardPanel>
 			</Card>

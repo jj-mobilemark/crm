@@ -95,22 +95,32 @@ Two distinct error strings tell us different things:
 
 - **"Entity '<x>' is not Web Service enabled"** = the module exists in Sage but
   is NOT exposed. Cannot be reached until an admin enables it (same switch
-  `MasHeader` got). Confirmed OFF: `forecast`, `campaign`.
-- **"Query failed to run successfully"** = the entity IS exposed, but our
-  predicate/id-column was wrong. Confirmed on: `case`, `quotes`, `orders`,
-  `user`. These are probably reachable with the right id column — re-probe
-  before assuming they are unavailable.
+  `MasHeader` got). Confirmed OFF: `forecast`, `campaign`, `library`,
+  `solution`.
+- **"Query failed to run successfully"** = the entity name is accepted, but
+  the query still fails (even `1=1` in some cases). Confirmed sticky on:
+  `case` / `quotes` / `orders` / `MasHeader` / `MasOrderDetailHistory`.
+- **"Entity '<x>' does not exist"** = wrong name; no SOAP entity by that
+  spelling (`document(s)`, `relationship(s)`, `consent`, `selfservice`).
 
-| Entity | Web-service | Notes |
-| --- | --- | --- |
-| `company` | **yes** | HIERARCHICAL doc: nests `address`, `phone`, `email`, `person` children (association is by XML nesting, not an FK field). |
-| `person` | **yes** | **Flat**; carry `emailaddress` and `areacode`/`number` inline. Query with `pers_companyid = <id>`. |
-| `opportunity` | **yes** | Flat; `oppo_primarycompanyid` links to company. Carries the forecasting fields (see section 3b). |
-| `communication` | **yes** | Sage activities (calls, meetings, tasks, letters). Maps to the local `Activity` timeline — a big win for the interface layer. Not in the v1 triad; strong candidate for phase 2. |
-| `lead` | **yes** | Sage leads (pre-qualification). No local equivalent today. |
-| `case` / `quotes` / `orders` / `user` | **likely yes** | Returned "Query failed" (wrong id column), not "not enabled". Re-probe with correct columns. `user` matters for owner mapping. |
-| `forecast` | **NO** | "not Web Service enabled". Sage's formal Forecast submissions are unreachable — forecasting must be reconstructed from `opportunity` (section 3b). |
-| `campaign` | **NO** | "not Web Service enabled". Out of scope. |
+**Re-probed live 2026-08-03** (`apps/api/scripts/sage-probe-entities.ts` +
+`sage-probe-recency.ts`). Recency = rows matching `*_updateddate` /
+`comm_datetime` in 2025–2026.
+
+| Entity | Web-service | Recent use? | Notes |
+| --- | --- | --- | --- |
+| `company` | **yes** (synced) | yes | HIERARCHICAL: nests `address`, `phone`, `email`, `person`. |
+| `person` | **yes** (synced) | yes | Also queryable flat; backfill uses nested children. |
+| `opportunity` | **yes** (synced) | yes (2026-07+) | Forecasting fields live here (section 3b). |
+| `address` / `phone` / `email` | **yes** | yes (phone/email 2026) | Standalone query works; **already covered** via company nest. |
+| `communication` | **yes** | **yes — active 2026** | Tasks / Phone Out / Email In+Out. 100+ rows with `comm_datetime > 2026-01-01`. Strongest missed module → local `Activity`. |
+| `notes` | **yes** | **yes — active 2026** | Entity name is `notes` (not `note`). 100+ rows with `note_updateddate > 2026-01-01`. Not synced. |
+| `lead` | **yes** | **yes — active 2026** | 100+ rows updated in 2026 (incl. same-day). No local model. |
+| `users` | **yes** | yes | Entity name is `users` (not `user`). ~27 rows; owner map already static. |
+| `cases` | empty | no | Enabled under `cases` but 0 rows for `case_caseid > 0`. |
+| `case` / `quotes` / `orders` / `MasHeader` / `MasOrderDetailHistory` | query fails | unknown | Fail even with `1=1` — not a simple id-column miss. |
+| `library` / `forecast` / `campaign` / `solution` | **NO** | — | "not Web Service enabled". Documents UI = library (off). |
+| `document(s)` / `relationship(s)` / `consent` / `selfservice` | missing | — | "does not exist" as SOAP entity names. |
 
 ### Decision that follows from the probe (UPDATED by the sibling project)
 
