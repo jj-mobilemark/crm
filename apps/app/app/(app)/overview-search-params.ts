@@ -34,6 +34,20 @@ export const OVERVIEW_RANGES = [
 
 export type OverviewRange = (typeof OVERVIEW_RANGES)[number];
 
+/**
+ * Close window for the Everyone certainty × rep grid.
+ * Kept in step with `CERTAINTY_BY_REP_WINDOWS` in the API contracts.
+ */
+export const CERTAINTY_BY_REP_WINDOWS = [
+	"this_month",
+	"next_30",
+	"next_3m",
+	"next_6m",
+	"custom",
+] as const;
+
+export type CertaintyByRepWindow = (typeof CERTAINTY_BY_REP_WINDOWS)[number];
+
 export const overviewParsers = {
 	// A literal parser, not a plain string: `?scope=nonsense` then falls back to
 	// the default rather than reaching the API as an unhandled value.
@@ -43,6 +57,12 @@ export const overviewParsers = {
 	from: parseAsString,
 	/** `YYYY-MM-DD` — only sent when `range=custom`. */
 	to: parseAsString,
+	/** Certainty × rep grid window — Everyone only; independent of `range`. */
+	certWindow: parseAsStringLiteral(CERTAINTY_BY_REP_WINDOWS).withDefault(
+		"this_month",
+	),
+	certFrom: parseAsString,
+	certTo: parseAsString,
 };
 
 export const loadOverviewSearchParams = createLoader(overviewParsers);

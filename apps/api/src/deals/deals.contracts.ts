@@ -72,8 +72,6 @@ const dealUpdateInput = z.object({
 	amountCents: z.number().int().min(0).nullable().optional(),
 	currency: z.string().length(3).optional(),
 	expectedCloseDate: z.string().nullable().optional(),
-	/** Certainty % 0–100 (Sage `certainty`). Null clears it. */
-	probability: z.number().int().min(0).max(100).nullable().optional(),
 	/** Null clears priority. */
 	priority: priorityEnum.nullable().optional(),
 });

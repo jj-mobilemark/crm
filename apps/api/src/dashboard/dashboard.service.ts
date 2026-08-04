@@ -8,11 +8,35 @@ import {
 import { Injectable } from "@nestjs/common";
 import { toCents } from "../crm/values";
 import { InjectDatabase } from "../database/database.constants";
-import { OPEN_DEAL_STAGES } from "../deals/deal-stage";
+import {
+	OPEN_DEAL_STAGES,
+	STAGE_CERTAINTY,
+} from "../deals/deal-stage";
 import type {
+	DashboardCertaintyByRepInput,
 	DashboardRepSummaryInput,
 	DashboardSummaryInput,
 } from "./dashboard.contracts";
+
+/** Columns for the Everyone certainty × rep grid (open + known outcomes). */
+const CERTAINTY_GRID_STAGES = [
+	...OPEN_DEAL_STAGES,
+	DealStage.CLOSED_WON,
+	DealStage.CLOSED_LOST,
+] as const;
+
+const CERTAINTY_GRID_LABELS: Record<
+	(typeof CERTAINTY_GRID_STAGES)[number],
+	string
+> = {
+	[DealStage.DEMO_BOOKED]: "Leads",
+	[DealStage.QUALIFIED_TO_BUY]: "Investigation",
+	[DealStage.DECISION_MAKER_BOUGHT_IN]: "Quote",
+	[DealStage.CONTRACT_SENT]: "Negotiation",
+	[DealStage.IN_PURCHASING]: "In Purchasing",
+	[DealStage.CLOSED_WON]: "Closed won",
+	[DealStage.CLOSED_LOST]: "Closed lost",
+};
 
 const OWNER_SELECT = {
 	id: true,
@@ -108,6 +132,76 @@ function dayAfter(day: Date): Date {
 /** Months since year zero — subtract two to get a bucket index. */
 function monthKey(date: Date): number {
 	return date.getFullYear() * 12 + date.getMonth();
+}
+
+type CertaintyWindow = {
+	key: DashboardCertaintyByRepInput["window"];
+	label: string;
+	start: Date;
+	end: Date;
+};
+
+/**
+ * Close window for the certainty × rep grid.
+ *
+ * Forward presets start at today (or month start for this_month). Custom uses
+ * inclusive calendar days like the overview closed-won control.
+ */
+function resolveCertaintyWindow(
+	input: DashboardCertaintyByRepInput,
+	now: Date,
+): CertaintyWindow {
+	if (
+		input.window === "custom" &&
+		input.from &&
+		input.to &&
+		input.from <= input.to
+	) {
+		return {
+			key: "custom",
+			label: "Custom",
+			start: parseDay(input.from),
+			end: dayAfter(parseDay(input.to)),
+		};
+	}
+
+	if (input.window === "next_30") {
+		const start = dayStart(now);
+		return {
+			key: "next_30",
+			label: "Next 30 days",
+			start,
+			end: new Date(start.getTime() + 30 * DAY_MS),
+		};
+	}
+
+	if (input.window === "next_3m") {
+		const start = dayStart(now);
+		return {
+			key: "next_3m",
+			label: "Next 3 months",
+			start,
+			end: monthStart(now, 3),
+		};
+	}
+
+	if (input.window === "next_6m") {
+		const start = dayStart(now);
+		return {
+			key: "next_6m",
+			label: "Next 6 months",
+			start,
+			end: monthStart(now, 6),
+		};
+	}
+
+	// Default: this calendar month (includes days already passed).
+	return {
+		key: "this_month",
+		label: "This month",
+		start: monthStart(now, 0),
+		end: monthStart(now, 1),
+	};
 }
 
 type ResolvedRange = {
@@ -779,6 +873,87 @@ export class DashboardService {
 				...row,
 				createdAt: createdAt.toISOString(),
 			})),
+		};
+	}
+
+	/**
+	 * Everyone overview: counts by owner × stage for a close-date window.
+	 * Open stages use expectedCloseDate; Closed won/lost use closedAt.
+	 */
+	async certaintyByRep(input: DashboardCertaintyByRepInput) {
+		const now = new Date();
+		const window = resolveCertaintyWindow(input, now);
+		const columns = CERTAINTY_GRID_STAGES.map((stage) => ({
+			stage,
+			certainty: STAGE_CERTAINTY[stage],
+			label: CERTAINTY_GRID_LABELS[stage],
+		}));
+
+		const [openGroups, closedGroups] = await Promise.all([
+			this.db.deal.groupBy({
+				by: ["ownerId", "stage"],
+				where: {
+					stage: { in: [...OPEN_DEAL_STAGES] },
+					expectedCloseDate: { gte: window.start, lt: window.end },
+				},
+				_count: { _all: true },
+			}),
+			this.db.deal.groupBy({
+				by: ["ownerId", "stage"],
+				where: {
+					stage: {
+						in: [DealStage.CLOSED_WON, DealStage.CLOSED_LOST],
+					},
+					closedAt: { gte: window.start, lt: window.end },
+				},
+				_count: { _all: true },
+			}),
+		]);
+
+		const counts = new Map<string, Map<DealStage, number>>();
+		for (const row of [...openGroups, ...closedGroups]) {
+			const byStage = counts.get(row.ownerId) ?? new Map<DealStage, number>();
+			byStage.set(row.stage, row._count._all);
+			counts.set(row.ownerId, byStage);
+		}
+
+		const ownerIds = [...counts.keys()];
+		const owners =
+			ownerIds.length === 0
+				? []
+				: await this.db.user.findMany({
+						where: { id: { in: ownerIds } },
+						select: OWNER_SELECT,
+					});
+		const ownerById = new Map(owners.map((owner) => [owner.id, owner]));
+
+		const rows = ownerIds
+			.map((ownerId) => {
+				const owner = ownerById.get(ownerId);
+				if (!owner) return null;
+				const byStage = counts.get(ownerId) ?? new Map();
+				const cells = CERTAINTY_GRID_STAGES.map(
+					(stage) => byStage.get(stage) ?? 0,
+				);
+				const total = cells.reduce((sum, n) => sum + n, 0);
+				return { owner, cells, total };
+			})
+			.filter((row): row is NonNullable<typeof row> => row !== null)
+			.filter((row) => row.total > 0)
+			.sort(
+				(a, b) =>
+					b.total - a.total || a.owner.name.localeCompare(b.owner.name),
+			);
+
+		return {
+			window: {
+				key: window.key,
+				label: window.label,
+				start: window.start.toISOString(),
+				end: window.end.toISOString(),
+			},
+			columns,
+			rows,
 		};
 	}
 }

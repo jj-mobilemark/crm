@@ -211,10 +211,10 @@ describe("mapOpportunity", () => {
 		expect(mapped?.sageCrmCompanyId).toBe("24");
 		expect(mapped?.sageCrmPrimaryPersonId).toBe("5");
 		expect(mapped?.name).toBe("249  PR-LTMWG944-SP716");
-		// Amount = forecast (deal value); weighted = amount x certainty.
+		// Amount = forecast; certainty follows Closed won stage (100%), not Sage %.
 		expect(mapped?.amount).toBe("90000");
-		expect(mapped?.weightedAmount).toBe("45000");
-		expect(mapped?.probability).toBe(50);
+		expect(mapped?.weightedAmount).toBe("90000");
+		expect(mapped?.probability).toBe(100);
 		expect(mapped?.stage).toBe(DealStage.CLOSED_WON);
 		expect(mapped?.sageStage).toBe("Closed Won");
 		expect(mapped?.sageStatus).toBe("Won");
@@ -235,18 +235,21 @@ describe("mapOpportunity", () => {
 		expect(mapped?.openedAt?.toISOString()).toContain("2025-11-02");
 	});
 
-	it("takes amount from forecast, computes weighted, and handles no certainty", () => {
+	it("takes amount from forecast and weights by stage certainty", () => {
 		const full = mapOpportunity({
 			opportunityid: "1",
 			description: "big deal",
 			primarycompanyid: "24",
 			forecast: "2987000",
 			certainty: "50",
+			stage: "Proposal",
 		});
 		expect(full?.amount).toBe("2987000");
+		// Proposal → Quote (50%) — Sage certainty ignored when it matches; stage wins.
+		expect(full?.probability).toBe(50);
 		expect(full?.weightedAmount).toBe("1493500");
 
-		// No certainty -> we do not fabricate a weight.
+		// Blank Sage stage → Leads (10%); still weights even without Sage certainty.
 		const noCert = mapOpportunity({
 			opportunityid: "2",
 			description: "x",
@@ -254,7 +257,8 @@ describe("mapOpportunity", () => {
 			forecast: "1000",
 		});
 		expect(noCert?.amount).toBe("1000");
-		expect(noCert?.weightedAmount).toBeNull();
+		expect(noCert?.probability).toBe(10);
+		expect(noCert?.weightedAmount).toBe("100");
 
 		// Falls back to `total` only when `forecast` is blank.
 		const fallback = mapOpportunity({
@@ -262,10 +266,12 @@ describe("mapOpportunity", () => {
 			description: "x",
 			primarycompanyid: "24",
 			total: "500",
-			certainty: "10",
+			certainty: "90",
+			stage: "Investigation/Prospecting",
 		});
 		expect(fallback?.amount).toBe("500");
-		expect(fallback?.weightedAmount).toBe("50");
+		expect(fallback?.probability).toBe(25);
+		expect(fallback?.weightedAmount).toBe("125");
 	});
 
 	it("returns null without id, description, or company", () => {

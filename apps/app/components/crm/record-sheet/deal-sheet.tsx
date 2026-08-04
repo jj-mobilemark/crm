@@ -169,7 +169,10 @@ export function DealSheet({ dealId }: { dealId: string }) {
 							{deal.probability === null || deal.probability === undefined ? (
 								<EmptyCellValue />
 							) : (
-								<span className="tabular-nums">
+								<span
+									className="tabular-nums"
+									title="Follows the deal stage — not edited separately"
+								>
 									{formatPercent(deal.probability / 100)}
 								</span>
 							)}
@@ -277,27 +280,6 @@ function DealOverview({ deal }: { deal: Deal }) {
 						render={(value) =>
 							formatMoney(Math.round(Number(value) * 100), deal.currency)
 						}
-					/>
-					<InlineField
-						label="Certainty"
-						value={
-							deal.probability === null || deal.probability === undefined
-								? null
-								: String(deal.probability)
-						}
-						placeholder="50"
-						saving={isSaving("probability")}
-						readOnly={!canEdit}
-						onSave={(next) => {
-							if (next === "") return save({ probability: null });
-							const parsed = Number.parseInt(next, 10);
-							if (!Number.isFinite(parsed) || parsed < 0 || parsed > 100) {
-								toast.error("Certainty is a whole percent from 0 to 100.");
-								return;
-							}
-							save({ probability: parsed });
-						}}
-						render={(value) => formatPercent(Number(value) / 100)}
 					/>
 					<InlineSelectField
 						label="Priority"

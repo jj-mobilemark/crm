@@ -233,8 +233,8 @@ to be exposed later, add `sage100ContactCode` then.
 | `name` | `description` | |
 | `companyId` | `primarycompanyid` | resolve to local company |
 | `amount` | `forecast` (else `total`) | **CORRECTED 2026-08-02** — see the box below. Sage `total` is empty/0 on every opportunity; the deal value lives in `forecast`. So `amount` (unweighted deal value) ← `forecast`, falling back to `total`. |
-| `weightedAmount` | computed | **CORRECTED** — `amount` × `certainty`/100. Sage has no separate weighted field for this team; it is derived. Null when there is no certainty. |
-| `probability` | `certainty` | integer 0–100. |
+| `weightedAmount` | computed | **CORRECTED** — `amount` × stage certainty /100. Sage has a free-form `certainty` field, but local CRM locks certainty to stage (2026-08-04). Null when there is no amount. |
+| `probability` | stage band | integer 0–100 from `STAGE_CERTAINTY[stage]` (not Sage `certainty` on pull). |
 | `currency` | `currency` | default `USD` if blank |
 | `stage` | `stage` + `status` | map to `DealStage` (see below) |
 | `expectedCloseDate` | `targetclose` | |
@@ -270,8 +270,14 @@ UI labels and default certainty follow the Mobile Mark process (Leads 10% /
 Investigation 25% / Quote 50% / Negotiation 75% / In Purchasing 90%).
 `IN_PURCHASING` was added so Sage Purchasing is no longer collapsed into
 Proposal's slot. A one-shot migration remapped existing rows by `sageStage`
-(Proposal↔Negotiation semantic swap + Purchasing → `IN_PURCHASING`); certainty
-was left untouched.
+(Proposal↔Negotiation semantic swap + Purchasing → `IN_PURCHASING`).
+
+**Certainty is stage-fixed (2026-08-04):** local `Deal.probability` always
+follows `STAGE_CERTAINTY[stage]` — not independently editable in the app, and
+Sage pull ignores free-form Sage `certainty` in favour of the stage band.
+Weighted = `amount` × stage %. Push still writes that band back to Sage
+`certainty`. Migration `20260804140000_lock_deal_certainty_to_stage` aligned
+existing rows.
 
 Active Sage values (two 100-row samples): stage `Investigation/Prospecting`,
 `Proposal`, `Negotiation`, `Purchasing`, `Closed Won`, `Lost`; status

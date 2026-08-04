@@ -25,6 +25,20 @@ export const DASHBOARD_RANGES = [
 	"custom",
 ] as const;
 
+/**
+ * Close-date window for the Everyone certainty × rep grid.
+ *
+ * Independent of {@link DASHBOARD_RANGES} — that one is closed-won looking back;
+ * this one is "who is closing when" looking forward (plus This month).
+ */
+export const CERTAINTY_BY_REP_WINDOWS = [
+	"this_month",
+	"next_30",
+	"next_3m",
+	"next_6m",
+	"custom",
+] as const;
+
 export const dashboardSummaryInput = z.object({
 	scope: z.enum(DASHBOARD_SCOPES).default("me"),
 	range: z.enum(DASHBOARD_RANGES).default("this_year"),
@@ -48,3 +62,18 @@ export const dashboardRepSummaryInput = z.object({
 });
 
 export type DashboardRepSummaryInput = z.infer<typeof dashboardRepSummaryInput>;
+
+/**
+ * Rep × stage certainty counts for the Everyone overview grid.
+ *
+ * Open stages use `expectedCloseDate`; Closed won / lost use `closedAt`.
+ */
+export const dashboardCertaintyByRepInput = z.object({
+	window: z.enum(CERTAINTY_BY_REP_WINDOWS).default("this_month"),
+	from: z.string().date().optional(),
+	to: z.string().date().optional(),
+});
+
+export type DashboardCertaintyByRepInput = z.infer<
+	typeof dashboardCertaintyByRepInput
+>;

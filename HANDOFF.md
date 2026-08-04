@@ -25,6 +25,12 @@ it before stopping. The rules for maintaining it live in `AGENTS.md`
 
 - **Git**: `origin` = `jj-mobilemark/crm` (fork); `upstream` = `trycompai/crm`
   (read-only). Work on `main`.
+- **Certainty by rep + stage-locked certainty (DONE local 2026-08-04)**:
+  Everyone overview grid below forecast — reps × stage bands (10–90% +
+  Closed won/lost) with close window filter (`certWindow` URL; default
+  This month). API `dashboard.certaintyByRep`. Certainty no longer
+  independently editable; Sage pull uses stage band; migration
+  `20260804140000` applied locally. Docs: sage-crm-sync §3.3.
 - **Recent deal moves Amount column (DONE local 2026-08-04)**: Pulse
   feed includes current deal `amountCents`; Overview Recent deal moves
   shows an Amount column after Deal. Shared loader:
@@ -216,6 +222,32 @@ it before stopping. The rules for maintaining it live in `AGENTS.md`
 ---
 
 ## Work log
+
+### 2026-08-04 — Certainty by rep grid + lock certainty to stage
+
+**What was completed**
+- `dashboard.certaintyByRep` — open deals by `expectedCloseDate`, Closed
+  won/lost by `closedAt`; counts by owner × stage
+  (`dashboard.contracts.ts` / `.service.ts` / `.router.ts`).
+- Everyone UI: `CertaintyByRepGrid` + window control (This month /
+  Next 30 / 3m / 6m / Custom) via `certWindow` URL params; placed under
+  forecast cards (`certainty-by-rep-grid.tsx`, `sales-dashboard.tsx`).
+- Certainty stage-locked: removed deal-sheet edit; dropped
+  `update.probability`; Sage `mapOpportunity` uses `certaintyForStage`;
+  migration `20260804140000_lock_deal_certainty_to_stage` applied
+  locally. Docs: sage-crm-sync §3.3.
+
+**How and why**
+- Managers need a printed-forecast-style certainty matrix on Everyone.
+- Independent certainty drifted from stage and confused weighted totals.
+
+**Deviations**
+- None vs agreed plan (Unqualified omitted from grid columns).
+
+**What's next**
+- Smoke Everyone overview: grid + window filter; deal sheet Certainty
+  read-only.
+- Apply `20260804140000` on Railway `api` when deploying.
 
 ### 2026-08-04 — Recent deal moves: Amount column
 

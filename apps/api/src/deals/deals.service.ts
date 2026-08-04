@@ -317,19 +317,15 @@ export class DealsService {
 				: existing.amount === null
 					? null
 					: existing.amount.toNumber();
-		const nextProbability =
-			input.probability !== undefined
-				? input.probability
-				: existing.probability;
+		// Certainty is stage-locked — never accept an independent edit.
+		const nextProbability = certaintyForStage(existing.stage);
 
 		if (input.amountCents !== undefined) {
 			data.amount = nextAmount;
 		}
-		if (input.probability !== undefined) {
+		// Keep weighted in step when amount changes (certainty follows stage).
+		if (input.amountCents !== undefined) {
 			data.probability = nextProbability;
-		}
-		// Keep weighted in step when amount or certainty changes.
-		if (input.amountCents !== undefined || input.probability !== undefined) {
 			data.weightedAmount = weightedFromAmount(nextAmount, nextProbability);
 		}
 
@@ -365,7 +361,6 @@ export class DealsService {
 			if (
 				input.name !== undefined ||
 				input.amountCents !== undefined ||
-				input.probability !== undefined ||
 				input.expectedCloseDate !== undefined ||
 				input.ownerId !== undefined ||
 				input.companyId !== undefined

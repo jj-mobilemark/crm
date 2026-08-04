@@ -4,6 +4,7 @@ import type { z } from "zod";
 import type { AuthedTrpcContext } from "../trpc/context.types";
 import { AuthMiddleware } from "../trpc/middlewares/auth.middleware";
 import {
+	dashboardCertaintyByRepInput,
 	dashboardRepSummaryInput,
 	dashboardSummaryInput,
 } from "./dashboard.contracts";
@@ -38,5 +39,16 @@ export class DashboardRouter {
 		@Input() input: z.infer<typeof dashboardRepSummaryInput>,
 	) {
 		return this.dashboard.repSummary(input);
+	}
+
+	/**
+	 * Everyone overview: deal counts by owner × stage certainty band for a
+	 * close-date window (open by expected close; won/lost by closedAt).
+	 */
+	@Query({ input: dashboardCertaintyByRepInput })
+	async certaintyByRep(
+		@Input() input: z.infer<typeof dashboardCertaintyByRepInput>,
+	) {
+		return this.dashboard.certaintyByRep(input);
 	}
 }

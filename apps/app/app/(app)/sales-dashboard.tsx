@@ -28,6 +28,7 @@ import { dealStageColor, dealStageLabel } from "@/components/crm/deal-stage";
 import { OwnerCell } from "@/components/crm/owner-cell";
 import { AreaTrend, DonutStat } from "@/components/dashboard-charts";
 import type { RouterOutputs } from "@/lib/trpc/types";
+import { CertaintyByRepGrid } from "./certainty-by-rep-grid";
 
 type Summary = RouterOutputs["dashboard"]["summary"];
 
@@ -401,6 +402,8 @@ export function SalesDashboard({ summary }: { summary: Summary }) {
 					</Card>
 				) : null}
 			</div>
+
+			{summary.scope === "everyone" ? <CertaintyByRepGrid /> : null}
 		</div>
 	);
 }

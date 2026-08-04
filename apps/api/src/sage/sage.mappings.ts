@@ -1,5 +1,6 @@
 import { DealStage } from "@crm/db";
 import { domainFromEmail, normalizeDomain } from "../companies/domain";
+import { certaintyForStage } from "../deals/deal-stage";
 import type { SageWriteField } from "./sage.constants";
 import type { SageCompanyTree, SageRecord } from "./sage-xml";
 
@@ -194,10 +195,11 @@ export function mapOpportunity(record: SageRecord): MappedOpportunity | null {
 	const sageStatus = clean(record.status);
 
 	// The team enters the deal value in Sage `forecast` (their `total` is unused
-	// — always empty or 0), with a separate `certainty` %. So `forecast` is the
-	// unweighted value; the weighted forecast is that times the certainty.
+	// — always empty or 0). Local certainty is stage-fixed (Mobile Mark bands),
+	// not Sage's free-form `certainty` field — weighted = amount × stage %.
 	const amount = parseDecimal(record.forecast) ?? parseDecimal(record.total);
-	const probability = parseCertainty(record.certainty);
+	const stage = mapSageDealStage(sageStage, sageStatus);
+	const probability = certaintyForStage(stage);
 
 	return {
 		sageCrmOpportunityId: id,
@@ -208,7 +210,7 @@ export function mapOpportunity(record: SageRecord): MappedOpportunity | null {
 		weightedAmount: weightedAmount(amount, probability),
 		probability,
 		currency: clean(record.currency) ?? "USD",
-		stage: mapSageDealStage(sageStage, sageStatus),
+		stage,
 		sageStage,
 		sageStatus,
 		dealType: clean(record.type),
@@ -699,15 +701,6 @@ function weightedAmount(
 	if (!Number.isFinite(n)) return null;
 	// Round to cents, then drop a trailing ".00"/".x0" for a clean decimal string.
 	return String(Math.round(((n * certainty) / 100) * 100) / 100);
-}
-
-/** Sage certainty % — integer 0–100, or null. */
-function parseCertainty(value: string | null | undefined): number | null {
-	const cleaned = clean(value);
-	if (!cleaned) return null;
-	const n = Number.parseInt(cleaned, 10);
-	if (!Number.isFinite(n)) return null;
-	return Math.min(100, Math.max(0, n));
 }
 
 /** Sage ISO-ish datetime (`2026-07-30T16:50:58`) -> Date, or null. */

@@ -17,7 +17,7 @@ import { timelineInput, timelineCountsInput, myTasksInput, activityCreateInput, 
 import { companyListInput, companyMapListInput, companyIdInput, companyOptionsInput, companySimilarInput, companyCreateInput, companyUpdateArgs, setPrimaryContactInput } from "../companies/companies.contracts";
 import { contactListInput, contactIdInput, contactOptionsInput, contactCreateInput, contactUpdateArgs, factDecisionInput } from "../contacts/contacts.contracts";
 import { conversationListInput, conversationEventsInput, conversationSaveInput, conversationIdInput } from "../conversations/conversations.contracts";
-import { dashboardSummaryInput, dashboardRepSummaryInput } from "../dashboard/dashboard.contracts";
+import { dashboardSummaryInput, dashboardRepSummaryInput, dashboardCertaintyByRepInput } from "../dashboard/dashboard.contracts";
 import { dealListInput, dealIdInput, dealCreateInput, dealUpdateArgs, setStageInput } from "../deals/deals.contracts";
 import { followupPrefsInput, followupDecideInput } from "../followups/followups.contracts";
 import { setAutoCreateInput, suppressDomainInput, threadInput, calendarEventInput } from "../google/google.contracts";
@@ -131,7 +131,10 @@ const appRouter = t.router({
       .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<DashboardRouter["summary"]>>),
     repSummary: publicProcedure
       .input(dashboardRepSummaryInput)
-      .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<DashboardRouter["repSummary"]>>)
+      .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<DashboardRouter["repSummary"]>>),
+    certaintyByRep: publicProcedure
+      .input(dashboardCertaintyByRepInput)
+      .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<DashboardRouter["certaintyByRep"]>>)
     }),
   deals: t.router({
     list: publicProcedure
