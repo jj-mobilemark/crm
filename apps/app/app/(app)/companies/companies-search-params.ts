@@ -9,5 +9,8 @@ export const companiesSearchParams = createListSearchParams({
 	// something up alphabetically — that is what ⌘K is for.
 	defaultSort: "createdAt",
 	defaultDir: "desc",
-	facetIds: ["owner", "industry", "enrichment"] as const,
+	facetIds: ["owner", "industry", "enrichment", "hideEmpty"] as const,
+	// On by default: the list is for real accounts (contacts + Sage 100), not
+	// empty shells from sync. Uncheck to audit the rest.
+	facetDefaults: { hideEmpty: "yes" },
 });

@@ -5,11 +5,13 @@ import {
 	type DataTableColumn,
 	type DataTableFacet,
 } from "@crm/ui/components/data-table";
+import { Checkbox } from "@crm/ui/components/checkbox";
 import { EmptyCellValue } from "@crm/ui/components/empty-cell";
 import {
 	EntityLogo,
 	type EntityLogoTone,
 } from "@crm/ui/components/entity-logo";
+import { Label } from "@crm/ui/components/label";
 import { relativeTimeFromIso } from "@crm/ui/lib/format";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -29,6 +31,8 @@ import { useTableQuery } from "@/components/data-table/use-table-query";
 import { useTRPC } from "@/lib/trpc/client";
 import type { RouterOutputs } from "@/lib/trpc/types";
 import { companiesSearchParams } from "./companies-search-params";
+
+const HIDE_EMPTY_ID = "companies-hide-empty";
 
 type CompanyRow = RouterOutputs["companies"]["list"]["rows"][number];
 
@@ -247,6 +251,8 @@ export function CompaniesTable() {
 		},
 	];
 
+	const hideEmptyOn = (query.filters.hideEmpty ?? "yes") === "yes";
+
 	return (
 		<DataTable
 			query={query}
@@ -255,6 +261,18 @@ export function CompaniesTable() {
 			total={companies.data?.total ?? 0}
 			facetCounts={facetCounts}
 			facets={facets}
+			leadingActions={
+				<span className="flex items-center gap-2">
+					<Checkbox
+						id={HIDE_EMPTY_ID}
+						checked={hideEmptyOn}
+						onCheckedChange={(checked) =>
+							query.setFilter("hideEmpty", checked === true ? "yes" : "all")
+						}
+					/>
+					<Label htmlFor={HIDE_EMPTY_ID}>Hide empty</Label>
+				</span>
+			}
 			getRowId={(row) => row.id}
 			loading={companies.isFetching}
 			onRowHover={(row) => prefetchRecord({ kind: "company", id: row.id })}

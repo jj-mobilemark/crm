@@ -20,6 +20,11 @@ export const companyListInput = listInput.extend({
 	 * what the sync decided, and delete the lot if it got it wrong.
 	 */
 	source: z.string().default("all"),
+	/**
+	 * `"yes"` (default) keeps companies that have at least one contact and a
+	 * Sage 100 customer #. `"all"` turns the filter off.
+	 */
+	hideEmpty: z.string().default("yes"),
 });
 
 export type CompanyListInput = z.infer<typeof companyListInput>;

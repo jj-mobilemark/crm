@@ -739,6 +739,21 @@ export class CompaniesService {
 			where.source = input.source as RecordSource;
 		}
 
+		// Default list view: skip shell companies (no people) and CRM-only
+		// accounts that never linked to Sage 100.
+		if (input.hideEmpty === "yes") {
+			where.AND = [
+				...(Array.isArray(where.AND)
+					? where.AND
+					: where.AND
+						? [where.AND]
+						: []),
+				{ contacts: { some: {} } },
+				{ sage100CustomerNo: { not: null } },
+				{ NOT: { sage100CustomerNo: "" } },
+			];
+		}
+
 		return where;
 	}
 

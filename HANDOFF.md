@@ -25,6 +25,11 @@ it before stopping. The rules for maintaining it live in `AGENTS.md`
 
 - **Git**: `origin` = `jj-mobilemark/crm` (fork); `upstream` = `trycompai/crm`
   (read-only). Work on `main`.
+- **Companies Hide empty filter (DONE 2026-08-03)**: companies list
+  checkbox (on by default) keeps rows with ≥1 contact **and** a Sage 100
+  customer #. URL `hideEmpty=yes|all`. Files:
+  `companies.contracts.ts`, `companies.service.ts`,
+  `companies-search-params.ts`, `companies-table.tsx`.
 - **Overview 8-KPI strip (DONE 2026-08-03)**: one `StatGroup` with sales +
   pulse cells (Closed won / Due / Open / Win rate / Won / Lost /
   Certainty / Stuck). **Won/Lost** = deal `closedAt` counts in the selected
@@ -140,6 +145,36 @@ it before stopping. The rules for maintaining it live in `AGENTS.md`
 ---
 
 ## Work log
+
+### 2026-08-03 — Companies list Hide empty filter
+
+**What was completed**
+- Companies table: **Hide empty** checkbox (on by default) in the filter
+  row. When on, list keeps companies with ≥1 contact **and** a non-empty
+  Sage 100 customer #.
+- API: `companyListInput.hideEmpty` (`yes` | `all`, default `yes`);
+  `buildWhere` adds `contacts.some` + `sage100CustomerNo` guards.
+- URL: `hideEmpty` via `companiesSearchParams` facet +
+  `facetDefaults: { hideEmpty: "yes" }`. Checkbox in `leadingActions`
+  (not a dropdown).
+- Files: `apps/api/src/companies/companies.contracts.ts`,
+  `companies.service.ts`,
+  `apps/app/app/(app)/companies/companies-search-params.ts`,
+  `companies-table.tsx`.
+
+**How and why**
+- Reps want the list to show real accounts (people + Sage 100 link), not
+  empty shells from sync. Uncheck to audit the rest. Same Prisma pattern
+  as the map's Sage 100 linked filter.
+
+**Deviations**
+- None. (Earlier note about a Sage filter referred to `/map`, not this
+  table.)
+
+**What's next**
+- Soft check in the browser: default list should drop zero-contact /
+  no-Sage-100 rows; uncheck restores them.
+- Optional: apply pending screening migration.
 
 ### 2026-08-03 — Overview Won/Lost KPIs use deal closedAt
 
