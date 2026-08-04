@@ -23,6 +23,7 @@ import {
 import { cn } from "@crm/ui/lib/utils";
 import { useQuery } from "@tanstack/react-query";
 import { useRef, useState } from "react";
+import { formatCompanyDisambiguation } from "@/components/crm/company-disambiguation";
 import { useTRPC } from "@/lib/trpc/client";
 
 /** How long to wait after a keystroke before asking the API. */
@@ -281,11 +282,12 @@ export function CompanyPicker(props: CompanyPickerProps) {
 									/>
 									<span className="flex min-w-0 flex-col">
 										<span className="truncate">{option.name}</span>
-										{option.domain ? (
-											<span className="truncate text-muted-foreground text-xs">
-												{option.domain}
-											</span>
-										) : null}
+										<span className="truncate text-muted-foreground text-xs">
+											{formatCompanyDisambiguation({
+												sage100CustomerNo: option.sage100CustomerNo,
+												contactCount: option.contactCount,
+											})}
+										</span>
 									</span>
 								</CommandItem>
 							))}

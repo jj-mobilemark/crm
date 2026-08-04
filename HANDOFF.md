@@ -25,6 +25,11 @@ it before stopping. The rules for maintaining it live in `AGENTS.md`
 
 - **Git**: `origin` = `jj-mobilemark/crm` (fork); `upstream` = `trycompai/crm`
   (read-only). Work on `main`.
+- **Company picker disambiguation (DONE local 2026-08-04)**:
+  `CompanyPicker` and screening/create-company match dialogs show
+  Sage 100 customer # + contact count on the secondary line (no domain
+  in the picker). `companies.options` now returns those fields.
+  Helper: `apps/app/components/crm/company-disambiguation.ts`.
 - **Company state/country + junk email repair (DONE local + prod
   2026-08-04)**: Full pull never wrote `stateCode`/`country` (only
   `city`); `/map` started persisting them later. Snapshot backfill
@@ -206,6 +211,29 @@ it before stopping. The rules for maintaining it live in `AGENTS.md`
 ---
 
 ## Work log
+
+### 2026-08-04 — Company picker Sage 100 + contact count
+
+**What was completed**
+- `companies.options` returns `sage100CustomerNo` + `contactCount`.
+- `CompanyPicker` secondary line: `Sage 100 {id} · N contacts` (no domain).
+- Screening + create-company match dialogs: same Sage 100 + always-on
+  contact count; dropped Sage CRM id from the subtitle.
+- Shared helper: `apps/app/components/crm/company-disambiguation.ts`.
+  Files: `companies.service.ts`, `company-picker.tsx`,
+  `screening-table.tsx`, `create-company-sheet.tsx`.
+
+**How and why**
+- Reps often face duplicate/dirty Sage company names when attaching
+  contacts; the customer # and contact volume disambiguate faster than
+  domain alone.
+
+**Deviations**
+- None.
+
+**What's next**
+- Smoke locally: open contact create / contacts filter / screening
+  approve match dialog and confirm secondary lines.
 
 ### 2026-08-04 — Fill state/country from snapshots; reject junk Sage emails
 

@@ -37,6 +37,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useId, useState } from "react";
 import { toast } from "sonner";
 import { useOpenRecord } from "@/components/crm/record-sheet/record-stack";
+import { formatCompanyDisambiguation } from "@/components/crm/company-disambiguation";
 import { companyNameGuessFromDomain } from "@/lib/company-name-guess";
 import { useCrmCache } from "@/lib/trpc/cache";
 import { useTRPC } from "@/lib/trpc/client";
@@ -205,20 +206,15 @@ function PendingActions({ row }: { row: PendingRow }) {
 									</span>
 									<span className="truncate text-muted-foreground text-xs">
 										{[
-											match.suggestReason,
 											match.domain,
 											[match.city, match.stateCode].filter(Boolean).join(", "),
-											match.sageCrmCompanyId
-												? `Sage CRM ${match.sageCrmCompanyId}`
-												: null,
-											!match.suggestReason && match.contactCount > 0
-												? `${match.contactCount} contacts`
-												: null,
-											!match.suggestReason
-												? match.reason === "domain"
-													? "Related domain"
-													: "Similar name"
-												: null,
+											formatCompanyDisambiguation({
+												sage100CustomerNo: match.sage100CustomerNo,
+												contactCount: match.contactCount,
+											}),
+											match.reason === "domain"
+												? "Related domain"
+												: "Similar name",
 										]
 											.filter(Boolean)
 											.join(" · ")}

@@ -416,19 +416,34 @@ export class CompaniesService {
 	}
 
 	/**
-	 * Companies for a picker or a facet label — id, name and enough to draw the
-	 * logo, nothing else.
+	 * Companies for a picker or a facet label — id, name, logo, plus Sage 100
+	 * customer # and contact count so reps can tell duplicate imports apart.
 	 *
 	 * Capped at 100 and searchable, so the "which company?" dropdown on a contact
 	 * or a deal stays a dropdown rather than becoming a second list view.
 	 */
 	async options(q: string) {
-		return this.db.company.findMany({
+		const rows = await this.db.company.findMany({
 			where: this.searchFilter(q),
-			select: { id: true, name: true, domain: true, iconUrl: true },
+			select: {
+				id: true,
+				name: true,
+				domain: true,
+				iconUrl: true,
+				sage100CustomerNo: true,
+				_count: { select: { contacts: true } },
+			},
 			orderBy: { name: "asc" },
 			take: 100,
 		});
+		return rows.map((row) => ({
+			id: row.id,
+			name: row.name,
+			domain: row.domain,
+			iconUrl: row.iconUrl,
+			sage100CustomerNo: row.sage100CustomerNo,
+			contactCount: row._count.contacts,
+		}));
 	}
 
 	/**
