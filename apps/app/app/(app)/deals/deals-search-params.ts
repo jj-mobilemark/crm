@@ -9,4 +9,7 @@ export const dealsSearchParams = createListSearchParams({
 	defaultDir: "desc",
 	tabId: "status",
 	facetIds: ["owner", "company", "stage", "closing", "priority"] as const,
+	// `"me"` resolves to the signed-in user before the list query runs — a rep
+	// opening Deals should land on their own pipeline, not everyone's.
+	facetDefaults: { owner: "me" },
 });

@@ -62,6 +62,11 @@ export type DataTableFacet = {
 	label: string;
 	options: { value: string; label: string }[];
 	/**
+	 * Allow more than one option at once. Selected values are stored as a
+	 * comma-separated string in the filter (e.g. `"A,B"`); `"all"` means none.
+	 */
+	multiple?: boolean;
+	/**
 	 * Custom control instead of the default radio dropdown — e.g. a searchable
 	 * company picker when the option list would be thousands of rows.
 	 */
@@ -71,6 +76,27 @@ export type DataTableFacet = {
 		label: string;
 	}) => ReactNode;
 };
+
+/** Split a multi-facet value; `"all"` / empty → no selection. */
+function selectedFacetValues(value: string): string[] {
+	if (!value || value === "all") return [];
+	return value.split(",").filter(Boolean);
+}
+
+function facetTriggerLabel(
+	facet: DataTableFacet,
+	selected: string,
+): string {
+	const values = selectedFacetValues(selected);
+	if (values.length === 0) return facet.label;
+	const labels = values.flatMap((value) => {
+		const option = facet.options.find((entry) => entry.value === value);
+		return option ? [option.label] : [];
+	});
+	if (labels.length === 0) return facet.label;
+	if (labels.length === 1) return labels[0]!;
+	return `${labels[0]} +${labels.length - 1}`;
+}
 
 export type DataTableTabs = {
 	id: string;
@@ -318,22 +344,34 @@ export function DataTable<TRow, TSub = unknown>({
 					{leadingActions}
 
 					<div className="grid grid-cols-1 gap-2 sm:flex sm:flex-wrap sm:items-center lg:ml-auto">
-						{facets?.map((facet) => {
-							const selected = query.filters[facet.id] ?? "all";
-							const onChange = (value: string) =>
-								query.setFilter(facet.id, value);
-							if (facet.render) {
-								return (
-									<Fragment key={facet.id}>
-										{facet.render({
-											value: selected,
-											onChange,
-											label: facet.label,
-										})}
-									</Fragment>
-								);
-							}
-							const active = facet.options.find((o) => o.value === selected);
+					{facets?.map((facet) => {
+						const selected = query.filters[facet.id] ?? "all";
+						const onChange = (value: string) =>
+							query.setFilter(facet.id, value);
+						if (facet.render) {
+							return (
+								<Fragment key={facet.id}>
+									{facet.render({
+										value: selected,
+										onChange,
+										label: facet.label,
+									})}
+								</Fragment>
+							);
+						}
+						if (facet.multiple) {
+							const picked = new Set(selectedFacetValues(selected));
+							const toggle = (value: string) => {
+								const next = new Set(picked);
+								if (next.has(value)) next.delete(value);
+								else next.add(value);
+								// Keep option order stable so the URL does not reshuffle
+								// on every toggle.
+								const ordered = facet.options
+									.map((option) => option.value)
+									.filter((value) => next.has(value));
+								onChange(ordered.length === 0 ? "all" : ordered.join(","));
+							};
 							return (
 								<DropdownMenu key={facet.id}>
 									<DropdownMenuTrigger asChild>
@@ -343,7 +381,7 @@ export function DataTable<TRow, TSub = unknown>({
 											className="justify-between"
 										>
 											<span className="truncate">
-												{active ? active.label : facet.label}
+												{facetTriggerLabel(facet, selected)}
 											</span>
 											<ChevronDown
 												data-icon="inline-end"
@@ -352,26 +390,66 @@ export function DataTable<TRow, TSub = unknown>({
 										</Button>
 									</DropdownMenuTrigger>
 									<DropdownMenuContent align="start" className="min-w-44">
-										<DropdownMenuRadioGroup
-											value={selected}
-											onValueChange={onChange}
+										<DropdownMenuCheckboxItem
+											checked={picked.size === 0}
+											onCheckedChange={() => onChange("all")}
+											onSelect={(event) => event.preventDefault()}
 										>
-											<DropdownMenuRadioItem value="all">
-												{facet.label}
-											</DropdownMenuRadioItem>
-											{facet.options.map((option) => (
-												<DropdownMenuRadioItem
-													key={option.value}
-													value={option.value}
-												>
-													{option.label}
-												</DropdownMenuRadioItem>
-											))}
-										</DropdownMenuRadioGroup>
+											{facet.label}
+										</DropdownMenuCheckboxItem>
+										{facet.options.map((option) => (
+											<DropdownMenuCheckboxItem
+												key={option.value}
+												checked={picked.has(option.value)}
+												onCheckedChange={() => toggle(option.value)}
+												onSelect={(event) => event.preventDefault()}
+											>
+												{option.label}
+											</DropdownMenuCheckboxItem>
+										))}
 									</DropdownMenuContent>
 								</DropdownMenu>
 							);
-						})}
+						}
+						const active = facet.options.find((o) => o.value === selected);
+						return (
+							<DropdownMenu key={facet.id}>
+								<DropdownMenuTrigger asChild>
+									<Button
+										variant="outline"
+										size="sm"
+										className="justify-between"
+									>
+										<span className="truncate">
+											{active ? active.label : facet.label}
+										</span>
+										<ChevronDown
+											data-icon="inline-end"
+											className="opacity-60"
+										/>
+									</Button>
+								</DropdownMenuTrigger>
+								<DropdownMenuContent align="start" className="min-w-44">
+									<DropdownMenuRadioGroup
+										value={selected}
+										onValueChange={onChange}
+									>
+										<DropdownMenuRadioItem value="all">
+											{facet.label}
+										</DropdownMenuRadioItem>
+										{facet.options.map((option) => (
+											<DropdownMenuRadioItem
+												key={option.value}
+												value={option.value}
+											>
+												{option.label}
+											</DropdownMenuRadioItem>
+										))}
+									</DropdownMenuRadioGroup>
+								</DropdownMenuContent>
+							</DropdownMenu>
+						);
+					})}
 						{(sortableColumns.length > 0 || anyExpandable) && (
 							<DropdownMenu>
 								<DropdownMenuTrigger asChild>

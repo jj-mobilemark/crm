@@ -26,19 +26,24 @@ export default async function DealsPage({
 }: {
 	searchParams: Promise<SearchParams>;
 }) {
-	await requireSession();
+	const session = await requireSession();
 
 	const values = await dealsSearchParams.load(searchParams);
+	const input = dealsSearchParams.toInput(values);
+	// Match the client: `"me"` → the signed-in user so SSR prefetch is already
+	// scoped to their deals.
+	if (input.owner === "me") {
+		input.owner = session.user.id;
+	}
 
 	const trpc = getServerTrpc();
 	const queryClient = getServerQueryClient();
 	// The rows are awaited so the first paint is the filtered, sorted, correct
 	// page rather than a spinner. The owner and company pickers behind the facet
 	// dropdowns are not — the table draws fine without them.
-	await queryClient.prefetchQuery(
-		trpc.deals.list.queryOptions(dealsSearchParams.toInput(values)),
-	);
+	await queryClient.prefetchQuery(trpc.deals.list.queryOptions(input));
 	void queryClient.prefetchQuery(trpc.users.list.queryOptions());
+	void queryClient.prefetchQuery(trpc.users.me.queryOptions());
 	void queryClient.prefetchQuery(
 		trpc.companies.options.queryOptions({ q: "" }),
 	);

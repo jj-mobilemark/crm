@@ -210,14 +210,34 @@ export function DealsTable() {
 	const trpc = useTRPC();
 	const prefetchRecord = usePrefetchRecord();
 	const { query, input } = useTableQuery(dealsSearchParams);
+	const me = useQuery(trpc.users.me.queryOptions());
+
+	// `"me"` is the URL default — resolve to the signed-in user before querying
+	// so the first paint is already their pipeline.
+	const ownerId =
+		input.owner === "me" ? (me.data?.id ?? "all") : input.owner;
+	const listInput = { ...input, owner: ownerId };
 
 	const deals = useQuery({
-		...trpc.deals.list.queryOptions(input),
+		...trpc.deals.list.queryOptions(listInput),
 		placeholderData: (previous) => previous,
+		// Wait for `me` when the owner facet is still the sentinel, otherwise the
+		// first request would be unfiltered and flash every deal.
+		enabled: input.owner !== "me" || Boolean(me.data?.id),
 	});
 	const users = useQuery(trpc.users.list.queryOptions());
 
 	const facetCounts = deals.data?.facetCounts;
+
+	// Present `"me"` as the real user id so the Owner dropdown highlights them.
+	const ownerFilter =
+		query.filters.owner === "me" && me.data?.id
+			? me.data.id
+			: (query.filters.owner ?? "all");
+	const tableQuery = {
+		...query,
+		filters: { ...query.filters, owner: ownerFilter },
+	};
 
 	const facets: DataTableFacet[] = [
 		{
@@ -225,7 +245,11 @@ export function DealsTable() {
 			label: "Owner",
 			options: (users.data ?? [])
 				.map((user) => ({ value: user.id, label: user.name }))
-				.filter((option) => (facetCounts?.owner?.[option.value] ?? 0) > 0),
+				.filter(
+					(option) =>
+						option.value === ownerFilter ||
+						(facetCounts?.owner?.[option.value] ?? 0) > 0,
+				),
 		},
 		{
 			id: "company",
@@ -244,9 +268,10 @@ export function DealsTable() {
 		{
 			id: "stage",
 			label: "Stage",
-			options: DEAL_STAGE_OPTIONS.filter(
-				(option) => (facetCounts?.stage?.[option.value] ?? 0) > 0,
-			),
+			multiple: true,
+			// Always list every stage (including zero-count) so Leads /
+			// Unqualified stay visible after the Mobile Mark relabel.
+			options: DEAL_STAGE_OPTIONS,
 		},
 		{
 			id: "closing",
@@ -269,7 +294,7 @@ export function DealsTable() {
 
 	return (
 		<DataTable
-			query={query}
+			query={tableQuery}
 			columns={COLUMNS}
 			rows={deals.data?.rows ?? []}
 			total={deals.data?.total ?? 0}
@@ -284,7 +309,7 @@ export function DealsTable() {
 				],
 			}}
 			getRowId={(row) => row.id}
-			loading={deals.isFetching}
+			loading={deals.isFetching || (input.owner === "me" && !me.data)}
 			onRowHover={(row) => prefetchRecord({ kind: "deal", id: row.id })}
 			onRowClick={(row) => openRecord({ kind: "deal", id: row.id })}
 			empty="No deals match this view."

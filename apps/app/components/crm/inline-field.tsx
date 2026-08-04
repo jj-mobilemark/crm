@@ -15,6 +15,7 @@ import { SOURCED_VALUE, SourcedValue } from "@crm/ui/components/sourced-value";
 import { Spinner } from "@crm/ui/components/spinner";
 import { cn } from "@crm/ui/lib/utils";
 import { useId, useState } from "react";
+import { CompanyPicker } from "@/components/crm/company-picker";
 import { PROPERTY_LABEL, PROPERTY_ROW } from "@/components/detail-sheet";
 
 // The row shape is the sheet's, not this file's — a read-only fact and an
@@ -327,6 +328,65 @@ export function InlineSelectField({
 					))}
 				</SelectContent>
 			</Select>
+		</div>
+	);
+}
+
+/**
+ * Company row for a record sheet — searchable full directory with Sage 100 id
+ * and contact count on each result (same picker as table facets / create forms).
+ */
+export function InlineCompanyField({
+	label,
+	value,
+	onSave,
+	saving = false,
+	includeNone = true,
+	noneLabel = "No company",
+	placeholder = "Choose a company",
+	displayName,
+	readOnly = false,
+}: {
+	label: string;
+	value: string | null;
+	onSave: (companyId: string | null) => void;
+	saving?: boolean;
+	includeNone?: boolean;
+	noneLabel?: string;
+	placeholder?: string;
+	/** Shown in read-only mode instead of the raw id. */
+	displayName?: string | null;
+	readOnly?: boolean;
+}) {
+	if (readOnly) {
+		return (
+			<div className={ROW}>
+				<span className={LABEL}>{label}</span>
+				<div className="min-w-0 px-2 text-sm">
+					{value ? (
+						<span className="truncate">{displayName ?? value}</span>
+					) : (
+						<span className="text-muted-foreground">{noneLabel}</span>
+					)}
+				</div>
+			</div>
+		);
+	}
+
+	return (
+		<div className={ROW}>
+			<span className={LABEL}>{label}</span>
+			<div className="flex min-w-0 flex-1 items-center gap-2">
+				<CompanyPicker
+					variant="inline"
+					value={value}
+					onChange={onSave}
+					includeNone={includeNone}
+					noneLabel={noneLabel}
+					placeholder={placeholder}
+				/>
+				{saving ? <Spinner /> : null}
+			</div>
 		</div>
 	);
 }

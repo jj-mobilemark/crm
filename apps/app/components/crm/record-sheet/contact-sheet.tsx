@@ -35,6 +35,7 @@ import {
 } from "@/components/crm/facts";
 import {
 	InlineField,
+	InlineCompanyField,
 	InlineSelectField,
 	savingField,
 } from "@/components/crm/inline-field";
@@ -297,7 +298,6 @@ function ContactOverview({ contact }: { contact: Contact }) {
 	const cache = useCrmCache();
 
 	const users = useQuery(trpc.users.list.queryOptions());
-	const companies = useQuery(trpc.companies.options.queryOptions({ q: "" }));
 
 	const { applied, proposed } = factsByField(contact.facts);
 
@@ -397,19 +397,11 @@ function ContactOverview({ contact }: { contact: Contact }) {
 						onSave={(githubUrl) => save({ githubUrl })}
 						{...agentProps("githubUrl")}
 					/>
-					<InlineSelectField
+					<InlineCompanyField
 						label="Company"
-						value={contact.company?.id ?? NONE}
-						options={[
-							{ value: NONE, label: "No company" },
-							...(companies.data ?? []).map((company) => ({
-								value: company.id,
-								label: company.name,
-							})),
-						]}
-						onSave={(companyId) =>
-							save({ companyId: companyId === NONE ? null : companyId })
-						}
+						value={contact.company?.id ?? null}
+						saving={isSaving("companyId")}
+						onSave={(companyId) => save({ companyId })}
 					/>
 					<InlineSelectField
 						label="Owner"

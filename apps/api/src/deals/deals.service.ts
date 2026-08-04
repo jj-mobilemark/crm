@@ -49,6 +49,19 @@ import type {
 } from "./deals.contracts";
 import { CLOSING_WINDOWS } from "./deals.contracts";
 
+const ALL_STAGES = new Set<string>([
+	...OPEN_DEAL_STAGES,
+	...CLOSED_DEAL_STAGES,
+]);
+
+/** Comma-separated stage facet → valid `DealStage` values (unknown tokens dropped). */
+function parseStageFacet(value: string): DealStage[] {
+	return value
+		.split(",")
+		.map((part) => part.trim())
+		.filter((part): part is DealStage => ALL_STAGES.has(part));
+}
+
 /** Facet value for deals/tasks with no priority set. */
 const FACET_NONE = "none";
 
@@ -538,7 +551,12 @@ export class DealsService {
 		// An explicit stage wins over the tab: picking "Closed won" while the
 		// "Open" tab is selected should show closed-won, not nothing.
 		if (input.stage !== FACET_ALL) {
-			where.stage = input.stage as DealStage;
+			const stages = parseStageFacet(input.stage);
+			if (stages.length === 1) {
+				where.stage = stages[0];
+			} else if (stages.length > 1) {
+				where.stage = { in: stages };
+			}
 		}
 
 		if (input.closing !== FACET_ALL) {

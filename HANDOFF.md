@@ -25,6 +25,15 @@ it before stopping. The rules for maintaining it live in `AGENTS.md`
 
 - **Git**: `origin` = `jj-mobilemark/crm` (fork); `upstream` = `trycompai/crm`
   (read-only). Work on `main`.
+- **Deals Owner default + Stage multiselect + contact company
+  picker (DONE local 2026-08-04)**: `/deals` Owner facet defaults to
+  `"me"` (signed-in user) so the list opens on your pipeline. Stage
+  facet is multiselect (comma-joined URL); all stage labels always
+  shown (Leads → Unqualified). Contact sheet Company uses searchable
+  `CompanyPicker` (Sage 100 # + contact count). Files:
+  `deals-search-params.ts`, `deals-table.tsx`, `deals/page.tsx`,
+  `deals.service.ts`, `data-table.tsx`, `inline-field.tsx`,
+  `contact-sheet.tsx`, `company-picker.tsx`.
 - **Certainty by rep + stage-locked certainty (DONE local 2026-08-04)**:
   Everyone overview grid below forecast — reps × stage bands (10–90% +
   Closed won/lost) with close window filter (`certWindow` URL; default
@@ -222,6 +231,37 @@ it before stopping. The rules for maintaining it live in `AGENTS.md`
 ---
 
 ## Work log
+
+### 2026-08-04 — Deals Owner default, Stage multiselect, contact company picker
+
+**Completed**
+- `/deals` Owner facet defaults to `"me"` (signed-in user) via
+  `facetDefaults` in `deals-search-params.ts`; resolved to the real user
+  id in `deals/page.tsx` (SSR) and `deals-table.tsx` (client) before
+  `deals.list`.
+- Stage facet is multiselect: `DataTableFacet.multiple` in
+  `packages/ui/.../data-table.tsx` (checkbox menu, comma-joined URL);
+  API `parseStageFacet` in `deals.service.ts` accepts one or many
+  stages. All `DEAL_STAGE_OPTIONS` always listed (Leads → Unqualified)
+  so zero-count stages stay visible with Mobile Mark labels.
+- Contact sheet Company field uses searchable `CompanyPicker`
+  (`InlineCompanyField` in `inline-field.tsx`; `variant="inline"` on
+  `company-picker.tsx`) with Sage 100 # + contact count.
+
+**How / why**
+Reps open Deals to work their own pipeline first. Multi-stage filter
+matches how they slice open work. Contact reassignment needed the same
+disambiguated company search as create/screening (14k+ companies).
+
+**Deviations**
+None. Stage labels were already correct in `deal-stage.tsx`; the
+dropdown had been hiding Leads/Unqualified when facet count was 0.
+
+**What's next**
+Smoke `/deals` (Owner = you; Stage checkboxes; clear Owner → all).
+Reassign a contact’s company in the sheet and confirm Sage 100 line.
+Optional: same `InlineCompanyField` on the deal sheet Company row.
+
 
 ### 2026-08-04 — Microsoft auto-provision + drop email/password
 

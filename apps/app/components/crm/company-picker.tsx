@@ -47,9 +47,10 @@ type CompanyPickerBase = {
 	noneLabel?: string;
 	/**
 	 * `field` fills a form row. `filter` matches DataTable facet buttons
-	 * (compact trigger, wider popover for search).
+	 * (compact trigger, wider popover for search). `inline` matches sheet
+	 * property rows (ghost until hover).
 	 */
-	variant?: "field" | "filter";
+	variant?: "field" | "filter" | "inline";
 };
 
 type CompanyPickerFormProps = CompanyPickerBase & {
@@ -168,6 +169,7 @@ export function CompanyPicker(props: CompanyPickerProps) {
 
 	const options = results.data ?? [];
 	const isFilter = variant === "filter";
+	const isInline = variant === "inline";
 	const showNoneSelected = allowAll
 		? props.value === NONE
 		: includeNone && props.value === null;
@@ -188,12 +190,14 @@ export function CompanyPicker(props: CompanyPickerProps) {
 					<Button
 						id={id}
 						type="button"
-						variant="outline"
-						size={isFilter ? "sm" : "default"}
+						variant={isInline ? "ghost" : "outline"}
+						size={isFilter || isInline ? "sm" : "default"}
 						role="combobox"
 						aria-expanded={open}
 						className={cn(
 							"min-w-0 flex-1 justify-between font-normal",
+							isInline &&
+								"h-8 border border-transparent px-2 hover:border-input hover:bg-muted/40",
 							canClear && "rounded-r-none border-r-0",
 						)}
 					>
@@ -231,7 +235,13 @@ export function CompanyPicker(props: CompanyPickerProps) {
 				<PopoverContent
 					align="start"
 					size="fit"
-					className={isFilter ? "w-72" : "w-(--radix-popover-trigger-width)"}
+					className={
+						isFilter
+							? "w-72"
+							: isInline
+								? "w-80"
+								: "w-(--radix-popover-trigger-width)"
+					}
 				>
 					{/*
 					 * `shouldFilter={false}`: the API already matched on name and domain,

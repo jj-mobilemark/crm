@@ -26,11 +26,15 @@ export const dealListInput = listInput.extend({
 	 */
 	status: z.string().default("all"),
 	/**
-	 * A user id, or `"all"`. `"unassigned"` is accepted so every list speaks the
-	 * same facet language, but a deal always has an owner, so it matches nothing.
+	 * A user id, `"me"` (the signed-in user — resolved before the query), or
+	 * `"all"`. `"unassigned"` is accepted so every list speaks the same facet
+	 * language, but a deal always has an owner, so it matches nothing.
 	 */
 	owner: z.string().default("all"),
-	/** A `DealStage`, or `"all"`. */
+	/**
+	 * One `DealStage`, several joined by commas
+	 * (e.g. `"QUALIFIED_TO_BUY,CONTRACT_SENT"`), or `"all"`.
+	 */
 	stage: z.string().default("all"),
 	/** A `ClosingWindow`, or `"all"`. */
 	closing: z.string().default("all"),
