@@ -14,7 +14,7 @@ import { z } from "zod";
 const t = initTRPC.create();
 const publicProcedure = t.procedure;
 import { timelineInput, timelineCountsInput, myTasksInput, activityCreateInput, completeInput, setPriorityInput } from "../activities/activities.contracts";
-import { companyListInput, companyMapListInput, companyIdInput, companyOptionsInput, companyNearHubInput, companySimilarInput, companyCreateInput, companyUpdateArgs, setPrimaryContactInput } from "../companies/companies.contracts";
+import { companyListInput, companyMapListInput, companyIdInput, companyByIdsInput, companyOptionsInput, companyNearHubInput, companySimilarInput, companyCreateInput, companyUpdateArgs, setPrimaryContactInput } from "../companies/companies.contracts";
 import { contactListInput, contactIdInput, contactOptionsInput, contactCreateInput, contactUpdateArgs, factDecisionInput } from "../contacts/contacts.contracts";
 import { conversationListInput, conversationEventsInput, conversationSaveInput, conversationIdInput } from "../conversations/conversations.contracts";
 import { dashboardSummaryInput, dashboardRepSummaryInput, dashboardCertaintyByRepInput } from "../dashboard/dashboard.contracts";
@@ -71,6 +71,9 @@ const appRouter = t.router({
     byId: publicProcedure
       .input(companyIdInput)
       .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<CompaniesRouter["byId"]>>),
+    byIds: publicProcedure
+      .input(companyByIdsInput)
+      .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<CompaniesRouter["byIds"]>>),
     options: publicProcedure
       .input(companyOptionsInput)
       .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<CompaniesRouter["options"]>>),

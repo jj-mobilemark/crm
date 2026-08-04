@@ -121,6 +121,16 @@ export const companyNearHubInput = z.object({
 export type CompanyNearHubInput = z.infer<typeof companyNearHubInput>;
 
 /**
+ * Resolve labels for already-selected company ids (multi-picker chips).
+ * Same fields as `options` / `nearHub` rows — not a full company sheet.
+ */
+export const companyByIdsInput = z.object({
+	ids: z.array(z.string()).max(50),
+});
+
+export type CompanyByIdsInput = z.infer<typeof companyByIdsInput>;
+
+/**
  * Soft-match existing companies before create. Local CRM only — after the Sage
  * pull, that already covers almost every real org. Never auto-merges.
  */

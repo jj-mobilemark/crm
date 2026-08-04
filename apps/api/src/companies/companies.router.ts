@@ -13,6 +13,7 @@ import { AuthMiddleware } from "../trpc/middlewares/auth.middleware";
 import {
 	companyCreateInput,
 	companyIdInput,
+	companyByIdsInput,
 	companyListInput,
 	companyMapListInput,
 	companyNearHubInput,
@@ -46,6 +47,12 @@ export class CompaniesRouter {
 	@Query({ input: companyIdInput })
 	async byId(@Input("id") id: string) {
 		return this.companies.byId(id);
+	}
+
+	/** Labels for selected company ids (multi-picker chips). */
+	@Query({ input: companyByIdsInput })
+	async byIds(@Input() input: z.infer<typeof companyByIdsInput>) {
+		return this.companies.byIds(input.ids);
 	}
 
 	/** Company pickers and facet labels. */

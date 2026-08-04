@@ -34,6 +34,11 @@ it before stopping. The rules for maintaining it live in `AGENTS.md`
   unique places still uncached-as-fail (junk/odd city strings). Code
   not fully committed: `open-meteo.geocoder.ts` + geocode script edits.
   Docs: `docs/plans/companies-map.md`. TCP proxy deleted after.
+- **Trip Planner must-visit chip labels (DONE local 2026-08-04)**:
+  Reloading a trip no longer shows truncated company ids on must-visit
+  chips — `companies.byIds` resolves names. Files:
+  `company-multi-picker.tsx`, `companies.service.ts` / router /
+  contracts, generated `server.ts`.
 - **Trip Planner open-deal priority (DONE local 2026-08-04)**: Candidate
   ranking keeps must-visits first, then **open-deal accounts by deal
   size**; ACTIVE mode also includes still-open deals outside the
@@ -270,6 +275,25 @@ it before stopping. The rules for maintaining it live in `AGENTS.md`
 ---
 
 ## Work log
+
+### 2026-08-04 — Trip Planner: fix must-visit chip labels on reload
+
+**What was completed**
+- Added `companies.byIds` (picker-shaped rows for known ids).
+- `CompanyMultiPicker` looks up selected ids on load so chips show
+  company names after save/revisit, not truncated ids.
+- Regenerated nestjs-trpc `server.ts`.
+
+**How and why**
+- Labels were only cached in component state after a pick in-session;
+  reload had empty cache and no open search, so the UI fell back to
+  `id.slice(0, 8)`.
+
+**Deviations**
+- None.
+
+**What's next**
+- Commit/push when ready; redeploy api + app.
 
 ### 2026-08-04 — Trip Planner: prioritize nearby open deals by size
 

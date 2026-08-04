@@ -32,6 +32,9 @@ type Picked = {
 /**
  * Multi-select company picker for Trip Planner must-visits.
  * When hub coords are set, prefers companies within `radiusMiles`.
+ *
+ * Selected ids are resolved via `companies.byIds` so chips show names after
+ * reload — not only after a pick in this session.
  */
 export function CompanyMultiPicker({
 	value,
@@ -78,7 +81,23 @@ export function CompanyMultiPicker({
 		placeholderData: (previous) => previous,
 	});
 
+	const lookup = useQuery({
+		...trpc.companies.byIds.queryOptions({ ids: value }),
+		enabled: value.length > 0,
+	});
+
 	const rows = (nearHub ? near.data : options.data) ?? [];
+	const lookedUp = new Map(
+		(lookup.data ?? []).map((row) => [
+			row.id,
+			{
+				id: row.id,
+				name: row.name,
+				sage100CustomerNo: row.sage100CustomerNo,
+				contactCount: row.contactCount,
+			} satisfies Picked,
+		]),
+	);
 
 	function handleQueryChange(next: string) {
 		setQuery(next);
@@ -102,11 +121,13 @@ export function CompanyMultiPicker({
 	const selectedLabels = value.map((id) => {
 		const fromRows = rows.find((r) => r.id === id);
 		const cached = labels.get(id);
+		const resolved = lookedUp.get(id);
 		return (
 			fromRows ??
-			cached ?? {
+			cached ??
+			resolved ?? {
 				id,
-				name: `${id.slice(0, 8)}…`,
+				name: lookup.isFetching ? "Loading…" : "Unknown company",
 			}
 		);
 	});

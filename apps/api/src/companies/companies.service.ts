@@ -448,6 +448,36 @@ export class CompaniesService {
 	}
 
 	/**
+	 * Resolve picker labels for known company ids (must-visit chips on reload).
+	 * Missing ids are omitted — the client keeps the id until the row appears.
+	 */
+	async byIds(ids: string[]) {
+		const unique = [...new Set(ids.filter(Boolean))];
+		if (unique.length === 0) return [];
+
+		const rows = await this.db.company.findMany({
+			where: { id: { in: unique } },
+			select: {
+				id: true,
+				name: true,
+				domain: true,
+				iconUrl: true,
+				sage100CustomerNo: true,
+				_count: { select: { contacts: true } },
+			},
+		});
+
+		return rows.map((row) => ({
+			id: row.id,
+			name: row.name,
+			domain: row.domain,
+			iconUrl: row.iconUrl,
+			sage100CustomerNo: row.sage100CustomerNo,
+			contactCount: row._count.contacts,
+		}));
+	}
+
+	/**
 	 * Company picker for Trip Planner must-visits: geocoded companies within
 	 * `radiusMiles` of a hub, searchable by name / domain / Sage 100 #.
 	 */
