@@ -646,12 +646,24 @@ function mapCountryFields(value: string | null | undefined): {
 	return { country: cleaned, countryCode: null };
 }
 
-function normaliseEmail(value: string | null | undefined): string | null {
+/**
+ * Sage `emailaddress` often holds free-text notes in this tenant
+ * ("CORRECT BILLING ADDRESS 4/15/08", "see file for routing…"). Keep only
+ * values that look like a real email; notes become null (same idea as
+ * URL-only `website`).
+ */
+export function normaliseEmail(
+	value: string | null | undefined,
+): string | null {
 	const cleaned = clean(value);
 	if (!cleaned) return null;
 	// Dirty Sage data: emails arrive wrapped in angle brackets.
 	const stripped = cleaned.replace(/^<|>$/g, "").replace(/[<>]/g, "").trim();
-	return stripped.length > 0 ? stripped.toLowerCase() : null;
+	if (!stripped) return null;
+	const lower = stripped.toLowerCase();
+	// Require local@domain.tld — rejects notes, "none", bare domains, etc.
+	if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(lower)) return null;
+	return lower;
 }
 
 function joinPhone(

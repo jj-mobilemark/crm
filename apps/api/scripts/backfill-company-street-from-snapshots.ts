@@ -1,38 +1,29 @@
 /**
- * One-time: fill Company.streetAddress + postalCode from SageRecordSnapshot.
+ * Fill Company address columns from SageRecordSnapshot (no SOAP).
  *
- * The first full Sage pull stored nested address (including address1 /
- * postcode) in snapshots, but mapCompany only copied city/state/country.
- * This reads those snapshots — no Sage SOAP calls.
+ * Covers street / postal (first pass) plus state / country — the full pull
+ * only wrote `city`, and `/map` started persisting state/country later, so
+ * most rows still have nulls while snapshots already hold the nested address.
  *
  * Idempotent: only fills null columns; never overwrites a set value.
+ * Does not clear geocode (city pins stay put when state/country fill in).
  *
  *   bun run scripts/backfill-company-street-from-snapshots.ts --dry-run
  *   bun run scripts/backfill-company-street-from-snapshots.ts
  */
 import "@crm/env/load";
 import { db } from "@crm/db";
+import { mapCompanyTree } from "../src/sage/sage.mappings";
+import type { SageCompanyTree, SageRecord } from "../src/sage/sage-xml";
 
 const CHUNK = 200;
 const SAMPLE = 50;
 const DRY_RUN = process.argv.includes("--dry-run");
 
-type SnapshotAddress = {
+type SnapshotRow = {
 	sageId: string;
-	address1: string | null;
-	postcode: string | null;
-	zip: string | null;
-	zipcode: string | null;
+	payload: unknown;
 };
-
-function clean(value: string | null | undefined): string | null {
-	const trimmed = value?.trim();
-	return trimmed ? trimmed : null;
-}
-
-function postalFrom(row: SnapshotAddress): string | null {
-	return clean(row.postcode) ?? clean(row.zip) ?? clean(row.zipcode);
-}
 
 function chunk<T>(items: T[], size: number): T[][] {
 	const out: T[][] = [];
@@ -40,29 +31,62 @@ function chunk<T>(items: T[], size: number): T[][] {
 	return out;
 }
 
-async function main(): Promise<void> {
-	const sample = await db.$queryRaw<SnapshotAddress[]>`
-		SELECT
-			"sageId",
-			payload->'address'->>'address1' AS address1,
-			payload->'address'->>'postcode' AS postcode,
-			payload->'address'->>'zip' AS zip,
-			payload->'address'->>'zipcode' AS zipcode
-		FROM "sageRecordSnapshot"
-		WHERE entity = 'company'
-		ORDER BY "updatedAt" DESC
-		LIMIT ${SAMPLE}
-	`;
+function asRecord(value: unknown): SageRecord | null {
+	if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+	const out: SageRecord = {};
+	for (const [key, raw] of Object.entries(value as Record<string, unknown>)) {
+		if (typeof raw === "string") out[key] = raw;
+		else if (raw != null && typeof raw !== "object") out[key] = String(raw);
+	}
+	return out;
+}
 
-	const sampleWithStreet = sample.filter((r) => clean(r.address1)).length;
-	const sampleWithPostal = sample.filter((r) => postalFrom(r)).length;
+function treeFromPayload(payload: unknown): SageCompanyTree | null {
+	if (!payload || typeof payload !== "object") return null;
+	const p = payload as Record<string, unknown>;
+	const company = asRecord(p.company);
+	if (!company) return null;
+	return {
+		company,
+		people: [],
+		address: asRecord(p.address),
+		email: asRecord(p.email),
+		phone: asRecord(p.phone),
+	};
+}
+
+type Patch = {
+	id: string;
+	streetAddress?: string;
+	postalCode?: string;
+	stateCode?: string;
+	country?: string;
+	countryCode?: string;
+};
+
+async function main(): Promise<void> {
+	const sampleRows = await db.sageRecordSnapshot.findMany({
+		where: { entity: "company" },
+		orderBy: { updatedAt: "desc" },
+		take: SAMPLE,
+		select: { sageId: true, payload: true },
+	});
+
+	let sampleStreet = 0;
+	let sampleState = 0;
+	let sampleCountry = 0;
+	for (const row of sampleRows) {
+		const tree = treeFromPayload(row.payload);
+		const mapped = tree ? mapCompanyTree(tree) : null;
+		if (mapped?.streetAddress) sampleStreet += 1;
+		if (mapped?.stateCode) sampleState += 1;
+		if (mapped?.country) sampleCountry += 1;
+	}
 	console.log(
-		`Snapshot sample (n=${sample.length}): street=${sampleWithStreet}, postal=${sampleWithPostal}`,
+		`Snapshot sample (n=${sampleRows.length}): street=${sampleStreet}, state=${sampleState}, country=${sampleCountry}`,
 	);
-	if (sample.length > 0 && sampleWithStreet === 0) {
-		console.warn(
-			"No address1 in sample — quoting-tool dump may be needed. Aborting.",
-		);
+	if (sampleRows.length > 0 && sampleStreet === 0 && sampleState === 0) {
+		console.warn("No address fields in sample — aborting.");
 		await db.$disconnect();
 		process.exit(1);
 	}
@@ -74,55 +98,70 @@ async function main(): Promise<void> {
 			sageCrmCompanyId: true,
 			streetAddress: true,
 			postalCode: true,
+			stateCode: true,
+			country: true,
+			countryCode: true,
 		},
 	});
 	const companyBySageId = new Map(
 		companies.map((c) => [c.sageCrmCompanyId as string, c]),
 	);
 
-	const rows = await db.$queryRaw<SnapshotAddress[]>`
-		SELECT
-			"sageId",
-			payload->'address'->>'address1' AS address1,
-			payload->'address'->>'postcode' AS postcode,
-			payload->'address'->>'zip' AS zip,
-			payload->'address'->>'zipcode' AS zipcode
-		FROM "sageRecordSnapshot"
-		WHERE entity = 'company'
-	`;
+	const snapshots = await db.sageRecordSnapshot.findMany({
+		where: { entity: "company" },
+		select: { sageId: true, payload: true },
+	});
 
-	type Patch = { id: string; streetAddress?: string; postalCode?: string };
 	const patches: Patch[] = [];
 	let skipAlreadyFilled = 0;
-	let skipNoAddress = 0;
+	let skipNoMapped = 0;
 
-	for (const row of rows) {
+	for (const row of snapshots as SnapshotRow[]) {
 		const company = companyBySageId.get(row.sageId);
 		if (!company) continue;
 
-		const street = clean(row.address1);
-		const postal = postalFrom(row);
-		if (!street && !postal) {
-			skipNoAddress += 1;
+		const tree = treeFromPayload(row.payload);
+		const mapped = tree ? mapCompanyTree(tree) : null;
+		if (!mapped) {
+			skipNoMapped += 1;
 			continue;
 		}
 
-		const needStreet = !company.streetAddress && street;
-		const needPostal = !company.postalCode && postal;
-		if (!needStreet && !needPostal) {
+		const needStreet = !company.streetAddress && mapped.streetAddress;
+		const needPostal = !company.postalCode && mapped.postalCode;
+		const needState = !company.stateCode && mapped.stateCode;
+		const needCountry = !company.country && mapped.country;
+		const needCountryCode = !company.countryCode && mapped.countryCode;
+
+		if (
+			!needStreet &&
+			!needPostal &&
+			!needState &&
+			!needCountry &&
+			!needCountryCode
+		) {
 			skipAlreadyFilled += 1;
 			continue;
 		}
 
 		patches.push({
 			id: company.id,
-			...(needStreet && street ? { streetAddress: street } : {}),
-			...(needPostal && postal ? { postalCode: postal } : {}),
+			...(needStreet && mapped.streetAddress
+				? { streetAddress: mapped.streetAddress }
+				: {}),
+			...(needPostal && mapped.postalCode
+				? { postalCode: mapped.postalCode }
+				: {}),
+			...(needState && mapped.stateCode ? { stateCode: mapped.stateCode } : {}),
+			...(needCountry && mapped.country ? { country: mapped.country } : {}),
+			...(needCountryCode && mapped.countryCode
+				? { countryCode: mapped.countryCode }
+				: {}),
 		});
 	}
 
 	console.log(
-		`Candidates: ${patches.length} (skip filled=${skipAlreadyFilled}, no address=${skipNoAddress})`,
+		`Candidates: ${patches.length} (skip filled=${skipAlreadyFilled}, no mapped=${skipNoMapped})`,
 	);
 	if (DRY_RUN) {
 		console.log("Dry run — no writes.");
@@ -145,6 +184,11 @@ async function main(): Promise<void> {
 							: {}),
 						...(p.postalCode !== undefined
 							? { postalCode: p.postalCode }
+							: {}),
+						...(p.stateCode !== undefined ? { stateCode: p.stateCode } : {}),
+						...(p.country !== undefined ? { country: p.country } : {}),
+						...(p.countryCode !== undefined
+							? { countryCode: p.countryCode }
 							: {}),
 					},
 				}),

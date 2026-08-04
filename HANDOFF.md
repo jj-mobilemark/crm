@@ -25,6 +25,14 @@ it before stopping. The rules for maintaining it live in `AGENTS.md`
 
 - **Git**: `origin` = `jj-mobilemark/crm` (fork); `upstream` = `trycompai/crm`
   (read-only). Work on `main`.
+- **Company state/country + junk email repair (DONE local 2026-08-04,
+  prod pending)**: Full pull never wrote `stateCode`/`country` (only
+  `city`); `/map` started persisting them later. Snapshot backfill now
+  fills street/postal/state/country — **13,670** local rows updated.
+  Sage `emailaddress` notes rejected by `normaliseEmail` (must look like
+  `local@domain.tld`); cleared **428** junk company emails locally
+  (`fix-sage-company-email-notes.ts`). VIBRA-TECH → KY / US, email
+  null. Docs: `docs/plans/sage-crm-sync.md` §3.1.
 - **Company street address (DONE local + prod 2026-08-04)**: `Company.streetAddress`
   + `postalCode`; Sage pull maps nested `address1` / `postcode` (zip
   aliases). City-level geocode unchanged. Migration
@@ -198,6 +206,34 @@ it before stopping. The rules for maintaining it live in `AGENTS.md`
 ---
 
 ## Work log
+
+### 2026-08-04 — Fill state/country from snapshots; reject junk Sage emails
+
+**What was completed**
+- `normaliseEmail` requires `local@domain.tld`; note-shaped values → null
+  (company + contact pull). Exported for repair scripts. Tests added.
+- Extended `backfill-company-street-from-snapshots.ts` to also fill
+  `stateCode` / `country` / `countryCode` via `mapCompanyTree` from
+  snapshots. Local: **13,670** companies updated.
+- New `fix-sage-company-email-notes.ts`: cleared **428** junk company
+  emails locally. Docs: `docs/plans/sage-crm-sync.md` §3.1.
+
+**How and why**
+- Full pull only wrote `city`; state/country persistence landed with
+  `/map` (Aug 3), so almost all rows stayed null while snapshots had
+  nested address.street. Sage `emailaddress` is often a billing note
+  (same class as website notes) — VIBRA-TECH was the exemplar.
+
+**Deviations**
+- Did not rewrite `city` when company scalar differs from nested address
+  (e.g. Snellville vs Louisville) — only fill null state/country.
+- Contact junk emails not bulk-cleared (unique constraint; company-only
+  repair). Pull will null them on next touch.
+
+**What's next**
+1. Commit + push mapping fix.
+2. Prod: TCP proxy → address backfill + email clear → delete proxy.
+3. Smoke VIBRA-TECH sheet on prod.
 
 ### 2026-08-04 — Prod street backfill via TCP proxy
 

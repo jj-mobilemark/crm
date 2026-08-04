@@ -78,6 +78,16 @@ describe("mapCompany", () => {
 		expect(mapped?.domain).toBeNull();
 	});
 
+	it("drops note-shaped emailaddress values", () => {
+		const mapped = mapCompany({
+			companyid: "1330",
+			name: "VIBRA-TECH",
+			emailaddress: "CORRECT BILLING ADDRESS 4/15/08",
+		});
+		expect(mapped?.email).toBeNull();
+		expect(mapped?.domain).toBeNull();
+	});
+
 	it("returns null without a usable id or name", () => {
 		expect(mapCompany({ name: "No id" })).toBeNull();
 		expect(mapCompany({ companyid: "1", name: "  " })).toBeNull();
@@ -154,6 +164,15 @@ describe("mapContact", () => {
 			emailaddress: "<Linda@Example.COM>",
 		});
 		expect(mapped?.email).toBe("linda@example.com");
+	});
+
+	it("drops note-shaped person emailaddress values", () => {
+		const mapped = mapContact({
+			personid: "5",
+			firstname: "Linda",
+			emailaddress: "address change 10/8/04",
+		});
+		expect(mapped?.email).toBeNull();
 	});
 
 	it("uses the parent company id when the nested person has none", () => {

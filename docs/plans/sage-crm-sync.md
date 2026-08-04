@@ -194,9 +194,9 @@ a pull. `source` is set to `RecordSource.SAGE` on new rows.
 | `city` | nested `address.city` / `city` | primary address |
 | `stateCode` | nested `address.state` | Sage stores free-text state, not a code — keep as-is |
 | `postalCode` | nested `address.postcode` (also `zip` / `zipcode`) | **ADDED 2026-08-04.** Display only; not used in geocode place key. |
-| `country` / `countryCode` | nested `address.country` / `phone.countrycode` | |
+| `country` / `countryCode` | nested `address.country` / `phone.countrycode` | **NOTE 2026-08-04:** full pull only wrote `city`; state/country were first persisted on `/map` (Aug 3). Snapshot backfill fills remaining nulls. |
 | `phone` | nested `phone.areacode` + `number` | primary phone |
-| `email` | nested `email.emailaddress` | primary email |
+| `email` | nested `email.emailaddress` | **CORRECTED 2026-08-04:** only email-shaped values kept (must look like `local@domain.tld`). Sage often stuffs billing/shipping notes into this field — notes → null. |
 | `source` | — | constant `SAGE` |
 
 Sage `type` (Customer/…), `status`, `pysales`/`openorders`/`annualizedsales`
@@ -211,7 +211,7 @@ the sales team needs them visible/copyable — section 3d.)
 | `sageCrmContactId` | `personid` | new `@unique` column; the contact's Sage CRM id (e.g. `5`) |
 | `firstName` | `firstname` | |
 | `lastName` | `lastname` | |
-| `email` | `emailaddress` | may be blank; also `@unique` on local Contact — de-dupe against existing contacts |
+| `email` | `emailaddress` | may be blank; also `@unique` on local Contact — de-dupe against existing contacts. **CORRECTED 2026-08-04:** note-shaped values rejected (same as company email). |
 | `phone` | `areacode` + `number` | |
 | `title` | `title` | |
 | `companyId` | `companyid` | resolve to the local company created/matched from that Sage companyid |
