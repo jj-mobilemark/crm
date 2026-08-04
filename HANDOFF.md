@@ -28,8 +28,9 @@ it before stopping. The rules for maintaining it live in `AGENTS.md`
 - **Company picker disambiguation (DONE local 2026-08-04)**:
   `CompanyPicker` and screening/create-company match dialogs show
   Sage 100 customer # + contact count on the secondary line (no domain
-  in the picker). `companies.options` now returns those fields.
-  Helper: `apps/app/components/crm/company-disambiguation.ts`.
+  in the picker; no "Sage 100" label — just `{id} · N contacts`).
+  `companies.options` returns those fields. Helper:
+  `apps/app/components/crm/company-disambiguation.ts`.
 - **Company state/country + junk email repair (DONE local + prod
   2026-08-04)**: Full pull never wrote `stateCode`/`country` (only
   `city`); `/map` started persisting them later. Snapshot backfill
@@ -211,6 +212,21 @@ it before stopping. The rules for maintaining it live in `AGENTS.md`
 ---
 
 ## Work log
+
+### 2026-08-04 — Drop "Sage 100" label from picker meta
+
+**What was completed**
+- `formatCompanyDisambiguation` now shows `{customerNo} · N contacts`
+  (no "Sage 100" prefix). Same helper feeds picker + match dialogs.
+
+**How and why**
+- The number alone is enough; the label cluttered the secondary line.
+
+**Deviations**
+- None.
+
+**What's next**
+- None for this tweak.
 
 ### 2026-08-04 — Company picker Sage 100 + contact count
 

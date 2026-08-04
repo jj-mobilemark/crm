@@ -1,6 +1,6 @@
 /**
  * Secondary line for company pickers / match dialogs so reps can tell
- * duplicate Sage imports apart (Sage 100 customer # + contact volume).
+ * duplicate Sage imports apart (customer # + contact volume).
  *
  * Omits missing pieces; always includes contact count (including zero).
  */
@@ -10,7 +10,7 @@ export function formatCompanyDisambiguation(parts: {
 }): string {
 	const bits: string[] = [];
 	if (parts.sage100CustomerNo) {
-		bits.push(`Sage 100 ${parts.sage100CustomerNo}`);
+		bits.push(parts.sage100CustomerNo);
 	}
 	const n = parts.contactCount;
 	bits.push(`${n} contact${n === 1 ? "" : "s"}`);
