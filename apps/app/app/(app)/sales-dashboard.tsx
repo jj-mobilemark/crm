@@ -97,7 +97,8 @@ function changeDelta(
  * pipeline, and where the open pipeline currently sits.
  *
  * Cells that ignore the date range (due this month, open pipeline, stuck) use
- * `tone="static"`. Cells that follow the range animate on change.
+ * `tone="static"`. Cells that follow the range animate on change. Won/Lost are
+ * deal outcome counts (same window as Closed won); Certainty is change-log.
  */
 export function SalesDashboard({ summary }: { summary: Summary }) {
 	const {
@@ -194,15 +195,15 @@ export function SalesDashboard({ summary }: { summary: Summary }) {
 				/>
 				<StatCard
 					label="Won"
-					value={counts.won}
+					value={wonThisMonth.count}
 					animate
-					description={`${rangeLabel} · stage moves to won`}
+					description={`${rangeLabel} · deals closed won`}
 				/>
 				<StatCard
 					label="Lost"
-					value={counts.lost}
+					value={performance.losses}
 					animate
-					description={`${rangeLabel} · stage moves to lost`}
+					description={`${rangeLabel} · deals closed lost`}
 				/>
 				<StatCard
 					label="Certainty moves"

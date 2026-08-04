@@ -26,13 +26,13 @@ it before stopping. The rules for maintaining it live in `AGENTS.md`
 - **Git**: `origin` = `jj-mobilemark/crm` (fork); `upstream` = `trycompai/crm`
   (read-only). Work on `main`.
 - **Overview 8-KPI strip (DONE 2026-08-03)**: one `StatGroup` with sales +
-  pulse counts (Closed won / Due / Open / Win rate / Won / Lost /
-  Certainty / Stuck). Won/Lost/Certainty follow the overview date range
-  via `loadPipelinePulse({ since, until })`; Stuck stays 14d+. Static
-  KPIs use `tone="static"` (`bg-muted/45`); range-bound values animate
-  (`StatCount` CSS counter / `StatTick`). Files:
-  `sales-dashboard.tsx`, `pipeline-pulse.tsx`, `stat-card.tsx`,
-  `pipeline-pulse.ts`, `dashboard.service.ts`.
+  pulse cells (Closed won / Due / Open / Win rate / Won / Lost /
+  Certainty / Stuck). **Won/Lost** = deal `closedAt` counts in the selected
+  range (same as Closed won / win rate). **Certainty** (+ movers/feed)
+  follow the range via `loadPipelinePulse({ since, until })` change log.
+  Stuck stays 14d+. Static KPIs use `tone="static"`; range-bound values
+  animate. Files: `sales-dashboard.tsx`, `pipeline-pulse.tsx`,
+  `stat-card.tsx`, `pipeline-pulse.ts`, `dashboard.service.ts`.
 - **Sage extra-module probe (DONE 2026-08-03)**: live SOAP check of UI tabs
   beyond company/person/opportunity. **Actively used + not synced:**
   `communication` (tasks/calls/email, 2026), `notes` (2026), `lead`
@@ -140,6 +140,28 @@ it before stopping. The rules for maintaining it live in `AGENTS.md`
 ---
 
 ## Work log
+
+### 2026-08-03 — Overview Won/Lost KPIs use deal closedAt
+
+**What was completed**
+- Won / Lost in the eight-KPI strip now use `wonThisMonth.count` and
+  `performance.losses` (deal outcomes in the selected range), not
+  forward-only `DealFieldChange` stage→won/lost counts.
+- Docs: `docs/plans/pipeline-pulse.md` decision 5/8; Current state in
+  `HANDOFF.md`.
+
+**How and why**
+- With YTD selected, Closed won showed 88 deals while Won stayed at 1 —
+  the change log only started when pulse shipped. Deal-based counts match
+  Closed won / win rate and react correctly to the date range.
+
+**Deviations**
+- Certainty moves / movers / feed still use the change log (forward-only).
+  Agent `read_pipeline_pulse` won/lost counts remain change-log based.
+
+**What's next**
+- Soft check in the browser: YTD Won should match Closed won deal count.
+  Optional: apply pending screening migration.
 
 ### 2026-08-03 — Overview: 8-KPI grid + range-aware pulse counts
 

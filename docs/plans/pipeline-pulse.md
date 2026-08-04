@@ -25,20 +25,22 @@ Mechanical data only in Nest/DB. Intelligence stays in the agent.
 4. **UI**: eight KPIs in one strip (sales + pulse counts) above the charts;
    biggest movers + recent feed + stuck tables below. Pulse counts share Me /
    Everyone with the rest of `dashboard.summary`.
-5. **Pulse window (updated 2026-08-03)**: overview change counts (Won / Lost /
-   Certainty + movers / feed) follow the **overview date range** control.
-   Stuck stays fixed at **14d+** and ignores the range. Agent
-   `read_pipeline_pulse` still defaults to the last **7 days** when called
-   without `since` / `until`.
+5. **Pulse window (updated 2026-08-03)**: overview **Certainty** (+ movers /
+   feed) follows the **overview date range** via the change log. **Won / Lost
+   KPIs** use deal `closedAt` in that same range (same source as Closed won /
+   win rate) — not the forward-only change log. Stuck stays fixed at **14d+**.
+   Agent `read_pipeline_pulse` still defaults to the last **7 days** of change
+   log when called without `since` / `until`.
 6. **Agent**: fourth kind `pipeline` on overview after pulse UI.
 7. **Reports** (2026-08-03): pulse is the change log (overview range on the
-   strip; 7-day default in the agent tool); month / stage / closing / closed
-   questions use `read_pipeline_report` (shared `loadPipelineReport` in
-   `@crm/db`). Prefer unweighted `amount`; weighted is secondary. Deal list
-   capped at 40; aggregates stay full-accuracy.
+   strip for certainty/movers/feed; 7-day default in the agent tool); month /
+   stage / closing / closed questions use `read_pipeline_report` (shared
+   `loadPipelineReport` in `@crm/db`). Prefer unweighted `amount`; weighted is
+   secondary. Deal list capped at 40; aggregates stay full-accuracy.
 8. **Static vs range-bound KPIs**: Due this month, Open pipeline, and Stuck
    ignore the date control (`StatCard tone="static"`). Closed won, Win rate,
-   Won, Lost, and Certainty moves animate on range change.
+   Won, Lost, and Certainty moves animate on range change. Won/Lost are deal
+   outcome counts; Certainty is still change-log only (forward-only).
 
 ## Architecture
 
