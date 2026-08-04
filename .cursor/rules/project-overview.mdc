@@ -85,6 +85,36 @@ surface on top, syncing bidirectionally (pull first, push later).
   `AGENT_URL` / `AGENT_BRIDGE_SECRET`. Ops notes:
   `docs/plans/agent-railway.md`.
 
+## Prod Postgres from a laptop (temporary TCP proxy)
+
+Railway `DATABASE_URL` points at the **private** host
+(`*.railway.internal`). That is correct for `api` / `agent` / `app` on the
+Railway network, but a laptop cannot reach it — `railway run` alone still
+fails with "Can't reach database server".
+
+For one-shot prod data work (repairs, invites, restores), open a **temporary
+TCP proxy**, rewrite the URL host/port locally, run the script, then **delete
+the proxy**. Do not leave a public Postgres proxy up.
+
+```bash
+# 1. Open (only while you need it)
+railway tcp-proxy create --port 5432 --service Postgres --json
+# → domain + proxyPort (e.g. tokaido.proxy.rlwy.net:15025)
+
+# 2. Run (from apps/api) — injects secrets via railway run, swaps host/port
+MM_PROXY_HOST=… MM_PROXY_PORT=… railway run -s api -- \
+  bun run scripts/run-via-tcp-proxy.ts ./fix-sage-website-notes.ts --dry-run
+# then without --dry-run; or ./ensure-user.ts --email … --name "…"
+
+# 3. Close
+railway tcp-proxy delete <proxy-id> --service Postgres --yes
+railway tcp-proxy list --service Postgres --json   # expect []
+```
+
+Helper: `apps/api/scripts/run-via-tcp-proxy.ts`. Used for Sage website repair
+and user invites when signup is disabled. Prefer concurrent/batched script
+writes — interactive Prisma transactions of 100 rows time out over the proxy.
+
 ## Where to read more
 
 - `AGENTS.md` — the authoritative task-entry rules (read it first)

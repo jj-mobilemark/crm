@@ -12,33 +12,35 @@ import {
  * Stage presentation, in pipeline order.
  *
  * `UNQUALIFIED_TO_BUY` sits with the other closed stages rather than between
- * "qualified" and "decision maker bought in": it is a disqualification, so
- * showing it mid-funnel would suggest a deal is progressing when it is over.
+ * open stages: it is a disqualification, so showing it mid-funnel would suggest
+ * a deal is progressing when it is over.
  */
 const ORDER = [
 	DealStage.DEMO_BOOKED,
 	DealStage.QUALIFIED_TO_BUY,
 	DealStage.DECISION_MAKER_BOUGHT_IN,
 	DealStage.CONTRACT_SENT,
+	DealStage.IN_PURCHASING,
 	DealStage.CLOSED_WON,
 	DealStage.CLOSED_LOST,
 	DealStage.UNQUALIFIED_TO_BUY,
 ] as const;
 
 // Labels only — enum keys stay HubSpot-style; Sage maps into them (§3.3).
-// Lead ≈ blank/unknown; Negotiating ≈ Sage Negotiation; Proposal ≈ Sage Proposal.
+// Mobile Mark process: Leads → Investigation → Quote → Negotiation → In Purchasing.
 const PRESENTATION: Record<DealStage, { label: string; tone: StatusTone }> = {
-	DEMO_BOOKED: { label: "Lead", tone: "neutral" },
-	QUALIFIED_TO_BUY: { label: "Qualified to buy", tone: "info" },
-	DECISION_MAKER_BOUGHT_IN: { label: "Negotiating", tone: "info" },
-	CONTRACT_SENT: { label: "Proposal", tone: "warning" },
+	DEMO_BOOKED: { label: "Leads", tone: "neutral" },
+	QUALIFIED_TO_BUY: { label: "Investigation", tone: "info" },
+	DECISION_MAKER_BOUGHT_IN: { label: "Quote", tone: "info" },
+	CONTRACT_SENT: { label: "Negotiation", tone: "warning" },
+	IN_PURCHASING: { label: "In Purchasing", tone: "warning" },
 	CLOSED_WON: { label: "Closed won", tone: "success" },
 	CLOSED_LOST: { label: "Closed lost", tone: "error" },
 	UNQUALIFIED_TO_BUY: { label: "Unqualified", tone: "neutral" },
 };
 
 /** Stages a deal can still be won from — the pipeline. */
-export const OPEN_STAGES = ORDER.slice(0, 4) as readonly DealStage[];
+export const OPEN_STAGES = ORDER.slice(0, 5) as readonly DealStage[];
 
 /** Won, lost or disqualified — a deal that is no longer in the pipeline. */
 export function isClosedStage(stage: DealStage): boolean {
@@ -68,14 +70,35 @@ const OPEN_STAGE_COLORS = [
 	"var(--chart-2)",
 	"var(--chart-3)",
 	"var(--chart-4)",
+	"var(--chart-5)",
 ] as const;
 
 export function dealStageColor(stage: DealStage): string {
-	return OPEN_STAGE_COLORS[OPEN_STAGES.indexOf(stage)] ?? "var(--chart-5)";
+	return OPEN_STAGE_COLORS[OPEN_STAGES.indexOf(stage)] ?? "var(--chart-1)";
 }
 
 export function dealStageLabel(stage: DealStage): string {
 	return PRESENTATION[stage].label;
+}
+
+/** Certainty % shown beside the stage name on the printed forecast. */
+export function dealStageCertainty(stage: DealStage): number {
+	switch (stage) {
+		case DealStage.DEMO_BOOKED:
+			return 10;
+		case DealStage.QUALIFIED_TO_BUY:
+			return 25;
+		case DealStage.DECISION_MAKER_BOUGHT_IN:
+			return 50;
+		case DealStage.CONTRACT_SENT:
+			return 75;
+		case DealStage.IN_PURCHASING:
+			return 90;
+		case DealStage.CLOSED_WON:
+			return 100;
+		default:
+			return 0;
+	}
 }
 
 export function DealStageIndicator({

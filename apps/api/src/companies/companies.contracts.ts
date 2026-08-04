@@ -41,6 +41,11 @@ export const companyMapListInput = z.object({
 	sage: z.enum(["all", "linked", "unlinked"]).default("all"),
 	/** `"all"` | `"yes"` (has lat/lng) | `"no"`. */
 	hasLocation: z.enum(["all", "yes", "no"]).default("all"),
+	/**
+	 * Keep companies with a deal opened (`createdAt`) or closed (`closedAt`)
+	 * within the last N years. `0` turns the filter off.
+	 */
+	dealYears: z.number().int().min(0).max(10).default(0),
 	sort: z.enum(["name", "city", "owner"]).default("name"),
 	dir: z.enum(["asc", "desc"]).default("asc"),
 });
@@ -72,8 +77,10 @@ const companyUpdateInput = z.object({
 	website: z.string().optional(),
 	description: z.string().optional(),
 	industry: z.string().optional(),
+	streetAddress: z.string().optional(),
 	city: z.string().optional(),
 	stateCode: z.string().optional(),
+	postalCode: z.string().optional(),
 	country: z.string().optional(),
 	phone: z.string().optional(),
 	email: z.string().optional(),

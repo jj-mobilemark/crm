@@ -26,8 +26,12 @@ export type MappedCompany = {
 	domain: string | null;
 	email: string | null;
 	phone: string | null;
+	/** Sage nested `address.address1` (street line). */
+	streetAddress: string | null;
 	city: string | null;
 	stateCode: string | null;
+	/** Sage nested `address.postcode` (also accepts `zip` / `zipcode`). */
+	postalCode: string | null;
 	country: string | null;
 	countryCode: string | null;
 	/** Sage primary person id, when present — used to set `primaryContactId`. */
@@ -63,8 +67,18 @@ export function mapCompanyTree(tree: SageCompanyTree): MappedCompany | null {
 	const merged: SageRecord = { ...tree.company };
 
 	if (tree.address) {
+		if (!merged.address1 && tree.address.address1) {
+			merged.address1 = tree.address.address1;
+		}
 		if (!merged.city && tree.address.city) merged.city = tree.address.city;
 		if (!merged.state && tree.address.state) merged.state = tree.address.state;
+		if (!merged.postcode && tree.address.postcode) {
+			merged.postcode = tree.address.postcode;
+		}
+		if (!merged.zip && tree.address.zip) merged.zip = tree.address.zip;
+		if (!merged.zipcode && tree.address.zipcode) {
+			merged.zipcode = tree.address.zipcode;
+		}
 		if (!merged.country && tree.address.country) {
 			merged.country = tree.address.country;
 		}
@@ -102,8 +116,11 @@ export function mapCompany(record: SageRecord): MappedCompany | null {
 		domain: normalizeDomain(website) ?? domainFromEmail(email),
 		email,
 		phone: joinPhone(record.areacode, record.number),
+		streetAddress: clean(record.address1),
 		city: clean(record.city),
 		stateCode: mapStateCode(record.state),
+		postalCode:
+			clean(record.postcode) ?? clean(record.zip) ?? clean(record.zipcode),
 		country,
 		countryCode,
 		primaryPersonId: clean(record.primarypersonid),
@@ -217,10 +234,10 @@ export function isPushEcho(
 }
 
 /**
- * Sage stage/status -> existing `DealStage` enum (plan §3.3).
+ * Sage stage/status -> local `DealStage` (plan §3.3).
  *
- * Keep the CRM pipeline; store raw Sage values separately for push. Unknown /
- * blank never fails the import — defaults to `QUALIFIED_TO_BUY`.
+ * Keep HubSpot-style enum keys; map into Mobile Mark process labels. Unknown /
+ * blank never fails the import — defaults to `DEMO_BOOKED` (Leads).
  */
 export function mapSageDealStage(
 	sageStage: string | null | undefined,
@@ -242,14 +259,17 @@ export function mapSageDealStage(
 	if (stage === "investigation/prospecting") {
 		return DealStage.QUALIFIED_TO_BUY;
 	}
-	if (stage === "proposal" || stage === "purchasing") {
-		return DealStage.CONTRACT_SENT;
-	}
-	if (stage === "negotiation") {
+	if (stage === "proposal") {
 		return DealStage.DECISION_MAKER_BOUGHT_IN;
 	}
+	if (stage === "negotiation") {
+		return DealStage.CONTRACT_SENT;
+	}
+	if (stage === "purchasing") {
+		return DealStage.IN_PURCHASING;
+	}
 
-	return DealStage.QUALIFIED_TO_BUY;
+	return DealStage.DEMO_BOOKED;
 }
 
 /**
@@ -548,10 +568,17 @@ const DEAL_STAGE_TO_SAGE: Record<DealStage, { stage: string; status: string }> =
 			status: "In Progress",
 		},
 		[DealStage.DECISION_MAKER_BOUGHT_IN]: {
+			stage: "Proposal",
+			status: "In Progress",
+		},
+		[DealStage.CONTRACT_SENT]: {
 			stage: "Negotiation",
 			status: "In Progress",
 		},
-		[DealStage.CONTRACT_SENT]: { stage: "Proposal", status: "In Progress" },
+		[DealStage.IN_PURCHASING]: {
+			stage: "Purchasing",
+			status: "In Progress",
+		},
 		[DealStage.CLOSED_WON]: { stage: "Closed Won", status: "Won" },
 		[DealStage.CLOSED_LOST]: { stage: "Lost", status: "Lost" },
 		[DealStage.UNQUALIFIED_TO_BUY]: { stage: "Lost", status: "Lost" },

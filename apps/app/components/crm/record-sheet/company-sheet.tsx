@@ -24,6 +24,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { AgentPanel } from "@/components/crm/agent-panel";
 import { OPEN_STAGES } from "@/components/crm/deal-stage";
+import { formatCompanyLocation } from "@/components/crm/company-location";
 import { EnrichmentActions } from "@/components/crm/enrichment-actions";
 import {
 	ENRICHMENT_POLL_MS,
@@ -188,11 +189,7 @@ export function CompanySheet({ companyId }: { companyId: string }) {
 
 	const company = query.data;
 
-	const location = company
-		? [company.city, company.stateCode, company.country]
-				.filter(Boolean)
-				.join(", ")
-		: null;
+	const location = company ? formatCompanyLocation(company) : null;
 
 	const openDeals =
 		company?.deals.filter((deal) => OPEN_STAGES.includes(deal.stage)) ?? [];
@@ -442,10 +439,28 @@ function CompanyOverview({
 								onSave={(email) => save({ email })}
 							/>
 							<InlineField
+								label="Street"
+								value={company.streetAddress}
+								saving={isSaving("streetAddress")}
+								onSave={(streetAddress) => save({ streetAddress })}
+							/>
+							<InlineField
 								label="City"
 								value={company.city}
 								saving={isSaving("city")}
 								onSave={(city) => save({ city })}
+							/>
+							<InlineField
+								label="State"
+								value={company.stateCode}
+								saving={isSaving("stateCode")}
+								onSave={(stateCode) => save({ stateCode })}
+							/>
+							<InlineField
+								label="Postal"
+								value={company.postalCode}
+								saving={isSaving("postalCode")}
+								onSave={(postalCode) => save({ postalCode })}
 							/>
 							<InlineField
 								label="Country"

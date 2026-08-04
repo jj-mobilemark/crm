@@ -267,6 +267,7 @@ const OPEN_STAGES = [
 	DealStage.QUALIFIED_TO_BUY,
 	DealStage.DECISION_MAKER_BOUGHT_IN,
 	DealStage.CONTRACT_SENT,
+	DealStage.IN_PURCHASING,
 ] as const;
 
 const CLOSED_STAGES = [

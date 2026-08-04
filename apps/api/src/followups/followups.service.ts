@@ -41,6 +41,21 @@ export class FollowupsService {
 		private readonly stamp: ActivityStampService,
 	) {}
 
+	/** Lightweight uncleared count for the nav bubble (before prefs filter). */
+	async count(userId: string) {
+		const now = new Date();
+		const count = await this.db.followUpSuggestion.count({
+			where: {
+				userId,
+				OR: [
+					{ status: "PROPOSED" },
+					{ status: "SNOOZED", dueHint: { lte: now } },
+				],
+			},
+		});
+		return { count };
+	}
+
 	/** Mine: PROPOSED, plus SNOOZED ones whose snooze has come due. */
 	async list(userId: string) {
 		const now = new Date();

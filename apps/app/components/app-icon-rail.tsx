@@ -12,6 +12,7 @@ import TaskStar from "@carbon/icons-react/es/TaskStar";
 import UserFollow from "@carbon/icons-react/es/UserFollow";
 import UserMultiple from "@carbon/icons-react/es/UserMultiple";
 import { Button } from "@crm/ui/components/button";
+import { CountBadge } from "@crm/ui/components/count-badge";
 import { Icon } from "@crm/ui/components/icon";
 import {
 	Sheet,
@@ -25,15 +26,19 @@ import {
 	TooltipTrigger,
 } from "@crm/ui/components/tooltip";
 import { cn } from "@crm/ui/lib/utils";
+import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useMobileNav } from "@/components/mobile-nav";
+import { useTRPC } from "@/lib/trpc/client";
 
 type RailItem = {
 	title: string;
 	href: string;
 	icon: CarbonIconType;
 	match: "exact" | "prefix";
+	/** Optional nav count bubble (uncleared queue). */
+	badgeKey?: "screening" | "followups";
 };
 
 const ITEMS: RailItem[] = [
@@ -53,12 +58,14 @@ const ITEMS: RailItem[] = [
 		href: "/follow-ups",
 		icon: TaskStar,
 		match: "prefix",
+		badgeKey: "followups",
 	},
 	{
 		title: "Screening",
 		href: "/screening",
 		icon: UserFollow,
 		match: "prefix",
+		badgeKey: "screening",
 	},
 	{
 		title: "Sequences",
@@ -76,7 +83,46 @@ function isActive(item: RailItem, pathname: string): boolean {
 	);
 }
 
-function RailLink({ item, active }: { item: RailItem; active: boolean }) {
+function useNavCounts() {
+	const trpc = useTRPC();
+	const screening = useQuery({
+		...trpc.screening.count.queryOptions(),
+		staleTime: 30_000,
+		refetchInterval: 60_000,
+	});
+	const followups = useQuery({
+		...trpc.followups.count.queryOptions(),
+		staleTime: 30_000,
+		refetchInterval: 60_000,
+	});
+
+	return {
+		screening: screening.data?.count ?? 0,
+		followups: followups.data?.count ?? 0,
+	};
+}
+
+function badgeCount(
+	item: RailItem,
+	counts: { screening: number; followups: number },
+): number {
+	if (item.badgeKey === "screening") return counts.screening;
+	if (item.badgeKey === "followups") return counts.followups;
+	return 0;
+}
+
+function RailLink({
+	item,
+	active,
+	count,
+}: {
+	item: RailItem;
+	active: boolean;
+	count: number;
+}) {
+	const title =
+		count > 0 ? `${item.title} (${count > 99 ? "99+" : count})` : item.title;
+
 	return (
 		<Tooltip>
 			<TooltipTrigger asChild>
@@ -85,7 +131,7 @@ function RailLink({ item, active }: { item: RailItem; active: boolean }) {
 					variant="ghost"
 					size="icon"
 					className={cn(
-						"text-muted-foreground",
+						"relative text-muted-foreground",
 						active &&
 							"bg-muted text-foreground hover:bg-muted hover:text-foreground",
 					)}
@@ -93,14 +139,16 @@ function RailLink({ item, active }: { item: RailItem; active: boolean }) {
 					<Link
 						href={item.href}
 						aria-current={active ? "page" : undefined}
+						aria-label={title}
 						transitionTypes={["nav-lateral"]}
 					>
 						<Icon icon={item.icon} />
-						<span className="sr-only">{item.title}</span>
+						<span className="sr-only">{title}</span>
+						<CountBadge count={count} />
 					</Link>
 				</Button>
 			</TooltipTrigger>
-			<TooltipContent side="right">{item.title}</TooltipContent>
+			<TooltipContent side="right">{title}</TooltipContent>
 		</Tooltip>
 	);
 }
@@ -108,10 +156,12 @@ function RailLink({ item, active }: { item: RailItem; active: boolean }) {
 function MobileRailLink({
 	item,
 	active,
+	count,
 	onNavigate,
 }: {
 	item: RailItem;
 	active: boolean;
+	count: number;
 	onNavigate: () => void;
 }) {
 	return (
@@ -119,7 +169,7 @@ function MobileRailLink({
 			asChild
 			variant="ghost"
 			className={cn(
-				"justify-start gap-3 text-muted-foreground",
+				"relative justify-start gap-3 text-muted-foreground",
 				active &&
 					"bg-muted text-foreground hover:bg-muted hover:text-foreground",
 			)}
@@ -130,7 +180,8 @@ function MobileRailLink({
 				onClick={onNavigate}
 			>
 				<Icon icon={item.icon} />
-				<span>{item.title}</span>
+				<span className="flex-1 text-left">{item.title}</span>
+				<CountBadge count={count} placement="inline" />
 			</Link>
 		</Button>
 	);
@@ -139,6 +190,7 @@ function MobileRailLink({
 export function AppIconRail() {
 	const pathname = usePathname();
 	const { open, setOpen } = useMobileNav();
+	const counts = useNavCounts();
 
 	return (
 		<>
@@ -151,6 +203,7 @@ export function AppIconRail() {
 						key={item.href}
 						item={item}
 						active={isActive(item, pathname)}
+						count={badgeCount(item, counts)}
 					/>
 				))}
 			</nav>
@@ -166,6 +219,7 @@ export function AppIconRail() {
 								key={item.href}
 								item={item}
 								active={isActive(item, pathname)}
+								count={badgeCount(item, counts)}
 								onNavigate={() => setOpen(false)}
 							/>
 						))}

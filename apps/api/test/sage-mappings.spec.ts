@@ -93,16 +93,35 @@ describe("mapCompanyTree", () => {
 				website: "https://www.mobilemark.com",
 			},
 			people: [],
-			address: { city: "Itasca", state: "IL" },
+			address: {
+				address1: "1140 W Thorndale",
+				city: "Itasca",
+				state: "IL",
+				postcode: "60143",
+			},
 			email: { emailaddress: "info@mobilemark.com" },
 			phone: { areacode: "847", number: "671-6690" },
 		});
 
+		expect(mapped?.streetAddress).toBe("1140 W Thorndale");
 		expect(mapped?.city).toBe("Itasca");
 		expect(mapped?.stateCode).toBe("IL");
+		expect(mapped?.postalCode).toBe("60143");
 		expect(mapped?.email).toBe("info@mobilemark.com");
 		expect(mapped?.phone).toBe("847 671-6690");
 		expect(mapped?.domain).toBe("mobilemark.com");
+	});
+
+	it("accepts zip alias when postcode is absent", () => {
+		const mapped = mapCompanyTree({
+			company: { companyid: "1", name: "Zip Co" },
+			people: [],
+			address: { address1: "1 Main", zip: "60601" },
+			email: null,
+			phone: null,
+		});
+		expect(mapped?.streetAddress).toBe("1 Main");
+		expect(mapped?.postalCode).toBe("60601");
 	});
 });
 
@@ -264,20 +283,20 @@ describe("mapSageDealStage", () => {
 			DealStage.QUALIFIED_TO_BUY,
 		);
 		expect(mapSageDealStage("Proposal", "In Progress")).toBe(
-			DealStage.CONTRACT_SENT,
-		);
-		expect(mapSageDealStage("Negotiation", "In Progress")).toBe(
 			DealStage.DECISION_MAKER_BOUGHT_IN,
 		);
-		expect(mapSageDealStage("Purchasing", "In Progress")).toBe(
+		expect(mapSageDealStage("Negotiation", "In Progress")).toBe(
 			DealStage.CONTRACT_SENT,
+		);
+		expect(mapSageDealStage("Purchasing", "In Progress")).toBe(
+			DealStage.IN_PURCHASING,
 		);
 	});
 
-	it("defaults blank / unknown to QUALIFIED_TO_BUY", () => {
-		expect(mapSageDealStage(null, null)).toBe(DealStage.QUALIFIED_TO_BUY);
+	it("defaults blank / unknown to DEMO_BOOKED (Leads)", () => {
+		expect(mapSageDealStage(null, null)).toBe(DealStage.DEMO_BOOKED);
 		expect(mapSageDealStage("Something New", "In Progress")).toBe(
-			DealStage.QUALIFIED_TO_BUY,
+			DealStage.DEMO_BOOKED,
 		);
 	});
 });
@@ -340,7 +359,7 @@ describe("toSageOpportunityFields (local -> Sage)", () => {
 				amount: "100",
 				probability: 50,
 				stage: DealStage.CONTRACT_SENT,
-				sageStage: "Proposal",
+				sageStage: "Negotiation",
 				sageStatus: "In Progress",
 				expectedCloseDate: new Date("2026-09-01T12:00:00"),
 				ownerEmail: "ken@mobilemark.com",
@@ -354,7 +373,7 @@ describe("toSageOpportunityFields (local -> Sage)", () => {
 		expect(byName.description).toBe("Jordan Test Push From Sales Tool");
 		expect(byName.forecast).toBe("100");
 		expect(byName.certainty).toBe("50");
-		expect(byName.stage).toBe("Proposal");
+		expect(byName.stage).toBe("Negotiation");
 		expect(byName.status).toBe("In Progress");
 		expect(byName.assigneduserid).toBe("27");
 	});
@@ -418,10 +437,10 @@ describe("toSageCompanyFields / toSagePersonFields", () => {
 });
 
 describe("sageStageForPush / sageUserIdForEmail / isPushEcho", () => {
-	it("keeps Purchasing when it still maps to CONTRACT_SENT", () => {
+	it("keeps Purchasing when it still maps to IN_PURCHASING", () => {
 		expect(
 			sageStageForPush({
-				stage: DealStage.CONTRACT_SENT,
+				stage: DealStage.IN_PURCHASING,
 				sageStage: "Purchasing",
 				sageStatus: "In Progress",
 			}),

@@ -311,7 +311,7 @@ export function SalesDashboard({ summary }: { summary: Summary }) {
 					<CardHeader>
 						<CardTitle>Forecast by close month</CardTitle>
 						<CardDescription>
-							Open deals by expected close — weighted vs unweighted
+							Last 12 months and upcoming — weighted vs unweighted
 						</CardDescription>
 					</CardHeader>
 					{forecast.months.length === 0 ? (
@@ -364,7 +364,7 @@ export function SalesDashboard({ summary }: { summary: Summary }) {
 						<CardHeader>
 							<CardTitle>Forecast by rep</CardTitle>
 							<CardDescription>
-								Open weighted pipeline across the team
+								Open weighted pipeline — click a rep for their sheet
 							</CardDescription>
 						</CardHeader>
 						<SimpleTable variant="panel" columns={ownerColumns}>

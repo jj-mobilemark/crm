@@ -17,7 +17,7 @@ import { timelineInput, timelineCountsInput, myTasksInput, activityCreateInput, 
 import { companyListInput, companyMapListInput, companyIdInput, companyOptionsInput, companySimilarInput, companyCreateInput, companyUpdateArgs, setPrimaryContactInput } from "../companies/companies.contracts";
 import { contactListInput, contactIdInput, contactOptionsInput, contactCreateInput, contactUpdateArgs, factDecisionInput } from "../contacts/contacts.contracts";
 import { conversationListInput, conversationEventsInput, conversationSaveInput, conversationIdInput } from "../conversations/conversations.contracts";
-import { dashboardSummaryInput } from "../dashboard/dashboard.contracts";
+import { dashboardSummaryInput, dashboardRepSummaryInput } from "../dashboard/dashboard.contracts";
 import { dealListInput, dealIdInput, dealCreateInput, dealUpdateArgs, setStageInput } from "../deals/deals.contracts";
 import { followupPrefsInput, followupDecideInput } from "../followups/followups.contracts";
 import { setAutoCreateInput, suppressDomainInput, threadInput, calendarEventInput } from "../google/google.contracts";
@@ -128,7 +128,10 @@ const appRouter = t.router({
   dashboard: t.router({
     summary: publicProcedure
       .input(dashboardSummaryInput)
-      .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<DashboardRouter["summary"]>>)
+      .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<DashboardRouter["summary"]>>),
+    repSummary: publicProcedure
+      .input(dashboardRepSummaryInput)
+      .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<DashboardRouter["repSummary"]>>)
     }),
   deals: t.router({
     list: publicProcedure
@@ -150,6 +153,8 @@ const appRouter = t.router({
   followups: t.router({
     list: publicProcedure
       .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<FollowupsRouter["list"]>>),
+    count: publicProcedure
+      .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<FollowupsRouter["count"]>>),
     prefs: publicProcedure
       .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<FollowupsRouter["prefs"]>>),
     pipeline: publicProcedure
@@ -208,6 +213,8 @@ const appRouter = t.router({
   screening: t.router({
     list: publicProcedure
       .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<ScreeningRouter["list"]>>),
+    count: publicProcedure
+      .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<ScreeningRouter["count"]>>),
     decide: publicProcedure
       .input(screeningDecideInput)
       .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<ScreeningRouter["decide"]>>)

@@ -3,7 +3,10 @@ import { Ctx, Input, Query, Router, UseMiddlewares } from "nestjs-trpc";
 import type { z } from "zod";
 import type { AuthedTrpcContext } from "../trpc/context.types";
 import { AuthMiddleware } from "../trpc/middlewares/auth.middleware";
-import { dashboardSummaryInput } from "./dashboard.contracts";
+import {
+	dashboardRepSummaryInput,
+	dashboardSummaryInput,
+} from "./dashboard.contracts";
 import { DashboardService } from "./dashboard.service";
 
 @Router({ alias: "dashboard" })
@@ -24,5 +27,16 @@ export class DashboardRouter {
 		@Input() input: z.infer<typeof dashboardSummaryInput>,
 	) {
 		return this.dashboard.summary(ctx.user.id, input);
+	}
+
+	/**
+	 * One sales rep for the manager sheet: KPIs, certainty × month grid, open
+	 * deals, owned companies, and recent field changes on their deals.
+	 */
+	@Query({ input: dashboardRepSummaryInput })
+	async repSummary(
+		@Input() input: z.infer<typeof dashboardRepSummaryInput>,
+	) {
+		return this.dashboard.repSummary(input);
 	}
 }

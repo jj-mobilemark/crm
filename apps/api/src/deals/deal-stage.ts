@@ -3,12 +3,16 @@ import { DealStage } from "@crm/db";
 /**
  * Stages a deal can still be won from. Pipeline value and the forecast are the
  * sum over these.
+ *
+ * Order matches the Mobile Mark sales process: Leads → Investigation → Quote →
+ * Negotiation → In Purchasing.
  */
 export const OPEN_DEAL_STAGES = [
 	DealStage.DEMO_BOOKED,
 	DealStage.QUALIFIED_TO_BUY,
 	DealStage.DECISION_MAKER_BOUGHT_IN,
 	DealStage.CONTRACT_SENT,
+	DealStage.IN_PURCHASING,
 ] as const;
 
 /**
@@ -37,15 +41,14 @@ export function isClosedStage(stage: DealStage): boolean {
 /**
  * Default certainty % when a deal moves to this stage.
  *
- * Sage samples use 0 / 10 / 25 / 50 / 75 / 90 / 100. Labels in the UI are
- * Lead / Qualified / Negotiating / Proposal — this map is the local default
- * until push writes certainty back to Sage.
+ * Matches the team's printed forecast bands: 10 / 25 / 50 / 75 / 90 / 100.
  */
 export const STAGE_CERTAINTY: Record<DealStage, number> = {
 	[DealStage.DEMO_BOOKED]: 10,
 	[DealStage.QUALIFIED_TO_BUY]: 25,
 	[DealStage.DECISION_MAKER_BOUGHT_IN]: 50,
 	[DealStage.CONTRACT_SENT]: 75,
+	[DealStage.IN_PURCHASING]: 90,
 	[DealStage.CLOSED_WON]: 100,
 	[DealStage.CLOSED_LOST]: 0,
 	[DealStage.UNQUALIFIED_TO_BUY]: 0,

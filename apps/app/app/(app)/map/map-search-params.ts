@@ -1,5 +1,6 @@
 import {
 	createLoader,
+	parseAsInteger,
 	parseAsString,
 	parseAsStringLiteral,
 	type SearchParams,
@@ -16,6 +17,8 @@ export const mapParsers = {
 	owner: parseAsStringLiteral(OWNERS).withDefault("all"),
 	sage: parseAsStringLiteral(SAGE).withDefault("all"),
 	hasLocation: parseAsStringLiteral(LOCATION).withDefault("all"),
+	/** 0 = any time; 1–10 = deal opened or closed within that many years. */
+	dealYears: parseAsInteger.withDefault(0),
 	sort: parseAsStringLiteral(SORTS).withDefault("name"),
 	dir: parseAsStringLiteral(DIRS).withDefault("asc"),
 	selected: parseAsString.withDefault(""),
@@ -26,11 +29,14 @@ export const loadMapSearchParams = createLoader(mapParsers);
 export type MapSearchValues = Awaited<ReturnType<typeof loadMapSearchParams>>;
 
 export function mapQueryInput(values: MapSearchValues) {
+	const dealYears =
+		values.dealYears >= 1 && values.dealYears <= 10 ? values.dealYears : 0;
 	return {
 		q: values.q,
 		owner: values.owner,
 		sage: values.sage,
 		hasLocation: values.hasLocation,
+		dealYears,
 		sort: values.sort,
 		dir: values.dir,
 	};

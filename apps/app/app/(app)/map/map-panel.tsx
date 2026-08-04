@@ -16,6 +16,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useQueryStates } from "nuqs";
 import { useRef, useState } from "react";
 import { useOpenRecord } from "@/components/crm/record-sheet/record-stack";
+import { formatCompanyLocation } from "@/components/crm/company-location";
 import { useTRPC } from "@/lib/trpc/client";
 import {
 	CompaniesMapCanvas,
@@ -200,6 +201,31 @@ export function MapPanel() {
 						<ToggleGroupItem value="yes">On map</ToggleGroupItem>
 						<ToggleGroupItem value="no">Missing pin</ToggleGroupItem>
 					</ToggleGroup>
+					<Select
+						value={String(
+							params.dealYears >= 1 && params.dealYears <= 10
+								? params.dealYears
+								: 0,
+						)}
+						onValueChange={(value) =>
+							clearMapFocusAndSet({
+								dealYears: Number(value),
+								selected: "",
+							})
+						}
+					>
+						<SelectTrigger aria-label="Deal activity years">
+							<SelectValue placeholder="Deal activity" />
+						</SelectTrigger>
+						<SelectContent>
+							<SelectItem value="0">Any deal time</SelectItem>
+							{Array.from({ length: 10 }, (_, i) => i + 1).map((years) => (
+								<SelectItem key={years} value={String(years)}>
+									Deal in last {years} {years === 1 ? "year" : "years"}
+								</SelectItem>
+							))}
+						</SelectContent>
+					</Select>
 					<div className="flex gap-2">
 						<Select
 							value={params.sort}
@@ -379,9 +405,7 @@ export function MapPanel() {
 						<div className="min-w-0 flex flex-col gap-1">
 							<p className="truncate font-medium">{selected.name}</p>
 							<p className="truncate text-muted-foreground text-sm">
-								{[selected.city, selected.stateCode, selected.country]
-									.filter(Boolean)
-									.join(", ") || "No location on file"}
+								{formatCompanyLocation(selected) || "No location on file"}
 								{selected.domain ? ` · ${selected.domain}` : ""}
 								{selected.owner ? ` · ${selected.owner.name}` : " · Unassigned"}
 								{selected.sage100CustomerNo

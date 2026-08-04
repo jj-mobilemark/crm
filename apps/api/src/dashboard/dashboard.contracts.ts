@@ -35,3 +35,16 @@ export const dashboardSummaryInput = z.object({
 });
 
 export type DashboardSummaryInput = z.infer<typeof dashboardSummaryInput>;
+
+/**
+ * Manager view of one rep — same date range as the overview, fixed to that
+ * owner's deals.
+ */
+export const dashboardRepSummaryInput = z.object({
+	userId: z.string().min(1),
+	range: z.enum(DASHBOARD_RANGES).default("this_year"),
+	from: z.string().date().optional(),
+	to: z.string().date().optional(),
+});
+
+export type DashboardRepSummaryInput = z.infer<typeof dashboardRepSummaryInput>;

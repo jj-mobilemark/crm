@@ -190,8 +190,10 @@ a pull. `source` is set to `RecordSource.SAGE` on new rows.
 | `ownerId` | `acctmgr` | **ADDED 2026-08-02.** Company owner is a free-text account-manager NAME (not a user id). Resolved to a local user by unique last name + first initial (`matchSageUserByName`). Unmatched names (former reps, blanks, junk) leave the company owner-less. Only 3 current reps appear as `acctmgr`. |
 | `domain` | `website` (URL-shaped only) | parse host via `normalizeDomain`; else domain of primary `person.emailaddress`. **CORRECTED 2026-08-03:** Sage `website` is often a free-text credit/account note in this tenant ("FORMERLY …", "NET 30 …", "DO NOT SELL …") — non-URL values are dropped. |
 | `website` | `website` | only when URL-shaped (passes `normalizeDomain`); notes → null. Push never writes this field (would overwrite Sage notes). |
+| `streetAddress` | nested `address.address1` | **ADDED 2026-08-04.** Street line for display (sheet / map preview). City-level geocode unchanged. |
 | `city` | nested `address.city` / `city` | primary address |
 | `stateCode` | nested `address.state` | Sage stores free-text state, not a code — keep as-is |
+| `postalCode` | nested `address.postcode` (also `zip` / `zipcode`) | **ADDED 2026-08-04.** Display only; not used in geocode place key. |
 | `country` / `countryCode` | nested `address.country` / `phone.countrycode` | |
 | `phone` | nested `phone.areacode` + `number` | primary phone |
 | `email` | nested `email.emailaddress` | primary email |
@@ -259,31 +261,33 @@ to be exposed later, add `sage100ContactCode` then.
 
 The local `DealStage` enum is a HubSpot-style pipeline
 (`DEMO_BOOKED`, `QUALIFIED_TO_BUY`, `UNQUALIFIED_TO_BUY`,
-`DECISION_MAKER_BOUGHT_IN`, `CONTRACT_SENT`, `CLOSED_WON`, `CLOSED_LOST`) that
-does NOT match Sage's process.
+`DECISION_MAKER_BOUGHT_IN`, `CONTRACT_SENT`, `IN_PURCHASING`,
+`CLOSED_WON`, `CLOSED_LOST`) that does NOT use Sage's stage names as keys.
 
-**DECIDED (2026-08-02, REVISED per the guiding principle): keep the CRM's
-`DealStage` enum; map Sage -> local for display; store the raw Sage stage for a
-1:1 push.** This reverses the earlier "adopt Sage's stages / replace the enum"
-call — replacing the enum re-keys the deal board and every branch on the old
-values, which is exactly the over-customization we are avoiding.
+**DECIDED (2026-08-02, REVISED 2026-08-04): keep the CRM's `DealStage` enum
+keys; map Sage → local for display; store the raw Sage stage for a 1:1 push.**
+UI labels and default certainty follow the Mobile Mark process (Leads 10% /
+Investigation 25% / Quote 50% / Negotiation 75% / In Purchasing 90%).
+`IN_PURCHASING` was added so Sage Purchasing is no longer collapsed into
+Proposal's slot. A one-shot migration remapped existing rows by `sageStage`
+(Proposal↔Negotiation semantic swap + Purchasing → `IN_PURCHASING`); certainty
+was left untouched.
 
 Active Sage values (two 100-row samples): stage `Investigation/Prospecting`,
 `Proposal`, `Negotiation`, `Purchasing`, `Closed Won`, `Lost`; status
-`In Progress`, `Won`, `Lost`, `Closed`. Map into the existing enum:
+`In Progress`, `Won`, `Lost`, `Closed`. Map into the enum:
 
 - `Closed Won` / status `Won` -> `CLOSED_WON`
 - `Lost` / status `Lost`,`Closed` -> `CLOSED_LOST`
-- `Investigation/Prospecting` -> `QUALIFIED_TO_BUY`
-- `Proposal` -> `CONTRACT_SENT`
-- `Negotiation` -> `DECISION_MAKER_BOUGHT_IN`
-- `Purchasing` -> `CONTRACT_SENT`
-- unknown / blank -> `QUALIFIED_TO_BUY` (never fail the import)
+- `Investigation/Prospecting` -> `QUALIFIED_TO_BUY` (Investigation)
+- `Proposal` -> `DECISION_MAKER_BOUGHT_IN` (Quote)
+- `Negotiation` -> `CONTRACT_SENT` (Negotiation)
+- `Purchasing` -> `IN_PURCHASING` (In Purchasing)
+- unknown / blank -> `DEMO_BOOKED` (Leads; never fail the import)
 
-**For push fidelity**, keep the exact Sage stage/status so a local change maps
-back 1:1. The raw values already live in `SageRecordSnapshot`; add a small
-`Deal.sageStage String?` only if the board/UI needs to display the true Sage
-stage without a snapshot read. No enum change, no board re-key.
+**For push fidelity**, keep the exact Sage stage/status when it still maps to
+the current local stage. Otherwise derive from `DEAL_STAGE_TO_SAGE`. Raw values
+live on `Deal.sageStage` / `sageStatus`.
 
 ---
 

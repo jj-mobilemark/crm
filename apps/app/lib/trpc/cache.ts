@@ -58,6 +58,8 @@ export type CrmCache = {
 	microsoft(options?: Options): Promise<void>;
 	/** Accepting, snoozing or dismissing a follow-up suggestion. */
 	followup(options?: Options): Promise<void>;
+	/** Approving or rejecting a screening candidate. */
+	screening(options?: Options): Promise<void>;
 	/** An import writes across every table, so nothing is assumed to survive. */
 	everything(): Promise<void>;
 };
@@ -209,6 +211,7 @@ export function useCrmCache(): CrmCache {
 			run(
 				[
 					trpc.followups.list.queryKey(),
+					trpc.followups.count.queryKey(),
 					trpc.followups.prefs.queryKey(),
 					trpc.followups.pipeline.queryKey(),
 				],
@@ -220,6 +223,16 @@ export function useCrmCache(): CrmCache {
 					trpc.contacts.byId.queryKey(),
 					trpc.deals.byId.queryKey(),
 				],
+				options,
+			),
+
+		screening: (options) =>
+			run(
+				[
+					trpc.screening.list.queryKey(),
+					trpc.screening.count.queryKey(),
+				],
+				[],
 				options,
 			),
 

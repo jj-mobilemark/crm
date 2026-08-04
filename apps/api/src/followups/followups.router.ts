@@ -26,6 +26,11 @@ export class FollowupsRouter {
 	}
 
 	@Query()
+	async count(@Ctx() ctx: AuthedTrpcContext) {
+		return this.followups.count(ctx.user.id);
+	}
+
+	@Query()
 	async prefs(@Ctx() ctx: AuthedTrpcContext) {
 		return this.followups.prefs(ctx.user.id);
 	}

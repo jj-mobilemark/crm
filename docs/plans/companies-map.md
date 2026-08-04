@@ -26,9 +26,12 @@ Leaflet pins ([shadcn-map](https://shadcn-map.vercel.app/)).
 
 - API: `companies.mapList` — filters `owner` (`all`|`me`|`unassigned`|userId),
   `sage` (`all`|`linked`|`unlinked` on **Sage 100** `sage100CustomerNo`),
-  `hasLocation`, sort `name`|`city`|`owner`.
+  `hasLocation`, `dealYears` (`0` = any time; `1`–`10` = deal opened
+  `createdAt` or closed `closedAt` within that many years), sort
+  `name`|`city`|`owner`.
 - UI: rail **Map** → `/map` split view; pins colored mine (primary) /
   Sage 100 (`chart-2`) / no Sage 100 (`warning`).
+  Deal-years dropdown on the filter column.
 - **Map ↔ list**: left list filters to the current viewport (`N in view`);
   cluster click narrows further; selecting a row flies to the pin and
   highlights it; **Open company** opens `CompanySheet` over `/map` via
@@ -42,4 +45,7 @@ Leaflet pins ([shadcn-map](https://shadcn-map.vercel.app/)).
 
 ## Out of scope
 
-Street-level geocode, live geocode on every Sage pull, agent tools.
+Street-level geocode / pin precision, live geocode on every Sage pull, agent
+tools. Full street + postal are stored for **display** (company sheet + map
+selection preview) — see `Company.streetAddress` / `postalCode` and
+`docs/plans/sage-crm-sync.md` §3.1.

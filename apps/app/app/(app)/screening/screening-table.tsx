@@ -57,9 +57,7 @@ function PendingActions({ row }: { row: PendingRow }) {
 	const suppressId = useId();
 
 	const invalidate = async () => {
-		await queryClient.invalidateQueries({
-			queryKey: trpc.screening.list.queryKey(),
-		});
+		await cache.screening();
 	};
 
 	const decide = useMutation(

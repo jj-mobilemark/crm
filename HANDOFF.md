@@ -25,6 +25,42 @@ it before stopping. The rules for maintaining it live in `AGENTS.md`
 
 - **Git**: `origin` = `jj-mobilemark/crm` (fork); `upstream` = `trycompai/crm`
   (read-only). Work on `main`.
+- **Company street address (DONE local 2026-08-04)**: `Company.streetAddress`
+  + `postalCode`; Sage pull maps nested `address1` / `postcode` (zip
+  aliases). City-level geocode unchanged. Migration
+  `20260804130000_company_street_address` applied **locally**. Snapshot
+  backfill filled **12,191** local companies
+  (`backfill-company-street-from-snapshots.ts`; sample 42/50 street,
+  38/50 postal). Sheet + map selection show full address. Apply migration
+  + run backfill on **prod** next (TCP proxy). Plan:
+  `.cursor/plans/company_street_address_c527a7e3.plan.md`. Docs:
+  `docs/plans/sage-crm-sync.md` §3.1, `docs/plans/companies-map.md`.
+- **Nav count bubbles (DONE local 2026-08-04)**: Screening + Follow-ups
+  rail icons show a primary `CountBadge` when the signed-in user has
+  uncleared items. APIs: `screening.count` (PENDING), `followups.count`
+  (PROPOSED + due SNOOZED). Rail polls every 60s; decide/accept paths
+  invalidate via `cache.screening` / `cache.followup`. UI:
+  `packages/ui/.../count-badge.tsx`, `app-icon-rail.tsx`.
+- **Map deal-years filter (DONE local 2026-08-04)**: `/map` dropdown
+  `dealYears` 0 (= any time) or 1–10. Keeps companies with a deal
+  `createdAt` or `closedAt` within that window. URL +
+  `companies.mapList`. Docs: `docs/plans/companies-map.md`.
+- **Forecast by close month window (DONE local 2026-08-04)**: Overview
+  month table keeps the last 12 months + upcoming closes (and "No date");
+  older overdue months drop out. Totals / Forecast by rep still use all
+  open deals. `buildForecast` in `dashboard.service.ts`; copy in
+  `sales-dashboard.tsx`.
+- **Sales-rep sheet + deal stages (DONE local 2026-08-04)**: Five open
+  stages — Leads / Investigation / Quote / Negotiation / In Purchasing
+  (`IN_PURCHASING` enum) with certainty defaults 10/25/50/75/90. Sage map
+  splits Proposal vs Purchasing; blank → Leads. Migrations
+  `20260804120000` + `20260804120100` applied **locally** (remap by
+  `sageStage`; do not touch probability). Apply on Railway `api` next.
+  Overview Everyone: clickable `OwnerCell` + Forecast by rep opens
+  `SalesRepSheet` (`?record=user:<id>`); `dashboard.repSummary` KPIs +
+  certainty×month grid. Plan:
+  `.cursor/plans/sales_rep_sheet_b7f28c67.plan.md`. Docs:
+  `docs/plans/sage-crm-sync.md` §3.3.
 - **Sage website notes (DONE local + prod 2026-08-03)**: Sage `website`
   is often a credit/account note, not a URL. Pull keeps only URL-shaped
   values; push never writes `website`. Prod repair ran via temporary
@@ -164,6 +200,118 @@ it before stopping. The rules for maintaining it live in `AGENTS.md`
 ---
 
 ## Work log
+
+### 2026-08-04 — Company street address (display + sync)
+
+**What was completed**
+- Schema: `Company.streetAddress` + `postalCode`; migration
+  `20260804130000_company_street_address` (local deploy done).
+- Sage: `mapCompanyTree` / `mapCompany` copy `address1` + `postcode`
+  (also `zip` / `zipcode`); `sage-pull` upsert writes them; street/postal
+  alone do not clear city geocode. Docs: `docs/plans/sage-crm-sync.md`
+  §3.1, `docs/plans/companies-map.md`.
+- Backfill: `apps/api/scripts/backfill-company-street-from-snapshots.ts`
+  — sample 42/50 street, 38/50 postal; filled **12,191** local companies
+  from `SageRecordSnapshot` (no SOAP). Quoting-tool dump not needed.
+- API/UI: update contracts + `byId` / `mapList`; company sheet Street /
+  State / Postal fields + header; map selected preview via
+  `formatCompanyLocation` (`apps/app/components/crm/company-location.ts`).
+- Tests: `sage-mappings.spec.ts`, `sage-xml.spec.ts` (address1/postcode).
+
+**How and why**
+- Street was always in Sage nested address + snapshots; we only mapped
+  city/state/country for firmographics / map pins. Display needs the
+  full line without changing Nominatim city-level geocode.
+
+**Deviations**
+- None vs plan. Snapshot coverage was strong — no quoting-tool path.
+
+**What's next**
+1. Deploy migration on Railway `api`.
+2. Run street backfill on prod via temporary TCP proxy:
+   `bun run scripts/backfill-company-street-from-snapshots.ts --dry-run`
+   then without `--dry-run`.
+3. Smoke company sheet + `/map` selection preview.
+
+### 2026-08-04 — Nav count bubbles + map deal-years filter
+
+**What was completed**
+- Nav: `CountBadge` in `packages/ui/src/components/count-badge.tsx`;
+  Screening + Follow-ups icons in `apps/app/components/app-icon-rail.tsx`
+  show uncleared counts (desktop overlay + mobile inline).
+- API: `screening.count` / `followups.count`; cache helpers
+  `cache.screening` + `followups.count` invalidation on decide.
+- Map: `dealYears` (0–10) on `companies.mapList` + URL parsers;
+  companies with a deal opened (`createdAt`) or closed (`closedAt`) in
+  the last N years. UI select on `/map`. Docs:
+  `docs/plans/companies-map.md`.
+
+**How and why**
+- Reps need a glance signal for Screening / Follow-ups without opening
+  those pages. Lightweight count queries avoid loading full queues on
+  every route.
+- Map of ~12k companies is noisy; a years-back deal filter surfaces
+  recent customers without replacing the full map (default = any time).
+
+**Deviations**
+- Follow-ups badge counts PROPOSED + due SNOOZED before prefs filters
+  (list may be slightly smaller). Prefer a cheap count over re-running
+  prefs in the rail.
+- Default deal-years is "Any deal time" (0), not 6 — user picks 1–10.
+
+**What's next**
+- Apply deal-stage migrations on Railway `api` if not done.
+- Optional: default map `dealYears=6` if the team wants that as the
+  usual view.
+
+### 2026-08-04 — Forecast by close month: last 12 months
+
+**What was completed**
+- `buildForecast` in `apps/api/src/dashboard/dashboard.service.ts`
+  drops month buckets older than 11 months before the current month
+  (last 12 months + any upcoming; "No date" kept). Totals and
+  `byOwner` still sum every open deal.
+- Overview card copy in `apps/app/app/(app)/sales-dashboard.tsx`
+  notes "Last 12 months and upcoming".
+
+**How and why**
+- Everyone (and Me) showed open deals with close dates back to 2021,
+  all Overdue. That list was long and not useful for the live forecast.
+
+**Deviations**
+- None. Agent `read_pipeline_report` forecast mode is unchanged
+  (optional month filter still available there).
+
+**What's next**
+- Smoke on overview Me/Everyone: month table should start ~Sep 2025
+  (or current−11) and still show future months.
+- Still pending: apply stage migrations on Railway `api`.
+
+### 2026-08-04 — Sales-rep sheet + five-stage deal alignment
+
+**What was completed**
+- Added `DealStage.IN_PURCHASING`; migrations
+  `packages/db/prisma/migrations/20260804120000_deal_stage_in_purchasing`
+  + `20260804120100_remap_deal_stages_by_sage` (local deploy OK).
+- Remapped Sage pull/push in `apps/api/src/sage/sage.mappings.ts`;
+  `STAGE_CERTAINTY` + open-stage lists in API, pulse, report, seed.
+- UI labels in `apps/app/components/crm/deal-stage.tsx` (Leads →
+  In Purchasing); stage stepper picks up five open steps.
+- `dashboard.repSummary` + `SalesRepSheet` (`record=user:`); clickable
+  `OwnerCell`; Forecast-by-rep entry. Docs: sage-crm-sync §3.3.
+
+**How and why**
+- Managers need a per-rep panel on Everyone (certainty × close month
+  like the printed forecast). Proposal and Purchasing must not share
+  one enum slot; Certainty defaults match Mobile Mark bands.
+
+**Deviations**
+- None vs plan (Base Business / Your Estimate still skipped).
+
+**What's next**
+- Apply the two stage migrations on Railway prod (`db:deploy` on `api`).
+- Smoke: Everyone → click a rep → certainty grid + nested deal sheet.
+- Optional: sales-superpowers Action Queue (separate roadmap).
 
 ### 2026-08-04 — Prod user: Robert Johnson
 

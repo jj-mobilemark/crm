@@ -79,6 +79,7 @@ describe("sage-xml", () => {
 		expect(tree?.people[0]?.emailaddress).toBe("linda@mobilemark.com");
 		expect(tree?.people[0]?.areacode).toBe("847");
 		expect(tree?.people[0]?.number).toBe("555-1000");
+		expect(tree?.address?.address1).toBe("1140 W Thorndale");
 		expect(tree?.address?.city).toBe("Itasca");
 		expect(tree?.email?.emailaddress).toBe("info@mobilemark.com");
 		expect(tree?.phone?.areacode).toBe("847");

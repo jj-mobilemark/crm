@@ -128,8 +128,10 @@ export type CompanyMapRow = {
 	id: string;
 	name: string;
 	domain: string | null;
+	streetAddress: string | null;
 	city: string | null;
 	stateCode: string | null;
+	postalCode: string | null;
 	country: string | null;
 	latitude: number | null;
 	longitude: number | null;
@@ -284,8 +286,10 @@ export class CompaniesService {
 				id: true,
 				name: true,
 				domain: true,
+				streetAddress: true,
 				city: true,
 				stateCode: true,
+				postalCode: true,
 				country: true,
 				latitude: true,
 				longitude: true,
@@ -300,8 +304,10 @@ export class CompaniesService {
 				id: row.id,
 				name: row.name,
 				domain: row.domain,
+				streetAddress: row.streetAddress,
 				city: row.city,
 				stateCode: row.stateCode,
+				postalCode: row.postalCode,
 				country: row.country,
 				latitude: row.latitude,
 				longitude: row.longitude,
@@ -329,8 +335,10 @@ export class CompaniesService {
 				brandColor: true,
 				industry: true,
 				subIndustry: true,
+				streetAddress: true,
 				city: true,
 				stateCode: true,
+				postalCode: true,
 				country: true,
 				countryCode: true,
 				phone: true,
@@ -498,11 +506,18 @@ export class CompaniesService {
 		}
 		if (input.industry !== undefined)
 			data.industry = blankToNull(input.industry);
+		if (input.streetAddress !== undefined) {
+			data.streetAddress = blankToNull(input.streetAddress);
+		}
 		if (input.city !== undefined) data.city = blankToNull(input.city);
 		if (input.stateCode !== undefined) {
 			data.stateCode = blankToNull(input.stateCode);
 		}
+		if (input.postalCode !== undefined) {
+			data.postalCode = blankToNull(input.postalCode);
+		}
 		if (input.country !== undefined) data.country = blankToNull(input.country);
+		// Street/postal alone do not clear geocode — pins stay city-level.
 		if (
 			input.city !== undefined ||
 			input.stateCode !== undefined ||
@@ -843,6 +858,28 @@ export class CompaniesService {
 						? [where.AND]
 						: []),
 				{ OR: [{ latitude: null }, { longitude: null }] },
+			];
+		}
+
+		if (input.dealYears > 0) {
+			const cutoff = new Date();
+			cutoff.setFullYear(cutoff.getFullYear() - input.dealYears);
+			where.AND = [
+				...(Array.isArray(where.AND)
+					? where.AND
+					: where.AND
+						? [where.AND]
+						: []),
+				{
+					deals: {
+						some: {
+							OR: [
+								{ createdAt: { gte: cutoff } },
+								{ closedAt: { gte: cutoff } },
+							],
+						},
+					},
+				},
 			];
 		}
 

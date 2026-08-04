@@ -9,7 +9,10 @@ import { Injectable } from "@nestjs/common";
 import { toCents } from "../crm/values";
 import { InjectDatabase } from "../database/database.constants";
 import { OPEN_DEAL_STAGES } from "../deals/deal-stage";
-import type { DashboardSummaryInput } from "./dashboard.contracts";
+import type {
+	DashboardRepSummaryInput,
+	DashboardSummaryInput,
+} from "./dashboard.contracts";
 
 const OWNER_SELECT = {
 	id: true,
@@ -528,6 +531,256 @@ export class DashboardService {
 			})),
 		};
 	}
+
+	/**
+	 * Manager slide-out for one rep: KPIs, certainty × close-month grid (current
+	 * + next two months), open deals, companies, stuck, and recent field moves.
+	 */
+	async repSummary(input: DashboardRepSummaryInput) {
+		const user = await this.db.user.findUnique({
+			where: { id: input.userId },
+			select: OWNER_SELECT,
+		});
+		if (!user) return null;
+
+		const now = new Date();
+		const range = resolveRange(
+			{
+				scope: "everyone",
+				range: input.range,
+				from: input.from,
+				to: input.to,
+			},
+			now,
+		);
+		const owned = { ownerId: input.userId };
+		const startOfMonth = monthStart(now, 0);
+		const startOfNextMonth = monthStart(now, 1);
+		const monthEnds = [0, 1, 2].map((offset) => ({
+			offset,
+			start: monthStart(now, offset),
+			end: monthStart(now, offset + 1),
+			key: `${monthStart(now, offset).getFullYear()}-${String(monthStart(now, offset).getMonth() + 1).padStart(2, "0")}`,
+			label: FORECAST_MONTH_LABEL.format(monthStart(now, offset)),
+		}));
+		const certaintyHorizonEnd = monthStart(now, 3);
+
+		const [
+			openByStage,
+			closedInRange,
+			openDeals,
+			certaintyDeals,
+			companies,
+			pulse,
+			recentChanges,
+		] = await Promise.all([
+			this.db.deal.groupBy({
+				by: ["stage"],
+				where: { ...owned, stage: { in: [...OPEN_DEAL_STAGES] } },
+				_count: { _all: true },
+				_sum: { amount: true, weightedAmount: true },
+			}),
+			this.db.deal.findMany({
+				where: {
+					...owned,
+					closedAt: { gte: range.start, lt: range.end },
+					stage: {
+						in: [DealStage.CLOSED_WON, DealStage.CLOSED_LOST],
+					},
+				},
+				select: {
+					stage: true,
+					amount: true,
+					weightedAmount: true,
+				},
+			}),
+			this.db.deal.findMany({
+				where: { ...owned, stage: { in: [...OPEN_DEAL_STAGES] } },
+				orderBy: [
+					{ expectedCloseDate: { sort: "asc", nulls: "last" } },
+					{ weightedAmount: { sort: "desc", nulls: "last" } },
+				],
+				take: 50,
+				select: {
+					id: true,
+					name: true,
+					stage: true,
+					amount: true,
+					weightedAmount: true,
+					probability: true,
+					currency: true,
+					expectedCloseDate: true,
+					stageChangedAt: true,
+					company: { select: { id: true, name: true, iconUrl: true } },
+				},
+			}),
+			this.db.deal.findMany({
+				where: {
+					...owned,
+					stage: { in: [...OPEN_DEAL_STAGES] },
+					expectedCloseDate: {
+						gte: startOfMonth,
+						lt: certaintyHorizonEnd,
+					},
+				},
+				select: {
+					stage: true,
+					amount: true,
+					expectedCloseDate: true,
+				},
+			}),
+			this.db.company.findMany({
+				where: { ownerId: input.userId },
+				orderBy: [{ name: "asc" }],
+				take: 40,
+				select: {
+					id: true,
+					name: true,
+					iconUrl: true,
+					_count: {
+						select: {
+							deals: { where: { stage: { in: [...OPEN_DEAL_STAGES] } } },
+						},
+					},
+				},
+			}),
+			loadPipelinePulse(this.db, {
+				scope: "me",
+				userId: input.userId,
+				now,
+				since: range.start,
+				until: range.end,
+			}),
+			this.db.dealFieldChange.findMany({
+				where: {
+					createdAt: { gte: range.start, lt: range.end },
+					deal: { ownerId: input.userId },
+				},
+				orderBy: [{ createdAt: "desc" }],
+				take: 24,
+				select: {
+					id: true,
+					field: true,
+					fromValue: true,
+					toValue: true,
+					source: true,
+					createdAt: true,
+					deal: {
+						select: {
+							id: true,
+							name: true,
+							company: { select: { id: true, name: true } },
+						},
+					},
+				},
+			}),
+		]);
+
+		const stages = OPEN_DEAL_STAGES.map((stage) => {
+			const group = openByStage.find((row) => row.stage === stage);
+			return {
+				stage: stage as DealStage,
+				count: group?._count._all ?? 0,
+				amountCents: toCents(group?._sum.amount ?? null) ?? 0,
+				weightedCents: toCents(group?._sum.weightedAmount ?? null) ?? 0,
+			};
+		});
+
+		let wonCount = 0;
+		let lostCount = 0;
+		let wonCents = 0;
+		for (const deal of closedInRange) {
+			const cents = dealMoneyCents(deal.amount, deal.weightedAmount);
+			if (deal.stage === DealStage.CLOSED_WON) {
+				wonCount += 1;
+				wonCents += cents;
+			} else {
+				lostCount += 1;
+			}
+		}
+		const decided = wonCount + lostCount;
+
+		const certaintyBreakdown = OPEN_DEAL_STAGES.map((stage) => ({
+			stage: stage as DealStage,
+			months: monthEnds.map((month) => {
+				let amountCents = 0;
+				let dealCount = 0;
+				for (const deal of certaintyDeals) {
+					if (deal.stage !== stage || !deal.expectedCloseDate) continue;
+					const close = deal.expectedCloseDate;
+					if (close >= month.start && close < month.end) {
+						amountCents += toCents(deal.amount) ?? 0;
+						dealCount += 1;
+					}
+				}
+				return {
+					key: month.key,
+					label: month.label,
+					amountCents,
+					dealCount,
+				};
+			}),
+		}));
+
+		const closingThisMonth = openDeals.filter((deal) => {
+			const close = deal.expectedCloseDate;
+			return close !== null && close >= startOfMonth && close < startOfNextMonth;
+		});
+
+		return {
+			user,
+			range: {
+				preset: range.preset,
+				label: range.label,
+				start: range.start.toISOString(),
+				end: range.end.toISOString(),
+				windowDays: range.windowDays,
+			},
+			kpis: {
+				openPipelineCents: stages.reduce((t, s) => t + s.amountCents, 0),
+				openWeightedCents: stages.reduce((t, s) => t + s.weightedCents, 0),
+				openDealCount: stages.reduce((t, s) => t + s.count, 0),
+				wonCount,
+				wonCents,
+				lostCount,
+				winRate: decided === 0 ? null : wonCount / decided,
+				stuckCount: pulse.stuck.length,
+				closingThisMonthCount: closingThisMonth.length,
+			},
+			stages,
+			certaintyMonths: monthEnds.map((m) => ({
+				key: m.key,
+				label: m.label,
+			})),
+			certaintyBreakdown,
+			deals: openDeals.map(
+				({
+					amount,
+					weightedAmount,
+					expectedCloseDate,
+					stageChangedAt,
+					...deal
+				}) => ({
+					...deal,
+					amountCents: toCents(amount),
+					weightedAmountCents: toCents(weightedAmount),
+					expectedCloseDate: expectedCloseDate?.toISOString() ?? null,
+					stageChangedAt: stageChangedAt.toISOString(),
+				}),
+			),
+			stuck: pulse.stuck,
+			companies: companies.map((company) => ({
+				id: company.id,
+				name: company.name,
+				iconUrl: company.iconUrl,
+				openDealCount: company._count.deals,
+			})),
+			recentChanges: recentChanges.map(({ createdAt, ...row }) => ({
+				...row,
+				createdAt: createdAt.toISOString(),
+			})),
+		};
+	}
 }
 
 type ForecastDeal = {
@@ -544,11 +797,19 @@ const FORECAST_MONTH_LABEL = new Intl.DateTimeFormat("en-US", {
 });
 
 /**
+ * How far back the close-month table keeps overdue buckets. Older open deals
+ * still count in totals / by-rep; they just leave the month list so 2021
+ * close dates do not bury the live forecast.
+ */
+const FORECAST_MONTHS_LOOKBACK = 11;
+
+/**
  * Bucket open deals by expected-close month (server calendar) and by owner.
  *
  * Months sort chronologically; deals with no close date land in a trailing
- * "No date" bucket. Overdue months stay visible — a forecast that hides past
- * targets is not useful.
+ * "No date" bucket. The month table keeps the last 12 months (including the
+ * current month) plus any upcoming close months — older overdue months drop
+ * out. Totals and by-owner still cover every open deal.
  */
 function buildForecast(deals: ForecastDeal[], now: Date) {
 	const monthBuckets = new Map<
@@ -618,6 +879,7 @@ function buildForecast(deals: ForecastDeal[], now: Date) {
 	}
 
 	const thisMonthKey = monthKey(now);
+	const oldestMonthKey = monthKey(monthStart(now, -FORECAST_MONTHS_LOOKBACK));
 
 	return {
 		totals: {
@@ -626,6 +888,7 @@ function buildForecast(deals: ForecastDeal[], now: Date) {
 			dealCount: deals.length,
 		},
 		months: [...monthBuckets.values()]
+			.filter((month) => month.key === "none" || month.sort >= oldestMonthKey)
 			.sort((a, b) => a.sort - b.sort)
 			.map(({ sort, ...month }) => ({
 				...month,

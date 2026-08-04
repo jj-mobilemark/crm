@@ -1180,6 +1180,7 @@ export class SagePullService {
 				existing.domain,
 				takenDomains,
 			);
+			// Street/postal alone do not clear geocode — pins stay city-level.
 			const locationChanged =
 				existing.city !== mapped.city ||
 				existing.stateCode !== mapped.stateCode ||
@@ -1192,8 +1193,10 @@ export class SagePullService {
 					website: mapped.website,
 					email: mapped.email,
 					phone: mapped.phone,
+					streetAddress: mapped.streetAddress,
 					city: mapped.city,
 					stateCode: mapped.stateCode,
+					postalCode: mapped.postalCode,
 					country: mapped.country,
 					countryCode: mapped.countryCode,
 					sage100CustomerNo: mapped.sage100CustomerNo,
@@ -1232,8 +1235,10 @@ export class SagePullService {
 						website: mapped.website,
 						email: mapped.email,
 						phone: mapped.phone,
+						streetAddress: mapped.streetAddress,
 						city: mapped.city,
 						stateCode: mapped.stateCode,
+						postalCode: mapped.postalCode,
 						country: mapped.country,
 						countryCode: mapped.countryCode,
 						sage100CustomerNo: mapped.sage100CustomerNo,
@@ -1266,8 +1271,10 @@ export class SagePullService {
 				website: mapped.website,
 				email: mapped.email,
 				phone: mapped.phone,
+				streetAddress: mapped.streetAddress,
 				city: mapped.city,
 				stateCode: mapped.stateCode,
+				postalCode: mapped.postalCode,
 				country: mapped.country,
 				countryCode: mapped.countryCode,
 				sageCrmCompanyId: mapped.sageCrmCompanyId,

@@ -7,9 +7,10 @@ import { CompanySheet } from "./company-sheet";
 import { ContactSheet } from "./contact-sheet";
 import { DealSheet } from "./deal-sheet";
 import { type RecordRef, recordKey, useRecordStack } from "./record-stack";
+import { SalesRepSheet } from "./sales-rep-sheet";
 
 /**
- * The one place a company, contact or deal is rendered.
+ * The one place a company, contact, deal or sales rep is rendered.
  *
  * Mounted in the app shell rather than per page, so opening a contact from a
  * deal on the deals table works the same as opening one from the contacts
@@ -67,6 +68,10 @@ export function RecordSheetHost() {
 
 				{shown?.kind === "deal" ? (
 					<DealSheet key={recordKey(shown)} dealId={shown.id} />
+				) : null}
+
+				{shown?.kind === "user" ? (
+					<SalesRepSheet key={recordKey(shown)} userId={shown.id} />
 				) : null}
 			</DetailSheet>
 

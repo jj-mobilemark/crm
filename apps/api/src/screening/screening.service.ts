@@ -43,6 +43,14 @@ export class ScreeningService {
 		};
 	}
 
+	/** Lightweight PENDING count for the nav bubble. */
+	async count(userId: string) {
+		const count = await this.db.pendingContact.count({
+			where: { userId, status: "PENDING" },
+		});
+		return { count };
+	}
+
 	async decide(input: ScreeningDecideInput, decidedById: string) {
 		const row = await this.db.pendingContact.findUnique({
 			where: { id: input.id },

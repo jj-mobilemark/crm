@@ -116,6 +116,8 @@ enum DealStage {
   UNQUALIFIED_TO_BUY
   DECISION_MAKER_BOUGHT_IN
   CONTRACT_SENT
+  /// Sage Purchasing / In Purchasing (90% certainty). Kept as its own open stage.
+  IN_PURCHASING
   CLOSED_WON
   CLOSED_LOST
 }
@@ -195,13 +197,17 @@ model Company {
   // Firmographics.
   industry    String?
   subIndustry String?
-  city        String?
-  stateCode   String?
-  country     String?
-  countryCode String?
+  /// Street line from Sage nested address (`address1`). Display only —
+  /// geocode stays city-level (`city` / `stateCode` / `countryCode`).
+  streetAddress String?
+  city          String?
+  stateCode     String?
+  postalCode    String?
+  country       String?
+  countryCode   String?
 
   /// City-level map pin from Nominatim (or GeocodeCache). Cleared when the
-  /// address fields change so the next geocode pass can re-resolve.
+  /// city/state/country fields change so the next geocode pass can re-resolve.
   latitude         Float?
   longitude        Float?
   /// Normalised `city|stateCode|countryCode` used to look up GeocodeCache.

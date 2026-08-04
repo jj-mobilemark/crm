@@ -18,6 +18,7 @@ describe("STAGE_CERTAINTY", () => {
 		expect(certaintyForStage(DealStage.QUALIFIED_TO_BUY)).toBe(25);
 		expect(certaintyForStage(DealStage.DECISION_MAKER_BOUGHT_IN)).toBe(50);
 		expect(certaintyForStage(DealStage.CONTRACT_SENT)).toBe(75);
+		expect(certaintyForStage(DealStage.IN_PURCHASING)).toBe(90);
 		expect(certaintyForStage(DealStage.CLOSED_WON)).toBe(100);
 		expect(certaintyForStage(DealStage.CLOSED_LOST)).toBe(0);
 	});
