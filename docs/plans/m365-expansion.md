@@ -421,6 +421,11 @@ model PendingContact {
       task is enqueued, candidate disappears from the queue
 - [x] Reject with suppress → domain in `SuppressedDomain`; future mail from it
       never reappears
+- [x] Approve company match (2026-08-03): `companies.similar` + Suggested
+      pick before create; `companyId` / `preferDomainCompany` on decide;
+      soft-match in `companyForEmail` — see `sage-crm-sync.md` §4 6c
+- [x] Approve → best-effort Sage person create when parent has
+      `sageCrmCompanyId` (skip same-name twin; never fail local create)
 - [x] `check-types` / `lint` / `test` pass; `HANDOFF.md` updated
 
 ---

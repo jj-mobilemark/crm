@@ -2,22 +2,20 @@ import { type Db, EnrichmentStatus } from "@crm/db";
 import { Injectable, Logger } from "@nestjs/common";
 import { AgentTriggerService } from "../agent/agent-trigger.service";
 import { InjectDatabase } from "../database/database.constants";
+import { companyNameGuessFromDomain } from "./company-name-guess";
+import {
+	findSimilarCompanies,
+	pickStrongUniqueMatch,
+} from "./company-similar";
 import { domainFromEmail } from "./domain";
 
 /**
  * "Which company does this address belong to?" — the CRM half of a question
  * that used to be half enrichment.
  *
- * The old `EnrichmentService.companyForEmail` called Context.dev *inside the
- * request* so a new company could arrive already named "Stripe" rather than
- * "stripe.com". That was a nice touch bought at a bad price: a vendor lookup on
- * the path of every contact create and every sync tick, in the layer that is
- * not allowed to know vendors exist.
- *
- * So this does the part that is genuinely ours — find or create by domain — and
- * tells the agent a bare company now exists. The name is the domain for the few
- * seconds it takes the agent to replace it, and the sheet polls, which it
- * already did.
+ * Exact domain first; then a strong unique soft-match (name/related host) so
+ * Screening and sync do not invent `hitachirail-cd.com`-style orphans when
+ * "Hitachi Rail" already exists. Weak/ambiguous cases still create by domain.
  */
 @Injectable()
 export class CompanyDirectoryService {
@@ -30,7 +28,11 @@ export class CompanyDirectoryService {
 
 	async companyForEmail(
 		email: string,
-		options: { ownerId?: string | null } = {},
+		options: {
+			ownerId?: string | null;
+			/** When false, skip soft-match and always create by domain if no exact hit. */
+			softMatch?: boolean;
+		} = {},
 	): Promise<string | null> {
 		const domain = domainFromEmail(email);
 		if (!domain) return null;
@@ -40,6 +42,28 @@ export class CompanyDirectoryService {
 			select: { id: true },
 		});
 		if (existing) return existing.id;
+
+		const allowSoft = options.softMatch !== false;
+		if (allowSoft) {
+			const guess = companyNameGuessFromDomain(domain);
+			if (guess) {
+				const ranked = await findSimilarCompanies(this.db, {
+					name: guess,
+					domain,
+				});
+				const strong = pickStrongUniqueMatch(ranked);
+				if (strong) {
+					this.logger.log({
+						message: "Company soft-matched from email domain",
+						companyId: strong.id,
+						domain,
+						score: strong.score,
+						reason: strong.reason,
+					});
+					return strong.id;
+				}
+			}
+		}
 
 		// Two contacts at a new company can race here; the unique index on
 		// `domain` is what actually settles it.

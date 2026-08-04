@@ -23,10 +23,10 @@ Keep the main `HANDOFF.md` for other tracks; update **both** when you stop.
 | 1 `SageOutbox` schema | **DONE** | Migration `20260803120000_add_sage_outbox` (already applied locally). |
 | 2 Reverse mappings | **DONE** | `toSage*` in `sage.mappings.ts` + unit tests. |
 | 3 `SagePushService.flush()` | **DONE** | Outbox drain under `withSageSession`, 3 retries, parent-before-child. |
-| 4 Human UI enqueue hooks | **DONE** | Companies / contacts / deals create+update (+ deal `setStage`). |
+| 4 Human UI enqueue hooks | **DONE** | Companies / contacts / deals create+update (+ deal `setStage`). **+ Screening Approve** when parent has `sageCrmCompanyId` and no same-name Sage twin. |
 | 5 Immediate + periodic flush | **DONE** | `enqueueAndKick` + cron drains after pull on `/internal/sync/sage`. |
-| 6 Tests + smoke | **PARTIAL** | Unit tests green. End-to-end UI→outbox→Sage smoke **not** run in this session (API restart + manual UI edit still needed). |
-| Docs | **DONE** | This file + `sage-crm-sync.md` §5 item 7 updated. |
+| 6 Tests + smoke | **PARTIAL** | Unit tests green. Screening→Sage + UI→outbox smoke still owed in browser. |
+| Docs | **DONE** | This file + `sage-crm-sync.md` §4 6c / §5 item 7 updated. |
 
 ### Related: pipeline change log (not push, but touches pull)
 
@@ -39,7 +39,11 @@ echo, so a local push does not double-count.
 ### Locked decisions (do not relitigate)
 
 - **Scope**: UPDATE + CREATE for company / contact / deal.
-- **Create trigger**: human UI only (not agent / Google / Microsoft / screening / Sage pull).
+- **Create trigger**: human UI create/update, **plus Screening Approve** when
+  the parent company already has `sageCrmCompanyId` and no same-name
+  Sage-linked twin sits on that company. Still not agent / Google /
+  Microsoft auto-create / Sage pull. Screening enqueue failures never fail
+  the local create (outbox is best-effort).
 - **Timing**: durable `SageOutbox`; best-effort immediate flush; max **3** attempts then `failed`.
 - **Conflict**: **local wins** on mapped fields. Pull echo-guard skips Sage rows whose `updateddate` ≤ local `sagePushedAt`.
 
@@ -134,6 +138,28 @@ Nightly /internal/sync/sage (CRON_SECRET)
 ---
 
 ## Work log (newest first)
+
+### 2026-08-03 — Screening Approve enqueues Sage person create
+
+**What was completed**
+- Screening Approve best-effort pushes when parent has `sageCrmCompanyId`
+  and no same-name Sage-linked twin at that company.
+- Local create never fails on enqueue/flush errors.
+- Decide returns `sagePushQueued`; toast says "queued for Sage" when true.
+- Locked create-trigger decision + `sage-crm-sync.md` §4/§5 updated.
+- Files: `contacts.service.ts`, `screening.service.ts`,
+  `screening-table.tsx`, this handoff, `sage-crm-sync.md`.
+
+**How and why**
+- Approve is a human choice onto a known Sage company; without push the
+  contact stays CRM-only and pull cannot invent a Sage person.
+
+**Deviations**
+- Nested person email/phone still not in the push mapping (pre-existing).
+
+**What's next**
+- Soft check Approve → outbox → `sageCrmContactId` stamped.
+- Optional later: nested email on person create so Sage shows the address.
 
 ### 2026-08-03 — Note: DealFieldChange on Sage pull (pipeline pulse)
 

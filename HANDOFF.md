@@ -25,6 +25,18 @@ it before stopping. The rules for maintaining it live in `AGENTS.md`
 
 - **Git**: `origin` = `jj-mobilemark/crm` (fork); `upstream` = `trycompai/crm`
   (read-only). Work on `main`.
+- **Screening company match (DONE 2026-08-03)**: Approve calls
+  `companies.similar` (domain→name guess + related-host scoring) and offers
+  Use this / Create from domain (`preferDomainCompany` skips soft-attach).
+  Matches mark a **Suggested** pick (Sage 100 > contacts on the typed
+  domain > contact volume). `companyForEmail` soft-attaches on a strong
+  unique match or a suggested pick with Sage 100 / matching-domain
+  contacts. **Screening → Sage**: Approve enqueues person create when
+  parent has `sageCrmCompanyId` and no same-name Sage-linked twin;
+  failures never fail local create. Shared ranking: `company-similar.ts`.
+  Hitachi Teresa cleanup on **prod** done; Sage probe clean. Script:
+  `apps/api/scripts/fix-hitachi-screening-dup.ts`. Plan note:
+  `docs/plans/sage-crm-sync.md` §4 item 6c.
 - **Companies Hide empty filter (DONE 2026-08-03)**: companies list
   checkbox (on by default) keeps rows with ≥1 contact **and** a Sage 100
   customer #. URL `hideEmpty=yes|all`. Files:
@@ -145,6 +157,52 @@ it before stopping. The rules for maintaining it live in `AGENTS.md`
 ---
 
 ## Work log
+
+### 2026-08-03 — Screening company match + Hitachi cleanup
+
+**What was completed**
+- **Prod cleanup**: Teresa Whitacre
+  (`twhitacre@hitachirail-cd.com`) moved to Sage-backed **Hitachi Rail**;
+  orphan company `hitachirail-cd.com` deleted. Local DB had no orphan /
+  no Teresa row.
+- **Sage probe**: no Whitacre person, no junk company for that domain —
+  Screening create was local-only; no Sage reparent needed.
+- **Product**: shared `findSimilarCompanies` / `rankSimilar` /
+  `pickStrongUniqueMatch` in `company-similar.ts`; domain→name guess +
+  related-host scoring; **Suggested** pick (Sage 100 > matching-domain
+  contacts > contact volume); `companyForEmail` soft-attaches on strong
+  unique or suggested+signals; Screening Approve dialog (Use this /
+  Create from domain with `preferDomainCompany`); same Suggested cue on
+  New company; docs §4 item 6c.
+- **Screening → Sage push**: Approve enqueues person create when parent
+  has `sageCrmCompanyId` and no same-name Sage-linked twin at that
+  company; enqueue failures never fail local create. Toast:
+  "queued for Sage" when enqueued. Locked decision updated in
+  `HANDOFF-SAGE-SYNC.md`.
+- Script: `apps/api/scripts/fix-hitachi-screening-dup.ts`.
+- Tests: `apps/api/test/company-similar.spec.ts`.
+
+**How and why**
+- Exact domain-only matching invented domain-named companies when Sage
+  already had the org under another domain/null. Soft-match + UI pick
+  stops that; account signals break ties among several Hitachi-style hits.
+- Screening was excluded from Sage push to avoid flood; Approve is a
+  human decision onto a known Sage company, so push (best-effort) keeps
+  CRM and Sage aligned and stamps `sageCrmContactId` from the add.
+
+**Deviations**
+- Cleanup target stayed **Hitachi Rail** per original plan. Live
+  suggestion for `hitachirail-cd.com` prefers **HITACHI RAIL CD US LTD**
+  (Sage 100 + 64 contacts) over Hitachi Rail (5) — better for future
+  Approves.
+- Person push still does not send nested email/phone (existing push cut).
+
+**What's next**
+- Soft check: Approve onto a Sage-backed Suggested company → toast
+  "queued for Sage"; contact gains `sageCrmContactId` after flush.
+- Apply pending screening per-rep migration if not yet
+  (`20260803200000_pending_contact_per_user`) locally + Railway `api`.
+- Optional later: nested email on person create so Sage shows the address.
 
 ### 2026-08-03 — Companies list Hide empty filter
 

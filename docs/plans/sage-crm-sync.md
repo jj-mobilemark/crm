@@ -429,6 +429,17 @@ Mark records.
    hits force "Use this"; name hits offer Use this / Create new anyway. No live
    Sage SOAP search — the pull already mirrors Sage orgs locally. Never
    auto-merges on name alone.
+6c. **Screening company match (DONE 2026-08-03)**: Approve runs the same
+   `companies.similar` (domain → name guess + related-host scoring) and offers
+   Use this / Create from domain. Results mark a **Suggested** company using
+   account signals: Sage 100 → contacts on the typed email domain → contact
+   volume. `companyForEmail` soft-attaches on a strong unique match (score ≥ 70,
+   sole or ≥ 15 gap) **or** a suggested pick with Sage 100 / matching-domain
+   contacts. Shared ranking lives in
+   `apps/api/src/companies/company-similar.ts`. **Screening → Sage push**:
+   Approve enqueues a person create when the parent has `sageCrmCompanyId` and
+   no same-name Sage-linked twin is already on that company; enqueue/flush
+   failures never fail the local contact create.
 7. **Network reachability** of `crm.mobilemark.com` from the deploy environment
    (worked from this machine; confirm from Vercel/Railway; watch for IP
    allowlists).
@@ -487,8 +498,11 @@ push, Part G) is DESIGN-ONLY.
    enqueue hooks + SOAP `add`/`update` (confirmed against production — variant A
    envelope, `<crmid>` on add). Best-effort immediate flush on save + drain on
    `/internal/sync/sage` after pull. Local wins; pull echo-guard skips our own
-   write via `sagePushedAt`/`sageUpdatedAt`. **Reconcile** soft-deactivate (§6.7)
-   remains DESIGN-ONLY. `sage.router.ts` status/syncNow also not yet built.
+   write via `sagePushedAt`/`sageUpdatedAt`. **Screening Approve** also enqueues
+   a person create when the parent company has `sageCrmCompanyId` and no
+   same-name Sage-linked twin exists at that company (failures never fail the
+   local create). **Reconcile** soft-deactivate (§6.7) remains DESIGN-ONLY.
+   `sage.router.ts` status/syncNow also not yet built.
    See `HANDOFF-SAGE-SYNC.md`.
 
 ---

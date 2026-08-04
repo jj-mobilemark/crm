@@ -35,7 +35,7 @@ import type {
 	CompanyUpdateInput,
 } from "./companies.contracts";
 import { MAP_LIST_MAX } from "./companies.contracts";
-import { normalizeCompanyName } from "./company-name";
+import { findSimilarCompanies } from "./company-similar";
 import { normalizeDomain } from "./domain";
 import { FaviconService } from "./favicon.service";
 
@@ -428,45 +428,10 @@ export class CompaniesService {
 	 * would fail); name match is soft and needs a human confirm.
 	 */
 	async similar(input: CompanySimilarInput) {
-		const name = input.name.trim();
-		const domain = normalizeDomain(input.domain);
-		const normalized = normalizeCompanyName(name);
-
-		if (!name) return { matches: [] };
-
-		const tokens = normalized
-			.split(" ")
-			.filter((token) => token.length >= 3)
-			.toSorted((a, b) => b.length - a.length)
-			.slice(0, 3);
-
-		const terms = [...new Set([name, ...tokens])];
-		const or: Prisma.CompanyWhereInput[] = [];
-		if (domain) or.push({ domain });
-		for (const term of terms) {
-			or.push({ name: { contains: term, mode: "insensitive" } });
-		}
-
-		const rows = await this.db.company.findMany({
-			where: { OR: or },
-			select: {
-				id: true,
-				name: true,
-				domain: true,
-				city: true,
-				stateCode: true,
-				iconUrl: true,
-				sageCrmCompanyId: true,
-				sage100CustomerNo: true,
-			},
-			take: 40,
+		const ranked = await findSimilarCompanies(this.db, {
+			name: input.name,
+			domain: input.domain,
 		});
-
-		const ranked = rows
-			.map((row) => rankSimilar(row, { domain, normalized }))
-			.filter((row): row is NonNullable<typeof row> => row !== null)
-			.toSorted((a, b) => b.score - a.score || a.name.localeCompare(b.name))
-			.slice(0, 8);
 
 		return {
 			matches: ranked.map(({ score: _score, ...match }) => match),
@@ -866,82 +831,4 @@ export class CompaniesService {
 		}
 		return error;
 	}
-}
-
-type SimilarCandidate = {
-	id: string;
-	name: string;
-	domain: string | null;
-	city: string | null;
-	stateCode: string | null;
-	iconUrl: string | null;
-	sageCrmCompanyId: string | null;
-	sage100CustomerNo: string | null;
-};
-
-/**
- * Score a candidate against the typed name/domain. Returns null when the hit
- * is too weak to bother a human with.
- */
-function rankSimilar(
-	row: SimilarCandidate,
-	input: { domain: string | null; normalized: string },
-): (SimilarCandidate & {
-	score: number;
-	reason: "domain" | "name";
-	blocksCreate: boolean;
-}) | null {
-	if (input.domain && row.domain === input.domain) {
-		return {
-			...row,
-			score: 100,
-			reason: "domain",
-			blocksCreate: true,
-		};
-	}
-
-	const candidate = normalizeCompanyName(row.name);
-	if (!input.normalized || !candidate) return null;
-
-	if (candidate === input.normalized) {
-		return {
-			...row,
-			score: 90,
-			reason: "name",
-			blocksCreate: false,
-		};
-	}
-
-	// One normalised name contains the other — "Acme" vs "Acme Widgets".
-	const shorter =
-		candidate.length <= input.normalized.length ? candidate : input.normalized;
-	const longer =
-		candidate.length > input.normalized.length ? candidate : input.normalized;
-	if (shorter.length >= 3 && longer.includes(shorter)) {
-		return {
-			...row,
-			score: 70,
-			reason: "name",
-			blocksCreate: false,
-		};
-	}
-
-	const inputTokens = new Set(
-		input.normalized.split(" ").filter((token) => token.length >= 3),
-	);
-	const rowTokens = candidate.split(" ").filter((token) => token.length >= 3);
-	if (inputTokens.size === 0 || rowTokens.length === 0) return null;
-
-	const overlap = rowTokens.filter((token) => inputTokens.has(token)).length;
-	const needed = Math.ceil(inputTokens.size * 0.6);
-	if (overlap >= needed && overlap >= 1) {
-		return {
-			...row,
-			score: 50 + overlap * 5,
-			reason: "name",
-			blocksCreate: false,
-		};
-	}
-
-	return null;
 }

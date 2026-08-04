@@ -330,16 +330,18 @@ export class ContactsService {
 
 	/**
 	 * Approve path from the Screening Room: source EMAIL, agent identify task,
-	 * and email backfill for the harvested address.
+	 * email backfill, and a best-effort Sage person create when the parent
+	 * company is already in Sage CRM.
 	 */
 	async createFromScreening(input: {
 		firstName: string;
 		lastName?: string;
 		email: string;
 		companyId?: string | null;
+		preferDomainCompany?: boolean;
 		ownerId: string;
-	}) {
-		return this.createContact(
+	}): Promise<{ id: string; firstName: string; lastName: string | null; sagePushQueued: boolean }> {
+		const contact = await this.createContact(
 			{
 				firstName: input.firstName,
 				lastName: input.lastName,
@@ -350,8 +352,12 @@ export class ContactsService {
 			{
 				source: RecordSource.EMAIL,
 				identifyReason: "approved in screening room",
+				softMatchCompany: input.preferDomainCompany ? false : true,
+				sagePush: "if-company-in-sage",
 			},
+			{ id: input.ownerId },
 		);
+		return contact;
 	}
 
 	private async createContact(
@@ -359,9 +365,22 @@ export class ContactsService {
 		options: {
 			source: RecordSource | undefined;
 			identifyReason: string;
+			/** Soft-match in companyForEmail when no companyId. Default true. */
+			softMatchCompany?: boolean;
+			/**
+			 * `if-company-in-sage` — Screening Approve: enqueue person create when
+			 * the parent has a Sage CRM id and no local Sage-linked twin.
+			 * Failures never fail the local create (outbox enqueue is best-effort).
+			 */
+			sagePush?: "if-company-in-sage";
 		},
 		actor?: ContactActor,
-	) {
+	): Promise<{
+		id: string;
+		firstName: string;
+		lastName: string | null;
+		sagePushQueued: boolean;
+	}> {
 		const email = blankToNull(input.email ?? "");
 
 		if (email) {
@@ -386,6 +405,7 @@ export class ContactsService {
 						// Same rule as the sync: a company conjured out of somebody's
 						// action belongs to them, not to nobody.
 						ownerId: input.ownerId,
+						softMatch: options.softMatchCompany !== false,
 					})
 				: null);
 
@@ -400,7 +420,12 @@ export class ContactsService {
 				ownerId: input.ownerId ?? null,
 				...(options.source ? { source: options.source } : {}),
 			},
-			select: { id: true, firstName: true, lastName: true },
+			select: {
+				id: true,
+				firstName: true,
+				lastName: true,
+				companyId: true,
+			},
 		});
 
 		this.logger.log({ message: "Contact created", contactId: contact.id });
@@ -413,12 +438,113 @@ export class ContactsService {
 			await this.enqueueEmailBackfill(email, input.ownerId ?? null);
 		}
 
-		// Only human UI MANUAL creates go to Sage — screening/EMAIL/sync stay out.
+		let sagePushQueued = false;
+
+		// Human UI MANUAL creates always enqueue. Screening Approve enqueues when
+		// the parent company is already in Sage and no Sage-linked twin exists.
 		if (actor && !options.source) {
 			await this.sagePush.enqueueAndKick("contact", contact.id, actor.id);
+			sagePushQueued = true;
+		} else if (actor && options.sagePush === "if-company-in-sage") {
+			sagePushQueued = await this.enqueueScreeningSagePush({
+				contactId: contact.id,
+				actorId: actor.id,
+				firstName: contact.firstName,
+				lastName: contact.lastName,
+				companyId: contact.companyId,
+			});
 		}
 
-		return contact;
+		return {
+			id: contact.id,
+			firstName: contact.firstName,
+			lastName: contact.lastName,
+			sagePushQueued,
+		};
+	}
+
+	/**
+	 * Best-effort Sage person create after Screening Approve.
+	 *
+	 * Requires parent `sageCrmCompanyId` (SOAP person create needs it). Skips
+	 * when a same-name Sage-linked contact already sits on that company, so we
+	 * do not invent a second person. Never throws.
+	 */
+	private async enqueueScreeningSagePush(input: {
+		contactId: string;
+		actorId: string;
+		firstName: string;
+		lastName: string | null;
+		companyId: string | null;
+	}): Promise<boolean> {
+		if (!input.companyId) return false;
+
+		try {
+			const company = await this.db.company.findUnique({
+				where: { id: input.companyId },
+				select: {
+					id: true,
+					name: true,
+					sageCrmCompanyId: true,
+					sage100CustomerNo: true,
+				},
+			});
+			if (!company?.sageCrmCompanyId) {
+				this.logger.log({
+					message:
+						"Screening Sage push skipped — parent company has no Sage CRM id",
+					contactId: input.contactId,
+					companyId: input.companyId,
+				});
+				return false;
+			}
+
+			const twin = await this.db.contact.findFirst({
+				where: {
+					companyId: input.companyId,
+					id: { not: input.contactId },
+					sageCrmContactId: { not: null },
+					firstName: { equals: input.firstName, mode: "insensitive" },
+					...(input.lastName
+						? { lastName: { equals: input.lastName, mode: "insensitive" } }
+						: { OR: [{ lastName: null }, { lastName: "" }] }),
+				},
+				select: { id: true, sageCrmContactId: true, email: true },
+			});
+			if (twin) {
+				this.logger.log({
+					message:
+						"Screening Sage push skipped — Sage-linked contact with same name already at company",
+					contactId: input.contactId,
+					twinId: twin.id,
+					sageCrmContactId: twin.sageCrmContactId,
+					companyId: input.companyId,
+					hasSage100: Boolean(company.sage100CustomerNo),
+				});
+				return false;
+			}
+
+			await this.sagePush.enqueueAndKick(
+				"contact",
+				input.contactId,
+				input.actorId,
+			);
+			this.logger.log({
+				message: "Screening contact queued for Sage push",
+				contactId: input.contactId,
+				companyId: input.companyId,
+				sageCrmCompanyId: company.sageCrmCompanyId,
+				hasSage100: Boolean(company.sage100CustomerNo),
+			});
+			return true;
+		} catch (error) {
+			this.logger.warn({
+				message: "Screening Sage push enqueue failed (ignored)",
+				contactId: input.contactId,
+				error: error instanceof Error ? error.message : String(error),
+			});
+			return false;
+		}
 	}
 
 	async update(id: string, input: ContactUpdateInput, actor?: ContactActor) {

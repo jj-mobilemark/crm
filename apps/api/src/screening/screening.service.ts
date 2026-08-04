@@ -88,6 +88,7 @@ export class ScreeningService {
 			lastName: lastName ?? undefined,
 			email: row.email,
 			companyId: input.createContact?.companyId,
+			preferDomainCompany: input.createContact?.preferDomainCompany,
 			ownerId: decidedById,
 		});
 
@@ -105,9 +106,14 @@ export class ScreeningService {
 			pendingId: row.id,
 			contactId: contact.id,
 			email: row.email,
+			sagePushQueued: contact.sagePushQueued,
 		});
 
-		return { decision: "approve" as const, contactId: contact.id };
+		return {
+			decision: "approve" as const,
+			contactId: contact.id,
+			sagePushQueued: contact.sagePushQueued,
+		};
 	}
 
 	private async reject(

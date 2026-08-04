@@ -266,18 +266,37 @@ export function CreateCompanySheet() {
 						{(matches ?? []).map((match) => (
 							<li
 								key={match.id}
-								className="flex items-center justify-between gap-3 rounded-md border px-3 py-2"
+								className={
+									match.suggested
+										? "flex items-center justify-between gap-3 rounded-md border border-foreground/20 bg-muted/40 px-3 py-2"
+										: "flex items-center justify-between gap-3 rounded-md border px-3 py-2"
+								}
 							>
 								<span className="flex min-w-0 flex-col">
-									<span className="truncate font-medium">{match.name}</span>
+									<span className="flex min-w-0 items-baseline gap-2">
+										<span className="truncate font-medium">{match.name}</span>
+										{match.suggested ? (
+											<span className="shrink-0 text-muted-foreground text-xs">
+												Suggested
+											</span>
+										) : null}
+									</span>
 									<span className="truncate text-muted-foreground text-xs">
 										{[
+											match.suggestReason,
 											match.domain,
 											[match.city, match.stateCode].filter(Boolean).join(", "),
 											match.sageCrmCompanyId
-												? `Sage ${match.sageCrmCompanyId}`
+												? `Sage CRM ${match.sageCrmCompanyId}`
 												: null,
-											match.reason === "domain" ? "Same domain" : "Similar name",
+											!match.suggestReason && match.contactCount > 0
+												? `${match.contactCount} contacts`
+												: null,
+											!match.suggestReason
+												? match.reason === "domain"
+													? "Same domain"
+													: "Similar name"
+												: null,
 										]
 											.filter(Boolean)
 											.join(" · ")}
@@ -285,7 +304,7 @@ export function CreateCompanySheet() {
 								</span>
 								<Button
 									type="button"
-									variant="outline"
+									variant={match.suggested ? "default" : "outline"}
 									size="sm"
 									onClick={() => useExisting(match.id)}
 								>
