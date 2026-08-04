@@ -387,28 +387,35 @@ export async function pipelinePreamble(
 		}
 	}
 
+	const userIdHint = actingUserId
+		? ` (pass userId \`${actingUserId}\` when scope is me)`
+		: "";
+
 	const markdown = [
 		"## This session",
 		"",
 		`A sales manager has the **overview** open on **${scopeLabel}**.`,
-		"This is not one contact, company or deal — it is the pipeline pulse.",
+		"This is not one contact, company or deal — it is the pipeline.",
 		actingUserId ? `Acting rep user id: \`${actingUserId}\`.` : "",
 		"",
 		countsLine,
 		"",
 		opening(
 			opened,
-			"what moved this week, who is stuck, or where deals were lost",
+			"what moved this week, who is stuck, what is closing this month, or open pipeline by stage",
 		),
 		"",
-		"Start with `read_pipeline_pulse` for this scope" +
-			(actingUserId
-				? ` (pass userId \`${actingUserId}\` when scope is me)`
-				: "") +
-			". It returns the same",
-		"shape as the overview strip: counts, biggest movers, recent feed, and",
-		"stuck deals. **Never invent totals** — only report what that tool (or",
-		"`search_crm` / `read_deal_history` on drill-down) observed.",
+		"**Which tool:**",
+		"- **What moved / stuck / lost this week** → `read_pipeline_pulse`" +
+			userIdHint +
+			". Same shape as the overview strip (7-day change log + stuck).",
+		"- **August / closing / closed / by stage / forecast by close month** → `read_pipeline_report`" +
+			userIdHint +
+			". Modes: `open_by_stage`, `forecast_by_close_month`, `closing_in_month`, `closed_in_month`. Pass `month` as `YYYY-MM` when the question names a month.",
+		"",
+		"**Never invent totals** — only report what those tools (or",
+		"`search_crm` / `read_deal_history` on drill-down) observed. Prefer",
+		"unweighted amount (deal value); weighted is secondary.",
 		"",
 		"The change log only grows going forward; empty recent feed means no",
 		"edits or Sage pulls in the window, not a system failure.",

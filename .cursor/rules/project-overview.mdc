@@ -64,8 +64,10 @@ surface on top, syncing bidirectionally (pull first, push later).
   DESIGN-ONLY / deferred. See `docs/plans/sage-crm-sync.md` and
   `HANDOFF-SAGE-SYNC.md`.
 - **Pipeline pulse (DONE 2026-08-03)**: overview change feed + stuck deals +
-  pipeline AI chat. Sage pull (non-echo) appends `DealFieldChange` rows with
-  `source: sage`. Plan: `docs/plans/pipeline-pulse.md`.
+  pipeline AI chat (`read_pipeline_pulse` + `read_pipeline_report` for month /
+  stage / closing / closed). Sage pull (non-echo) appends `DealFieldChange`
+  rows with `source: sage`. Plans: `docs/plans/pipeline-pulse.md`,
+  `docs/plans/pipeline-agent-reports.md`.
 - **Companies map (DONE 2026-08-03)**: `/map` — filterable list + Leaflet pins
   (city-level geocode via Nominatim). Prod + local geocoded (~12.1k pins).
   List follows map viewport / cluster; select flies to pin; **Open company**
@@ -84,6 +86,7 @@ surface on top, syncing bidirectionally (pull first, push later).
 - `docs/local-setup.md` — how this machine was set up and what's left to do
 - `docs/plans/sage-crm-sync.md` — Phase 7 Sage sync (confirmed SOAP + mappings)
 - `docs/plans/pipeline-pulse.md` — overview pulse + pipeline agent
+- `docs/plans/pipeline-agent-reports.md` — month / stage / closing reports
 - `docs/plans/companies-map.md` — companies map + geocode script
 - `docs/plans/agent-railway.md` — eve agent on Railway (ops runbook)
 - `HANDOFF-SAGE-SYNC.md` — Sage push write-back handoff

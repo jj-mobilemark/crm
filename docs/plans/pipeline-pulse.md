@@ -12,6 +12,7 @@ Mechanical data only in Nest/DB. Intelligence stays in the agent.
 | `DealFieldChange` schema + writers (app + Sage pull) | **DONE** (2026-08-03) |
 | Overview pulse UI (strip + movers + feed + stuck) | **DONE** (2026-08-03) |
 | Pipeline agent session on overview | **DONE** (2026-08-03) |
+| Advanced reports (`read_pipeline_report`) | **DONE** (2026-08-03) |
 
 ## Locked decisions (2026-08-03)
 
@@ -23,6 +24,10 @@ Mechanical data only in Nest/DB. Intelligence stays in the agent.
 4. **UI**: pulse strip + biggest movers + recent feed + stuck (14d+).
 5. **Pulse window**: fixed **last 7 days** (independent of closed-won range).
 6. **Agent**: fourth kind `pipeline` on overview after pulse UI.
+7. **Reports** (2026-08-03): pulse stays the 7-day change log; month / stage /
+   closing / closed questions use `read_pipeline_report` (shared
+   `loadPipelineReport` in `@crm/db`). Prefer unweighted `amount`; weighted is
+   secondary. Deal list capped at 40; aggregates stay full-accuracy.
 
 ## Architecture
 
@@ -33,9 +38,11 @@ Mechanical data only in Nest/DB. Intelligence stays in the agent.
 | Deals UI path | `DealsService.update` / `setStage` → recorder (`source: app`) |
 | Sage pull | `SagePullService.upsertDeal` → recorder (`source: sage`) when not echo |
 | `loadPipelinePulse` (`@crm/db`) | Shared query for Nest summary + agent tool |
+| `loadPipelineReport` (`@crm/db`) | Shared month/stage reports for the agent |
 | `dashboard.summary.pulse` | Counts, movers, recent feed, stuck — last 7 days, Me/Everyone |
 | `pipeline` AgentRecordKind | Overview chat; id = `me` \| `everyone`; filing `pipelineScope` |
 | `read_pipeline_pulse` | Agent tool — same shape as dashboard pulse |
+| `read_pipeline_report` | Agent tool — open by stage, forecast by close month, closing / closed in month |
 
 Tracked fields: `stage`, `probability`, `amount`, `expectedCloseDate`,
 `ownerId`, `priority`, `sageStage`.
@@ -50,6 +57,7 @@ days** (fallback `stageChangedAt` when no change-log row exists yet).
 
 - `packages/db/prisma/schema.prisma` — `DealFieldChange`, `pipelineScope`
 - `packages/db/src/pipeline-pulse.ts` — shared pulse query
+- `packages/db/src/pipeline-report.ts` — shared month/stage reports for the agent
 - `packages/db/prisma/migrations/20260803130000_add_deal_field_change/`
 - `packages/db/prisma/migrations/20260803140000_add_pipeline_scope/`
 - `apps/api/src/crm/deal-change.service.ts` — recorder
@@ -61,6 +69,7 @@ days** (fallback `stageChangedAt` when no change-log row exists yet).
 - `apps/app/lib/agent-record.ts` — `pipeline` kind
 - `apps/app/components/crm/agent-panel.tsx` — `PipelineAgentPanel`
 - `apps/agent/agent/tools/read_pipeline_pulse.ts`
+- `apps/agent/agent/tools/read_pipeline_report.ts` — month / stage / closing / closed
 - `apps/agent/agent/lib/preamble.ts` — `pipelinePreamble`
 
 ## Local smoke
@@ -74,6 +83,10 @@ days** (fallback `stageChangedAt` when no change-log row exists yet).
    there is data in the 7-day window.
 5. Overview agent panel: “What moved this week?” → starts with
    `read_pipeline_pulse`; Me/Everyone follows the overview toggle.
+6. Overview agent: “What's closing this month?” or “pipeline for August 2026”
+   → `read_pipeline_report` with `closing_in_month` or
+   `forecast_by_close_month` and `month=YYYY-MM`; real deal rows, no invented
+   totals. Redeploy Railway `agent` before expecting this in prod.
 
 ---
 
@@ -84,8 +97,8 @@ Pulse UI and pipeline agent both shipped. Kept below as the original brief.
 ### Goal
 
 Add an AI panel on the overview so a sales manager can ask pipeline questions
-(“What moved this week?”, “Who’s stuck?”, “Where did we lose?”) with tools that
-read real data — never invent numbers.
+(“What moved this week?”, “Who’s stuck?”, “What's closing this month?”) with
+tools that read real data — never invent numbers.
 
 ### Why a new kind
 
@@ -101,10 +114,13 @@ filing → agent preamble.
 2. **Bridge**: `x-crm-pipeline` header → JWT `pipelineScope` (not through
    cuid()).
 3. **Preamble**: Me/Everyone + 7-day pulse summary counts; pointer to
-   `read_pipeline_pulse`.
-4. **Tool**: `read_pipeline_pulse` via shared `loadPipelinePulse`.
+   `read_pipeline_pulse` vs `read_pipeline_report`.
+4. **Tools**: `read_pipeline_pulse` via `loadPipelinePulse`;
+   `read_pipeline_report` via `loadPipelineReport` (month / stage / closing /
+   closed).
 5. **UI**: `PipelineAgentPanel` on overview under the pulse strip.
-6. **Instructions**: pipeline sessions start with `read_pipeline_pulse`.
+6. **Instructions**: pipeline sessions use pulse for “what moved”, report for
+   named months / closing / closed / by stage.
 
 ### Constraints (still hold)
 
@@ -119,3 +135,5 @@ filing → agent preamble.
 - Changing the 7-day / 14-day defaults without product ask
 - Optional thin tools `list_stuck_deals` / `list_deal_moves` (not built —
   pulse tool + drill-down is enough)
+- Nest `dashboard.summary` reuse of `loadPipelineReport` (UI already has
+  forecast tables; agent has its own shared loader)

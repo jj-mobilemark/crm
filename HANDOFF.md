@@ -79,9 +79,12 @@ it before stopping. The rules for maintaining it live in `AGENTS.md`
 - **Pipeline pulse + agent (DONE, 2026-08-03)**: `DealFieldChange` log;
   overview strip/movers/feed/stuck; `AgentRecordKind` `pipeline`;
   `AgentConversation.pipelineScope`; bridge `x-crm-pipeline` → JWT;
-  `pipelinePreamble` + `read_pipeline_pulse`; `PipelineAgentPanel`.
-  Migrations `20260803130000` + `20260803140000`. Docs:
-  `docs/agent.md`, `docs/plans/pipeline-pulse.md`.
+  `pipelinePreamble` + `read_pipeline_pulse` + `read_pipeline_report`
+  (open by stage / forecast month / closing / closed); `PipelineAgentPanel`.
+  Shared loaders: `packages/db/src/pipeline-pulse.ts`,
+  `packages/db/src/pipeline-report.ts`. Migrations `20260803130000` +
+  `20260803140000`. Docs: `docs/agent.md`, `docs/plans/pipeline-pulse.md`,
+  `docs/plans/pipeline-agent-reports.md`.
 - **Local API**: `bun run src/main.ts` in `apps/api` (:3001). App `bun run
   dev` on :3000. Restart API after new tRPC procedures (no HMR for routers).
 - **Deal/task priority + Tasks page**: nullable `Priority`; `/tasks`.
@@ -102,6 +105,38 @@ it before stopping. The rules for maintaining it live in `AGENTS.md`
 ---
 
 ## Work log
+
+### 2026-08-03 — Pipeline agent advanced reports
+
+**What was completed**
+- Shared loader `packages/db/src/pipeline-report.ts` (+ export from
+  `packages/db/src/index.ts`): modes `open_by_stage`,
+  `forecast_by_close_month`, `closing_in_month`, `closed_in_month`; Me/Everyone
+  scope; local calendar month bounds; deal list capped at 40 with full
+  aggregates.
+- Agent tool `apps/agent/agent/tools/read_pipeline_report.ts`.
+- Wiring: `pipelinePreamble` + `instructions.md` (pulse vs report); transcript
+  label; overview chip “What's closing this month?”; `docs/agent.md`.
+- Unit tests: `packages/db/test/pipeline-report.spec.ts` (month parse/bounds +
+  scope filter). App transcript/session tests still green (new tool covered).
+
+**How and why**
+- Pulse only covers the rolling 7-day change log; managers need forward-looking
+  and period questions from the same CRM deals. Same pattern as
+  `loadPipelinePulse` — agent reads `@crm/db` directly, no Nest hop.
+
+**Deviations**
+- None vs plan. Local DB smoke skipped (Postgres not running in this session).
+
+**What's next**
+- Smoke on overview agent (local or after agent redeploy): “What can you tell me
+  about my pipeline for August 2026?” — expect `read_pipeline_report` with
+  `month=2026-08` and real deal rows.
+- Redeploy Railway `agent` so prod picks up the new tool.
+- Optional later (out of plan scope): Nest dashboard reuse of the shared
+  loader; closed-in-month chip; alert digests.
+
+Plan doc: `docs/plans/pipeline-agent-reports.md`.
 
 ### 2026-08-03 — Clean agent Railway docs (remove stale checklist)
 

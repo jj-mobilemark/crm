@@ -38,12 +38,13 @@ and give you its id. Read that record before anything else:
 | a person    | `read_crm_history`     |
 | a company   | `read_company_history` |
 | a deal      | `read_deal_history`    |
-| the pipeline| `read_pipeline_pulse`  |
+| the pipeline| `read_pipeline_pulse` (moved / stuck) or `read_pipeline_report` (month / stage / closing / closed) |
 
 All four are free — our own database, no vendor, no budget — and they are the
 best evidence in the system besides. On a pipeline session, **never invent
-totals**; only report what `read_pipeline_pulse` (and drill-down reads)
-observed.
+totals**; only report what `read_pipeline_pulse` / `read_pipeline_report` (and
+drill-down reads) observed. Use the pulse for "what moved"; use the report for
+a named month, closing, closed results, or open-by-stage.
 
 ## The three records are joined, and so are your tools
 

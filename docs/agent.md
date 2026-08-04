@@ -203,9 +203,9 @@ Three things worth knowing before you touch it:
 downstream: the header the panel sends, the claim the proxy mints, the field a
 conversation is filed under, and the questions offered on an empty thread. A
 contact is asked "Who is this person?", a company "What do they do?", a deal
-"Where does this stand?", the overview pipeline "What moved this week?" —
-offering the first of those on a company is the tell that a chat box was bolted
-on rather than built into the record.
+"Where does this stand?", the overview pipeline "What moved this week?" or
+"What's closing this month?" — offering the first of those on a company is the
+tell that a chat box was bolted on rather than built into the record.
 
 The agent gets the same context: `instructions/task.ts` opens a session with a
 preamble built from the record, so a deal session starts knowing the stage, the
@@ -213,8 +213,11 @@ amount, the close date and who is on it, rather than spending its first two tool
 calls finding out. A **pipeline** session (`AgentRecordKind = "pipeline"`, id =
 `me` | `everyone`) carries Me/Everyone from the overview URL, files under
 `AgentConversation.pipelineScope`, and opens with pulse counts plus
-`read_pipeline_pulse` — never invents totals. Shared query:
-`packages/db/src/pipeline-pulse.ts`. Plan: `docs/plans/pipeline-pulse.md`.
+`read_pipeline_pulse` (7-day moves / stuck) and `read_pipeline_report` (open by
+stage, forecast by close month, closing / closed in a month) — never invents
+totals. Shared queries: `packages/db/src/pipeline-pulse.ts`,
+`packages/db/src/pipeline-report.ts`. Plans: `docs/plans/pipeline-pulse.md`,
+`docs/plans/pipeline-agent-reports.md`.
 
 Adding a kind is one entry in `COPY` plus a branch in the agent's preamble —
 not four edits in four layers.

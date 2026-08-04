@@ -89,12 +89,12 @@ const COPY: Record<AgentRecordKind, RecordCopy> = {
 		field: "pipelineScope",
 		title: "Ask about the pipeline",
 		blurb:
-			"It reads the last seven days of deal moves — never invents totals.",
+			"It reads deal moves and month reports — never invents totals.",
 		placeholder: "What moved this week?",
 		suggestions: [
 			"What moved this week?",
 			"Who's stuck?",
-			"Where did we lose?",
+			"What's closing this month?",
 		],
 	},
 };
