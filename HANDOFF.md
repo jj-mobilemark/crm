@@ -25,16 +25,13 @@ it before stopping. The rules for maintaining it live in `AGENTS.md`
 
 - **Git**: `origin` = `jj-mobilemark/crm` (fork); `upstream` = `trycompai/crm`
   (read-only). Work on `main`.
-- **Sage website notes (DONE local 2026-08-03; prod cleanup pending)**:
-  Sage `website` is often a credit/account note, not a URL. Pull now
-  keeps only URL-shaped values; push never writes `website`. Local
-  cleanup + contact-email backfill via
-  `apps/api/scripts/fix-sage-website-notes.ts` (not a Prisma migration —
-  data repair). **Prod:** run the same script against Railway Postgres
-  (`DATABASE_URL=… bun run scripts/fix-sage-website-notes.ts` from
-  `apps/api`, or `railway run -s api -- …`). Research no longer requires
-  a domain (Perplexity fallback by name); Re-enrich still needs a domain.
-  Plan: `docs/plans/sage-crm-sync.md` §3.1.
+- **Sage website notes (DONE local + prod 2026-08-03)**: Sage `website`
+  is often a credit/account note, not a URL. Pull keeps only URL-shaped
+  values; push never writes `website`. Prod repair ran via temporary
+  TCP proxy + `fix-sage-website-notes.ts` (cleared notes, backfilled
+  from contact emails; Hitachi → `website=https://cleverdevices.com`).
+  Research works without a domain (Perplexity); Re-enrich accepts a URL
+  website. Plan: `docs/plans/sage-crm-sync.md` §3.1.
 - **Screening company match (DONE 2026-08-03)**: Approve calls
   `companies.similar` (domain→name guess + related-host scoring) and offers
   Use this / Create from domain (`preferDomainCompany` skips soft-attach).

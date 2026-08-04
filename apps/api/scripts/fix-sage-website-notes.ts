@@ -18,18 +18,19 @@
  *   bun run scripts/fix-sage-website-notes.ts --dry-run
  *   bun run scripts/fix-sage-website-notes.ts
  *
- * Prod (Railway Postgres):
- *   DATABASE_URL='postgresql://…' bun run scripts/fix-sage-website-notes.ts --dry-run
- *   DATABASE_URL='postgresql://…' bun run scripts/fix-sage-website-notes.ts
- *
- * Or from Railway: `railway run -s api -- bun run scripts/fix-sage-website-notes.ts`
- * (from `apps/api`, with the project linked).
+ * Prod (private Railway DB from a laptop — temporary TCP proxy):
+ *   railway tcp-proxy create --port 5432 --service Postgres
+ *   MM_PROXY_HOST=… MM_PROXY_PORT=… railway run -s api -- \
+ *     bun run scripts/run-via-tcp-proxy.ts ./fix-sage-website-notes.ts --dry-run
+ *   … then without --dry-run …
+ *   railway tcp-proxy delete <id> --service Postgres --yes
  */
 import "@crm/env/load";
 import { db } from "@crm/db";
 import { majorityWorkDomain, normalizeDomain } from "../src/companies/domain";
 
 const dryRun = process.argv.includes("--dry-run");
+const CONCURRENCY = 20;
 
 function isPlausibleWebsite(value: string): boolean {
 	return normalizeDomain(value) !== null;
@@ -39,6 +40,7 @@ function isPlausibleDomain(value: string): boolean {
 	return normalizeDomain(value) === value.trim().toLowerCase();
 }
 
+console.log("loading companies…");
 const rows = await db.company.findMany({
 	where: {
 		OR: [
@@ -72,6 +74,11 @@ let clearedDomain = 0;
 let filledDomain = 0;
 let filledWebsite = 0;
 const samples: string[] = [];
+const updates: Array<{
+	id: string;
+	website?: string | null;
+	domain?: string | null;
+}> = [];
 
 for (const row of rows) {
 	const clearWebsite =
@@ -107,33 +114,25 @@ for (const row of rows) {
 		}
 	}
 
-	const changed =
-		clearWebsite ||
-		clearDomain ||
-		setDomain !== null ||
-		setWebsite !== null;
-	if (!changed) continue;
+	const touchWebsite = clearWebsite || setWebsite !== null;
+	const touchDomain = clearDomain || setDomain !== null;
+	if (!touchWebsite && !touchDomain) continue;
 
 	if (samples.length < 25) {
 		const parts: string[] = [];
-		if (clearWebsite) parts.push(`website ${JSON.stringify(row.website)}→null`);
+		if (clearWebsite)
+			parts.push(`website ${JSON.stringify(row.website)}→null`);
 		if (clearDomain) parts.push(`domain ${JSON.stringify(row.domain)}→null`);
 		if (setDomain) parts.push(`domain→${setDomain}`);
 		if (setWebsite) parts.push(`website→${setWebsite}`);
 		samples.push(`${row.name}: ${parts.join(", ")}`);
 	}
 
-	if (!dryRun) {
-		await db.company.update({
-			where: { id: row.id },
-			data: {
-				...(clearWebsite || setWebsite !== null
-					? { website: nextWebsite }
-					: {}),
-				...(clearDomain || setDomain !== null ? { domain: nextDomain } : {}),
-			},
-		});
-	}
+	updates.push({
+		id: row.id,
+		...(touchWebsite ? { website: nextWebsite } : {}),
+		...(touchDomain ? { domain: nextDomain } : {}),
+	});
 }
 
 console.log(
@@ -141,6 +140,7 @@ console.log(
 		{
 			dryRun,
 			scanned: rows.length,
+			toUpdate: updates.length,
 			clearedWebsite,
 			clearedDomain,
 			filledDomain,
@@ -151,5 +151,30 @@ console.log(
 		2,
 	),
 );
+
+if (!dryRun) {
+	let done = 0;
+	let cursor = 0;
+	const workers = Array.from({ length: CONCURRENCY }, async () => {
+		while (cursor < updates.length) {
+			const index = cursor;
+			cursor += 1;
+			const row = updates[index];
+			if (!row) return;
+			await db.company.update({
+				where: { id: row.id },
+				data: {
+					...(row.website !== undefined ? { website: row.website } : {}),
+					...(row.domain !== undefined ? { domain: row.domain } : {}),
+				},
+			});
+			done += 1;
+			if (done % 100 === 0 || done === updates.length) {
+				console.log(`wrote ${done} / ${updates.length}`);
+			}
+		}
+	});
+	await Promise.all(workers);
+}
 
 await db.$disconnect();
