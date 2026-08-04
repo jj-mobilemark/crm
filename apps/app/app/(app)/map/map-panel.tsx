@@ -9,14 +9,13 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@crm/ui/components/select";
-import { ToggleGroup, ToggleGroupItem } from "@crm/ui/components/toggle-group";
 import { useSearchInput } from "@crm/ui/hooks/use-search-input";
 import { cn } from "@crm/ui/lib/utils";
 import { useQuery } from "@tanstack/react-query";
 import { useQueryStates } from "nuqs";
 import { useRef, useState } from "react";
-import { useOpenRecord } from "@/components/crm/record-sheet/record-stack";
 import { formatCompanyLocation } from "@/components/crm/company-location";
+import { useOpenRecord } from "@/components/crm/record-sheet/record-stack";
 import { useTRPC } from "@/lib/trpc/client";
 import {
 	CompaniesMapCanvas,
@@ -147,126 +146,99 @@ export function MapPanel() {
 						placeholder="Search by name or domain…"
 						aria-label="Search companies"
 					/>
-					<ToggleGroup
-						type="single"
-						value={params.owner}
-						onValueChange={(value) => {
-							if (!value) return;
-							clearMapFocusAndSet({
-								owner: value as typeof params.owner,
-								selected: "",
-							});
-						}}
-						variant="outline"
-						size="sm"
-						className="justify-start"
-					>
-						<ToggleGroupItem value="all">All owners</ToggleGroupItem>
-						<ToggleGroupItem value="me">My accounts</ToggleGroupItem>
-						<ToggleGroupItem value="unassigned">Unassigned</ToggleGroupItem>
-					</ToggleGroup>
-					<ToggleGroup
-						type="single"
-						value={params.sage}
-						onValueChange={(value) => {
-							if (!value) return;
-							clearMapFocusAndSet({
-								sage: value as typeof params.sage,
-								selected: "",
-							});
-						}}
-						variant="outline"
-						size="sm"
-						className="justify-start"
-					>
-						<ToggleGroupItem value="all">Any Sage 100</ToggleGroupItem>
-						<ToggleGroupItem value="linked">Has Sage 100</ToggleGroupItem>
-						<ToggleGroupItem value="unlinked">No Sage 100</ToggleGroupItem>
-					</ToggleGroup>
-					<ToggleGroup
-						type="single"
-						value={params.hasLocation}
-						onValueChange={(value) => {
-							if (!value) return;
-							clearMapFocusAndSet({
-								hasLocation: value as typeof params.hasLocation,
-								selected: "",
-							});
-						}}
-						variant="outline"
-						size="sm"
-						className="justify-start"
-					>
-						<ToggleGroupItem value="all">Any location</ToggleGroupItem>
-						<ToggleGroupItem value="yes">On map</ToggleGroupItem>
-						<ToggleGroupItem value="no">Missing pin</ToggleGroupItem>
-					</ToggleGroup>
-					<Select
-						value={String(
-							params.dealYears >= 1 && params.dealYears <= 10
-								? params.dealYears
-								: 0,
-						)}
-						onValueChange={(value) =>
-							clearMapFocusAndSet({
-								dealYears: Number(value),
-								selected: "",
-							})
-						}
-					>
-						<SelectTrigger aria-label="Deal activity years">
-							<SelectValue placeholder="Deal activity" />
-						</SelectTrigger>
-						<SelectContent>
-							<SelectItem value="0">Any deal time</SelectItem>
-							{Array.from({ length: 10 }, (_, i) => i + 1).map((years) => (
-								<SelectItem key={years} value={String(years)}>
-									Deal in last {years} {years === 1 ? "year" : "years"}
-								</SelectItem>
-							))}
-						</SelectContent>
-					</Select>
-					<div className="flex gap-2">
+					<div className="grid grid-cols-2 gap-2">
 						<Select
-							value={params.sort}
+							value={params.owner}
 							onValueChange={(value) =>
 								clearMapFocusAndSet({
-									sort: value as typeof params.sort,
+									owner: value as typeof params.owner,
 									selected: "",
 								})
 							}
 						>
-							<SelectTrigger aria-label="Sort by" className="flex-1">
-								<SelectValue placeholder="Sort" />
+							<SelectTrigger aria-label="Owner" size="sm" className="w-full">
+								<SelectValue placeholder="Owner" />
 							</SelectTrigger>
 							<SelectContent>
-								<SelectItem value="name">Name</SelectItem>
-								<SelectItem value="city">City</SelectItem>
-								<SelectItem value="owner">Owner</SelectItem>
+								<SelectItem value="all">All owners</SelectItem>
+								<SelectItem value="me">My accounts</SelectItem>
+								<SelectItem value="unassigned">Unassigned</SelectItem>
 							</SelectContent>
 						</Select>
 						<Select
-							value={params.dir}
+							value={params.sage}
 							onValueChange={(value) =>
 								clearMapFocusAndSet({
-									dir: value as typeof params.dir,
+									sage: value as typeof params.sage,
 									selected: "",
 								})
 							}
 						>
-							<SelectTrigger aria-label="Sort direction" className="w-28">
-								<SelectValue />
+							<SelectTrigger aria-label="Sage 100" size="sm" className="w-full">
+								<SelectValue placeholder="Sage 100" />
 							</SelectTrigger>
 							<SelectContent>
-								<SelectItem value="asc">Asc</SelectItem>
-								<SelectItem value="desc">Desc</SelectItem>
+								<SelectItem value="all">Any Sage 100</SelectItem>
+								<SelectItem value="linked">Has Sage 100</SelectItem>
+								<SelectItem value="unlinked">No Sage 100</SelectItem>
+							</SelectContent>
+						</Select>
+						<Select
+							value={params.hasLocation}
+							onValueChange={(value) =>
+								clearMapFocusAndSet({
+									hasLocation: value as typeof params.hasLocation,
+									selected: "",
+								})
+							}
+						>
+							<SelectTrigger
+								aria-label="Location"
+								size="sm"
+								className="w-full"
+							>
+								<SelectValue placeholder="Location" />
+							</SelectTrigger>
+							<SelectContent>
+								<SelectItem value="all">Any location</SelectItem>
+								<SelectItem value="yes">On map</SelectItem>
+								<SelectItem value="no">Missing pin</SelectItem>
+							</SelectContent>
+						</Select>
+						<Select
+							value={String(
+								params.dealYears >= 1 && params.dealYears <= 10
+									? params.dealYears
+									: 0,
+							)}
+							onValueChange={(value) =>
+								clearMapFocusAndSet({
+									dealYears: Number(value),
+									selected: "",
+								})
+							}
+						>
+							<SelectTrigger
+								aria-label="Deal activity years"
+								size="sm"
+								className="w-full"
+							>
+								<SelectValue placeholder="Deal activity" />
+							</SelectTrigger>
+							<SelectContent>
+								<SelectItem value="0">Any deal time</SelectItem>
+								{Array.from({ length: 10 }, (_, i) => i + 1).map((years) => (
+									<SelectItem key={years} value={String(years)}>
+										Last {years} {years === 1 ? "year" : "years"}
+									</SelectItem>
+								))}
 							</SelectContent>
 						</Select>
 					</div>
 				</div>
 
 				<div className="flex flex-wrap items-center gap-2 text-muted-foreground text-xs">
-					<span>
+					<span className="min-w-0 flex-1">
 						{initialLoading
 							? "Loading…"
 							: mapList.isFetching
@@ -277,6 +249,41 @@ export function MapPanel() {
 										? `${listRows.length.toLocaleString()} in view · ${points.length.toLocaleString()} on map`
 										: `${rows.length.toLocaleString()} companies · ${points.length.toLocaleString()} on map`}
 					</span>
+					<Select
+						value={params.sort}
+						onValueChange={(value) =>
+							clearMapFocusAndSet({
+								sort: value as typeof params.sort,
+								selected: "",
+							})
+						}
+					>
+						<SelectTrigger aria-label="Sort by" size="sm">
+							<SelectValue placeholder="Sort" />
+						</SelectTrigger>
+						<SelectContent>
+							<SelectItem value="name">Name</SelectItem>
+							<SelectItem value="city">City</SelectItem>
+							<SelectItem value="owner">Owner</SelectItem>
+						</SelectContent>
+					</Select>
+					<Select
+						value={params.dir}
+						onValueChange={(value) =>
+							clearMapFocusAndSet({
+								dir: value as typeof params.dir,
+								selected: "",
+							})
+						}
+					>
+						<SelectTrigger aria-label="Sort direction" size="sm">
+							<SelectValue />
+						</SelectTrigger>
+						<SelectContent>
+							<SelectItem value="asc">Asc</SelectItem>
+							<SelectItem value="desc">Desc</SelectItem>
+						</SelectContent>
+					</Select>
 					{clusterIdSet != null ? (
 						<Button
 							type="button"
