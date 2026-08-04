@@ -25,6 +25,11 @@ it before stopping. The rules for maintaining it live in `AGENTS.md`
 
 - **Git**: `origin` = `jj-mobilemark/crm` (fork); `upstream` = `trycompai/crm`
   (read-only). Work on `main`.
+- **Company create duplicate guard (DONE 2026-08-03)**: before
+  `companies.create`, UI calls `companies.similar` (local name/domain
+  soft-match). Domain hit → must use existing; name hit → confirm Use this
+  or Create anyway. No live Sage search. See
+  `docs/plans/sage-crm-sync.md` §4 item 6b.
 - **Companies/contacts list UX (DONE 2026-08-03)**: companies table has a
   **Primary contact** column (designated primary, else most recently
   created); name + email with copy. Contacts table email column has the
@@ -117,6 +122,36 @@ it before stopping. The rules for maintaining it live in `AGENTS.md`
 ---
 
 ## Work log
+
+### 2026-08-03 — Company create: confirm possible matches
+
+**What was completed**
+- Soft-match before creating a company so two reps do not fork the same
+  Sage org by typing a similar name:
+  - `normalizeCompanyName` — strips legal suffixes / punctuation
+    (`apps/api/src/companies/company-name.ts` + unit test).
+  - `companies.similar` query — local CRM only (domain exact + name soft
+    rank); returns up to 8 matches with `reason` / `blocksCreate`
+    (`companies.contracts.ts`, `companies.service.ts`,
+    `companies.router.ts`; tRPC regenerated).
+  - Create sheet: check similar on submit → Dialog "Use this" /
+    "Create new anyway" (domain hits hide Create anyway)
+    (`apps/app/app/(app)/companies/create-company-sheet.tsx`).
+  - Docs: `docs/plans/sage-crm-sync.md` §4 item 6b; this HANDOFF.
+
+**How and why**
+- Domain uniqueness already hard-blocks same website. Name is not unique,
+  so "Acme" vs "Acme Inc" could create a second local + Sage company.
+  Confirm against the local mirror (post Sage pull) — no live SOAP search.
+
+**Deviations**
+- None vs the approach agreed in chat (local-first, confirm, no auto-merge).
+
+**What's next**
+1. Still apply Screening migration locally + Railway when Docker is up
+   (`20260803200000_pending_contact_per_user`).
+2. Optional later: same similar-confirm on contact create (email already
+   unique); live Sage search only if local miss becomes a real pain.
 
 ### 2026-08-03 — Primary contact column + email copy
 

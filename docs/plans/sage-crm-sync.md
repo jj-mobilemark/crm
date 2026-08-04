@@ -414,6 +414,11 @@ Mark records.
    domain only when no sageId match, and allow `domain` to be null to avoid
    unique-constraint clashes across the 8 near-duplicates. (Handled in
    `SagePullService`.)
+6b. **Create duplicate guard (DONE 2026-08-03)**: human "New company" calls
+   `companies.similar` (local name + domain soft-match) before create. Domain
+   hits force "Use this"; name hits offer Use this / Create new anyway. No live
+   Sage SOAP search — the pull already mirrors Sage orgs locally. Never
+   auto-merges on name alone.
 7. **Network reachability** of `crm.mobilemark.com` from the deploy environment
    (worked from this machine; confirm from Vercel/Railway; watch for IP
    allowlists).

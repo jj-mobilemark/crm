@@ -94,3 +94,14 @@ export const setPrimaryContactInput = z.object({
 export const companyOptionsInput = z.object({
 	q: z.string().default(""),
 });
+
+/**
+ * Soft-match existing companies before create. Local CRM only — after the Sage
+ * pull, that already covers almost every real org. Never auto-merges.
+ */
+export const companySimilarInput = z.object({
+	name: z.string().trim().min(1, "A company needs a name."),
+	domain: z.string().trim().optional(),
+});
+
+export type CompanySimilarInput = z.infer<typeof companySimilarInput>;

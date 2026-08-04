@@ -16,6 +16,7 @@ import {
 	companyListInput,
 	companyMapListInput,
 	companyOptionsInput,
+	companySimilarInput,
 	companyUpdateArgs,
 	setPrimaryContactInput,
 } from "./companies.contracts";
@@ -50,6 +51,12 @@ export class CompaniesRouter {
 	@Query({ input: companyOptionsInput })
 	async options(@Input("q") q: string) {
 		return this.companies.options(q);
+	}
+
+	/** Soft-match before create — local CRM only, never auto-merges. */
+	@Query({ input: companySimilarInput })
+	async similar(@Input() input: z.infer<typeof companySimilarInput>) {
+		return this.companies.similar(input);
 	}
 
 	@Mutation({ input: companyCreateInput })
