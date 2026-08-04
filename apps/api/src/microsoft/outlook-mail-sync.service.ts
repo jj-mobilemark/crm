@@ -317,6 +317,7 @@ export class OutlookMailSyncService {
 				// Not anybody we track and not worth creating. Bodies are never
 				// written — only participant metadata goes to the Screening Room.
 				await this.screening.harvest({
+					userId: row.userId,
 					external: match.external,
 					direction: outbound
 						? EmailDirection.OUTBOUND

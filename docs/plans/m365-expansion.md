@@ -376,7 +376,8 @@ suppresses them.
 ```prisma
 model PendingContact {
   id            String    @id @default(cuid())
-  email         String    @unique
+  userId        String    // the mailbox that harvested this — per-rep, never shared
+  email         String
   displayName   String?
   domain        String
   direction     String    // INBOUND | OUTBOUND (first seen)
@@ -387,7 +388,8 @@ model PendingContact {
   status        String    @default("PENDING") // PENDING | APPROVED | REJECTED
   decidedById   String?
   decidedAt     DateTime?
-  @@index([status, lastSeenAt])
+  @@unique([userId, email])
+  @@index([userId, status, lastSeenAt])
   @@map("pendingContact")
 }
 ```
@@ -397,13 +399,14 @@ model PendingContact {
   external participants (reuse `participants.ts`), filter out
   `SuppressedDomain` rows and existing `Contact.email`s, and upsert
   `PendingContact` (bump `messageCount` / `lastSeenAt`).
-- API: new `screening.router.ts` (alias `screening`): `list` (PENDING, ranked
-  by messageCount desc then lastSeenAt desc), `decide({ id, decision, createContact?: { firstName, lastName, companyId? } })`:
+- API: new `screening.router.ts` (alias `screening`): `list` (this rep's
+  PENDING only, ranked by messageCount desc then lastSeenAt desc),
+  `decide({ id, decision, createContact?: { firstName, lastName, companyId? } })`:
   - approve → create `Contact` (source `EMAIL`), enqueue `EmailBackfill`,
     call `AgentTriggerService.contactCreated(id, "approved in screening room")`,
     mark APPROVED.
   - reject → mark REJECTED; optional flag `suppressDomain` also inserts the
-    domain into `SuppressedDomain`.
+    domain into `SuppressedDomain` (domain suppress stays tenant-wide).
   - Regenerate + commit `server.ts`.
 - UI: new route `apps/app/app/(app)/screening/page.tsx` — table of pending
   candidates (name/email/domain, count, last seen, sample subject) with

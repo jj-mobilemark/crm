@@ -254,7 +254,10 @@ export async function proposeFollowUp(
 
 	const messageIds = [...new Set(input.evidence.map((item) => item.messageId))];
 	const found = await db.emailMessage.findMany({
-		where: { id: { in: messageIds } },
+		where: {
+			id: { in: messageIds },
+			syncedByUserId: input.userId,
+		},
 		select: { id: true },
 	});
 
@@ -262,7 +265,7 @@ export async function proposeFollowUp(
 		return {
 			written: false,
 			reason:
-				"One or more cited message ids do not exist. Only cite messages read from read_rep_followup_context.",
+				"One or more cited messages are missing or are not from this rep's mailbox. Only cite messages from read_rep_followup_context.",
 		};
 	}
 

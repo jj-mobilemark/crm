@@ -8,6 +8,7 @@ import { type Participant, workDomain } from "../google/participants";
  *
  * Metadata only — never bodies. Called from Outlook mail sync where a thread
  * would otherwise be dropped. Mechanical: count and last-seen, no judgement.
+ * Each row belongs to the mailbox that harvested it (`userId`).
  */
 @Injectable()
 export class ScreeningHarvestService {
@@ -22,6 +23,7 @@ export class ScreeningHarvestService {
 	 * filtered out by the matcher's `external` list.
 	 */
 	async harvest(input: {
+		userId: string;
 		external: readonly Participant[];
 		direction: "INBOUND" | "OUTBOUND";
 		subject: string | null;
@@ -37,7 +39,9 @@ export class ScreeningHarvestService {
 			if (!domain) continue;
 
 			const existing = await this.db.pendingContact.findUnique({
-				where: { email },
+				where: {
+					userId_email: { userId: input.userId, email },
+				},
 				select: { id: true, status: true },
 			});
 
@@ -45,7 +49,7 @@ export class ScreeningHarvestService {
 
 			if (existing) {
 				await this.db.pendingContact.update({
-					where: { email },
+					where: { id: existing.id },
 					data: {
 						messageCount: { increment: 1 },
 						lastSeenAt: input.seenAt,
@@ -58,6 +62,7 @@ export class ScreeningHarvestService {
 
 			await this.db.pendingContact.create({
 				data: {
+					userId: input.userId,
 					email,
 					displayName: person.name,
 					domain,
@@ -72,6 +77,7 @@ export class ScreeningHarvestService {
 
 			this.logger.debug({
 				message: "Pending contact harvested",
+				userId: input.userId,
 				email,
 				domain,
 			});

@@ -8,8 +8,9 @@ import type { ScreeningDecideInput } from "./screening.contracts";
 /**
  * Screening Room — review queue for unmatched external correspondents.
  *
- * Nest only stores metadata and creates contacts on approve. Identity research
- * still goes through `ContactsService.createFromScreening` → `contactCreated`.
+ * Per-rep: each candidate belongs to the mailbox that harvested it. Nest only
+ * stores metadata and creates contacts on approve. Identity research still
+ * goes through `ContactsService.createFromScreening` → `contactCreated`.
  */
 @Injectable()
 export class ScreeningService {
@@ -20,10 +21,10 @@ export class ScreeningService {
 		private readonly contacts: ContactsService,
 	) {}
 
-	/** PENDING candidates, ranked by how often we have seen them. */
-	async list() {
+	/** This rep's PENDING candidates, ranked by how often they have been seen. */
+	async list(userId: string) {
 		const rows = await this.db.pendingContact.findMany({
-			where: { status: "PENDING" },
+			where: { userId, status: "PENDING" },
 			orderBy: [{ messageCount: "desc" }, { lastSeenAt: "desc" }],
 		});
 
@@ -47,7 +48,7 @@ export class ScreeningService {
 			where: { id: input.id },
 		});
 
-		if (!row) {
+		if (!row || row.userId !== decidedById) {
 			throw new NotFoundException(`No pending contact with id ${input.id}.`);
 		}
 

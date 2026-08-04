@@ -29,7 +29,7 @@ export default async function ScreeningPage() {
 				<PageShellHeading>
 					<PageShellTitle>Screening</PageShellTitle>
 					<PageShellDescription>
-						People you email who are not in the CRM yet.
+						People from your synced mailbox who are not in the CRM yet.
 					</PageShellDescription>
 				</PageShellHeading>
 			</PageShellHeader>

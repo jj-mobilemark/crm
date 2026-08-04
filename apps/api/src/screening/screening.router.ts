@@ -21,8 +21,8 @@ export class ScreeningRouter {
 	) {}
 
 	@Query()
-	async list() {
-		return this.screening.list();
+	async list(@Ctx() ctx: AuthedTrpcContext) {
+		return this.screening.list(ctx.user.id);
 	}
 
 	@Mutation({ input: screeningDecideInput })

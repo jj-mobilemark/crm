@@ -38,6 +38,7 @@ model User {
   sequenceEnrollments  SequenceEnrollment[] @relation("SequenceSender")
   enrolledSequences    SequenceEnrollment[] @relation("SequenceEnroller")
   dealFieldChanges     DealFieldChange[]    @relation("DealFieldChangeActor")
+  pendingContacts      PendingContact[]     @relation("PendingContactRep")
 
   @@unique([email])
   @@map("user")
@@ -1055,7 +1056,10 @@ model EmailBackfill {
 /// also suppress the whole domain.
 model PendingContact {
   id            String    @id @default(cuid())
-  email         String    @unique
+  /// The rep whose mailbox harvested this candidate — never a shared queue.
+  userId        String
+  user          User      @relation("PendingContactRep", fields: [userId], references: [id], onDelete: Cascade)
+  email         String
   displayName   String?
   domain        String
   /// INBOUND | OUTBOUND — direction of the first sighting.
@@ -1069,7 +1073,8 @@ model PendingContact {
   decidedById   String?
   decidedAt     DateTime?
 
-  @@index([status, lastSeenAt])
+  @@unique([userId, email])
+  @@index([userId, status, lastSeenAt])
   @@map("pendingContact")
 }
 

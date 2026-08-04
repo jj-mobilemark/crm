@@ -25,6 +25,14 @@ it before stopping. The rules for maintaining it live in `AGENTS.md`
 
 - **Git**: `origin` = `jj-mobilemark/crm` (fork); `upstream` = `trycompai/crm`
   (read-only). Work on `main`.
+- **Screening per-rep (CODE DONE 2026-08-03, migrate pending)**:
+  `PendingContact.userId` + `@@unique([userId, email])`; harvest stamps
+  mailbox owner; `screening.list` / `decide` scoped to session user.
+  Migration `20260803200000_pending_contact_per_user` (clears old shared
+  rows). **Not applied yet** — Docker was down locally; apply with
+  `bun run db:deploy` locally + on Railway `api` before relying on
+  Screening in prod. Follow-ups were already per-rep; `proposeFollowUp`
+  now also requires cited messages `syncedByUserId = userId`.
 - **Prod crons (DONE 2026-08-03)**: Railway curl services hit
   `api` with `CRON_SECRET` (UTC schedules). No Google cron.
   - `cron-microsoft` `*/5 * * * *` → `/internal/sync/microsoft`
@@ -105,6 +113,55 @@ it before stopping. The rules for maintaining it live in `AGENTS.md`
 ---
 
 ## Work log
+
+### 2026-08-03 — Screening scoped to logged-in mailbox
+
+**What was completed**
+- Screening was a shared tenant queue (`pendingContact.email` unique only),
+  so `/screening` showed unmatched mail from every connected Outlook
+  mailbox. Fixed to per-rep (same model as Follow-ups):
+  - Schema: `PendingContact.userId` + `@@unique([userId, email])` +
+    index `(userId, status, lastSeenAt)`; User relation
+    `pendingContacts` (`packages/db/prisma/schema.prisma`).
+  - Migration: `packages/db/prisma/migrations/20260803200000_pending_contact_per_user/`
+    — deletes existing shared PENDING rows, then adds `userId`.
+  - Harvest: `ScreeningHarvestService.harvest({ userId, … })`; Outlook
+    sync passes `row.userId`
+    (`apps/api/src/screening/screening-harvest.service.ts`,
+    `apps/api/src/microsoft/outlook-mail-sync.service.ts`).
+  - API: `screening.list(userId)` / `decide` rejects other users' rows
+    (`apps/api/src/screening/screening.service.ts`,
+    `screening.router.ts`). tRPC regenerated.
+  - UI copy: "People from your synced mailbox…"
+    (`apps/app/app/(app)/screening/page.tsx`).
+  - Follow-ups already filtered by `userId`; hardened
+    `proposeFollowUp` so cited messages must have
+    `syncedByUserId = input.userId`
+    (`apps/agent/agent/lib/followups.ts`).
+  - Plan note: `docs/plans/m365-expansion.md` Phase 4 model updated.
+
+**How and why**
+- Copy said "People you email" but the table was team-wide. Cesar was
+  Jordan's; Lindsay / Raymond came from other reps' sync. Domain
+  suppress stays tenant-wide (noise filter), candidates are per mailbox.
+
+**Deviations**
+- Original Phase 4 design was a shared Screening Room; product now wants
+  per-rep like Follow-ups. Cleared existing PENDING rows rather than
+  guessing owners (no `userId` existed to backfill).
+- Local `db:deploy` not run — Docker daemon was not available. Code +
+  migration file are ready.
+
+**What's next**
+1. Start Docker Desktop, then `cd packages/db && bun run db:deploy`
+   locally.
+2. Deploy / migrate on Railway `api` (same migration) before shipping
+   the Screening fix to prod — otherwise the new column will break
+   harvest.
+3. Optional: after migrate, reject/suppress any leftover junk on your
+   own queue once Outlook sync re-harvests your mailbox only.
+
+---
 
 ### 2026-08-03 — Pipeline agent advanced reports
 
