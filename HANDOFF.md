@@ -25,15 +25,14 @@ it before stopping. The rules for maintaining it live in `AGENTS.md`
 
 - **Git**: `origin` = `jj-mobilemark/crm` (fork); `upstream` = `trycompai/crm`
   (read-only). Work on `main`.
-- **Company street address (DONE local 2026-08-04)**: `Company.streetAddress`
+- **Company street address (DONE local + prod 2026-08-04)**: `Company.streetAddress`
   + `postalCode`; Sage pull maps nested `address1` / `postcode` (zip
   aliases). City-level geocode unchanged. Migration
-  `20260804130000_company_street_address` applied **locally**. Snapshot
-  backfill filled **12,191** local companies
-  (`backfill-company-street-from-snapshots.ts`; sample 42/50 street,
-  38/50 postal). Sheet + map selection show full address. Apply migration
-  + run backfill on **prod** next (TCP proxy). Plan:
-  `.cursor/plans/company_street_address_c527a7e3.plan.md`. Docs:
+  `20260804130000_company_street_address` applied locally + on Railway
+  api deploy (`f794eae`). Snapshot backfill filled **12,191** local and
+  **12,192** prod companies
+  (`backfill-company-street-from-snapshots.ts`; TCP proxy deleted after).
+  Sheet + map selection show full address. Docs:
   `docs/plans/sage-crm-sync.md` §3.1, `docs/plans/companies-map.md`.
 - **Nav count bubbles (DONE local 2026-08-04)**: Screening + Follow-ups
   rail icons show a primary `CountBadge` when the signed-in user has
@@ -54,11 +53,10 @@ it before stopping. The rules for maintaining it live in `AGENTS.md`
   stages — Leads / Investigation / Quote / Negotiation / In Purchasing
   (`IN_PURCHASING` enum) with certainty defaults 10/25/50/75/90. Sage map
   splits Proposal vs Purchasing; blank → Leads. Migrations
-  `20260804120000` + `20260804120100` applied **locally** (remap by
-  `sageStage`; do not touch probability). Apply on Railway `api` next.
-  Overview Everyone: clickable `OwnerCell` + Forecast by rep opens
-  `SalesRepSheet` (`?record=user:<id>`); `dashboard.repSummary` KPIs +
-  certainty×month grid. Plan:
+  `20260804120000` + `20260804120100` applied locally + on Railway with
+  `f794eae` api deploy. Overview Everyone: clickable `OwnerCell` +
+  Forecast by rep opens `SalesRepSheet` (`?record=user:<id>`);
+  `dashboard.repSummary` KPIs + certainty×month grid. Plan:
   `.cursor/plans/sales_rep_sheet_b7f28c67.plan.md`. Docs:
   `docs/plans/sage-crm-sync.md` §3.3.
 - **Sage website notes (DONE local + prod 2026-08-03)**: Sage `website`
@@ -201,6 +199,42 @@ it before stopping. The rules for maintaining it live in `AGENTS.md`
 
 ## Work log
 
+### 2026-08-04 — Prod street backfill via TCP proxy
+
+**What was completed**
+- Pushed `f794eae` (all pending work). Api deploy SUCCESS; migrations
+  applied on start (`db:deploy`), including street address + deal stages.
+- Prod snapshot backfill: **12,192** companies updated
+  (`backfill-company-street-from-snapshots.ts` via
+  `run-via-tcp-proxy.ts`). Sample street=29/50, postal=31/50.
+- Temporary Postgres TCP proxy deleted after; list empty.
+
+**How and why**
+- Same as local snapshot repair — no Sage SOAP. Proxy only for laptop
+  reachability to private Railway Postgres.
+
+**Deviations**
+- None.
+
+**What's next**
+- Smoke street display on prod company sheet / map selection.
+
+### 2026-08-04 — Map filters: compact 2×2 dropdowns
+
+**What was completed**
+- `/map` sidebar: replaced three ToggleGroup rows + stacked selects with a
+  2×2 `Select` grid (owner / Sage / location / deal years). Sort + dir sit
+  on the results count row. `map-panel.tsx`.
+
+**How and why**
+- Toggle rows ate too much vertical space next to the company list.
+
+**Deviations**
+- None.
+
+**What's next**
+- Same as prior map entry (optional default `dealYears=6`).
+
 ### 2026-08-04 — Company street address (display + sync)
 
 **What was completed**
@@ -227,11 +261,7 @@ it before stopping. The rules for maintaining it live in `AGENTS.md`
 - None vs plan. Snapshot coverage was strong — no quoting-tool path.
 
 **What's next**
-1. Deploy migration on Railway `api`.
-2. Run street backfill on prod via temporary TCP proxy:
-   `bun run scripts/backfill-company-street-from-snapshots.ts --dry-run`
-   then without `--dry-run`.
-3. Smoke company sheet + `/map` selection preview.
+- Prod deploy + backfill (see entry above) — done.
 
 ### 2026-08-04 — Nav count bubbles + map deal-years filter
 
