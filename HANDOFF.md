@@ -25,6 +25,10 @@ it before stopping. The rules for maintaining it live in `AGENTS.md`
 
 - **Git**: `origin` = `jj-mobilemark/crm` (fork); `upstream` = `trycompai/crm`
   (read-only). Work on `main`.
+- **Companies/contacts list UX (DONE 2026-08-03)**: companies table has a
+  **Primary contact** column (designated primary, else most recently
+  created); name + email with copy. Contacts table email column has the
+  same copy control (`EmailValue`). No migration.
 - **Screening per-rep (CODE DONE 2026-08-03, migrate pending)**:
   `PendingContact.userId` + `@@unique([userId, email])`; harvest stamps
   mailbox owner; `screening.list` / `decide` scoped to session user.
@@ -113,6 +117,31 @@ it before stopping. The rules for maintaining it live in `AGENTS.md`
 ---
 
 ## Work log
+
+### 2026-08-03 — Primary contact column + email copy
+
+**What was completed**
+- `companies.list` returns `primaryContact` (designated primary, else
+  most recently created contact):
+  `apps/api/src/companies/companies.service.ts`.
+- Companies table: **Primary contact** column (name + email + copy):
+  `apps/app/app/(app)/companies/companies-table.tsx`.
+- Contacts table: email column uses the same copy control:
+  `apps/app/app/(app)/contacts/contacts-table.tsx`.
+- Shared `EmailValue` (mirrors Sage ID copy pattern):
+  `apps/app/components/crm/email-value.tsx`.
+
+**How and why**
+- Reps need a quick way to see and copy the main contact from the
+  company list, and to copy emails from the contacts list, without
+  opening the sheet. Same stop-propagation + toast pattern as Sage IDs.
+
+**Deviations**
+- None.
+
+**What's next**
+- Apply screening migration if not done (`bun run db:deploy` local +
+  Railway `api`). Otherwise continue from Current state priorities.
 
 ### 2026-08-03 — Screening scoped to logged-in mailbox
 

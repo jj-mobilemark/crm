@@ -79,6 +79,16 @@ export type CompanyRow = {
 		email: string;
 		image: string | null;
 	} | null;
+	/**
+	 * Designated primary, or the most recently created contact when none is set.
+	 * Null when the company has no contacts.
+	 */
+	primaryContact: {
+		id: string;
+		firstName: string;
+		lastName: string | null;
+		email: string | null;
+	} | null;
 	contactCount: number;
 	openDealCount: number;
 	/** ISO-8601, or null when nothing has happened yet. */
@@ -182,6 +192,25 @@ export class CompaniesService {
 					sage100CustomerNo: true,
 					sage100ArDivisionNo: true,
 					owner: { select: OWNER_SELECT },
+					primaryContact: {
+						select: {
+							id: true,
+							firstName: true,
+							lastName: true,
+							email: true,
+						},
+					},
+					// Fallback when no primary is set: most recently created.
+					contacts: {
+						take: 1,
+						orderBy: { createdAt: "desc" },
+						select: {
+							id: true,
+							firstName: true,
+							lastName: true,
+							email: true,
+						},
+					},
 					_count: {
 						select: {
 							contacts: true,
@@ -218,6 +247,7 @@ export class CompaniesService {
 				sage100CustomerNo: row.sage100CustomerNo,
 				sage100ArDivisionNo: row.sage100ArDivisionNo,
 				owner: row.owner,
+				primaryContact: row.primaryContact ?? row.contacts[0] ?? null,
 				contactCount: row._count.contacts,
 				openDealCount: row._count.deals,
 				lastActivityAt: row.lastActivityAt?.toISOString() ?? null,

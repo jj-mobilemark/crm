@@ -12,6 +12,7 @@ import { useQuery } from "@tanstack/react-query";
 import { CompanyCell } from "@/components/crm/company-cell";
 import { CompanyPicker } from "@/components/crm/company-picker";
 import { contactName } from "@/components/crm/contact-name";
+import { EmailValue } from "@/components/crm/email-value";
 import { OwnerCell } from "@/components/crm/owner-cell";
 import { formatSage100Id } from "@/components/crm/sage-id";
 import { SageIdValue } from "@/components/crm/sage-id-value";
@@ -60,12 +61,7 @@ const COLUMNS: DataTableColumn<ContactRow>[] = [
 		sortable: true,
 		width: "w-[24%]",
 		hideBelow: "md",
-		cell: (row) =>
-			row.email ? (
-				<span className="truncate text-muted-foreground">{row.email}</span>
-			) : (
-				<EmptyCellValue />
-			),
+		cell: (row) => <EmailValue value={row.email} />,
 	},
 	{
 		id: "company",

@@ -18,6 +18,8 @@ import {
 	EnrichmentIndicator,
 	isEnriching,
 } from "@/components/crm/enrichment-status";
+import { contactName } from "@/components/crm/contact-name";
+import { EmailValue } from "@/components/crm/email-value";
 import { OwnerCell } from "@/components/crm/owner-cell";
 import { formatSage100Id } from "@/components/crm/sage-id";
 import { SageIdValue } from "@/components/crm/sage-id-value";
@@ -85,6 +87,22 @@ const COLUMNS: DataTableColumn<CompanyRow>[] = [
 		hideBelow: "md",
 		defaultHidden: true,
 		cell: (row) => <OwnerCell owner={row.owner} />,
+	},
+	{
+		id: "primaryContact",
+		header: "Primary contact",
+		width: "w-[18%]",
+		hideBelow: "md",
+		cell: (row) => {
+			const contact = row.primaryContact;
+			if (!contact) return <EmptyCellValue />;
+			return (
+				<span className="flex min-w-0 flex-col gap-0.5">
+					<span className="truncate">{contactName(contact)}</span>
+					{contact.email ? <EmailValue value={contact.email} /> : null}
+				</span>
+			);
+		},
 	},
 	{
 		id: "contacts",
