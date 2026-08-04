@@ -85,5 +85,5 @@ surface on top, syncing bidirectionally (pull first, push later).
 - `docs/plans/sage-crm-sync.md` — Phase 7 Sage sync (confirmed SOAP + mappings)
 - `docs/plans/pipeline-pulse.md` — overview pulse + pipeline agent
 - `docs/plans/companies-map.md` — companies map + geocode script
-- `docs/plans/agent-railway.md` — deploy eve agent on Railway (ops checklist)
+- `docs/plans/agent-railway.md` — eve agent on Railway (ops runbook)
 - `HANDOFF-SAGE-SYNC.md` — Sage push write-back handoff

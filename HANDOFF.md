@@ -103,6 +103,26 @@ it before stopping. The rules for maintaining it live in `AGENTS.md`
 
 ## Work log
 
+### 2026-08-03 — Clean agent Railway docs (remove stale checklist)
+
+**What was completed**
+- Rewrote `docs/plans/agent-railway.md` as an ops runbook: prod Online,
+  deployed checklist, Node 24 / just-bash / start-script notes, env matrix,
+  smoke + failure table. Removed “still have to do” / next-agent order that
+  contradicted the DONE status line.
+- Project-overview link text → “ops runbook”.
+
+**How and why**
+- Status said DONE while the body still called the agent Missing and asked
+  for a Dockerfile that already ships on `main`.
+
+**Deviations**
+- None.
+
+**What's next**
+- Optional: Perplexity / Context.dev keys on **agent**; Entra Mail.Send for
+  sequences; UI smoke of Agent tab if not already confirmed.
+
 ### 2026-08-03 — Railway agent online (Dockerfile + service + bridge)
 
 **What was completed**

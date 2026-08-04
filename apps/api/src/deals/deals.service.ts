@@ -22,6 +22,7 @@ import {
 } from "../crm/deal-change.service";
 import { fromCents, toCents } from "../crm/values";
 import { InjectDatabase } from "../database/database.constants";
+import { sageStageForPush } from "../sage/sage.mappings";
 import { SagePushService } from "../sage/sage-push.service";
 import {
 	countsByKey,
@@ -394,6 +395,7 @@ export class DealsService {
 			select: {
 				id: true,
 				companyId: true,
+				sageStatus: true,
 				...DEAL_CHANGE_SELECT,
 			},
 		});
@@ -420,6 +422,13 @@ export class DealsService {
 		const probability = certaintyForStage(input.stage);
 		const amount = deal.amount === null ? null : deal.amount.toNumber();
 		const weightedAmount = weightedFromAmount(amount, probability);
+		// Keep the displayed Sage stage in step with what we are about to push,
+		// so the deal sheet does not keep an old pull label after a local move.
+		const sage = sageStageForPush({
+			stage: input.stage,
+			sageStage: deal.sageStage,
+			sageStatus: deal.sageStatus,
+		});
 
 		const [updated] = await this.db.$transaction([
 			this.db.deal.update({
@@ -431,6 +440,8 @@ export class DealsService {
 					closedReason: closed ? (closedReason ?? null) : null,
 					probability,
 					weightedAmount,
+					sageStage: sage.stage,
+					sageStatus: sage.status,
 				},
 				select: { id: true, stage: true, probability: true },
 			}),
@@ -460,7 +471,7 @@ export class DealsService {
 				expectedCloseDate: deal.expectedCloseDate,
 				ownerId: deal.ownerId,
 				priority: deal.priority,
-				sageStage: deal.sageStage,
+				sageStage: sage.stage,
 			},
 			source: "app",
 			actorUserId: actor.id,

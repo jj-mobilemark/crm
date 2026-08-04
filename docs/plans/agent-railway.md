@@ -1,27 +1,23 @@
-# Deploy the research agent on Railway
+# Research agent on Railway (ops)
 
-**Status (DONE 2026-08-03):** `app`, `api`, Postgres, API cron workers, and
-the always-on **`agent`** (eve) service are on Railway. Follow-ups enqueue
-is claimed by the dispatcher; Agent tab uses
-`AGENT_URL=http://agent.railway.internal:2000`. Runtime note: start via
-`scripts/railway-agent-start.sh` (Node 24 + `just-bash`, not `npx`/Bun).
+**Status (DONE 2026-08-03):** always-on Railway service **`agent`** runs eve.
+Follow-ups cron enqueues `AgentTask` rows; the dispatcher claims them. The app
+proxies the Agent tab to
+`AGENT_URL=http://agent.railway.internal:2000`.
 
-This is the checklist to make the agent operational. Architecture detail lives
-in [`docs/agent.md`](../agent.md). Env names live in
+Architecture and evidence rules: [`docs/agent.md`](../agent.md). Env names:
 [`.env.example`](../../.env.example) and [`docs/environment.md`](../environment.md).
 
 ---
 
-## Why you need a third long-running service
+## How the three pieces fit
 
-Three pieces, three jobs:
-
-| Piece | What it does | Prod today |
+| Piece | Job | Prod |
 | --- | --- | --- |
 | `api` | Syncs mail; cron routes enqueue `AgentTask` rows | Online |
-| `cron-followups` | Daily 8am CDT → `POST /internal/agent/followups` | Online |
-| **`agent` (eve)** | Claims due `AgentTask`s every minute; runs the model; writes `FollowUpSuggestion` / enrichment | **Missing** |
-| `app` | Proxies `/eve/v1/*` to the agent for the Agent tab | Online, but `AGENT_URL` still points nowhere useful |
+| `cron-followups` | Daily 8:00 AM CDT → `/internal/agent/followups` | Online |
+| **`agent` (eve)** | Claims due tasks every minute; model + tools; writes suggestions / enrichment | Online |
+| `app` | Proxies `/eve/v1/*` → `AGENT_URL` for the Agent tab | Online |
 
 ```
 cron-followups ──► api /internal/agent/followups ──► AgentTask rows in Postgres
@@ -32,106 +28,92 @@ app /eve/v1/*  ──► AGENT_URL (agent) ◄── dispatcher ◄────�
                   FollowUpSuggestion / facts / briefs
 ```
 
-Without `agent`, step 1 still returns `{"enqueued":N}` and the DB grows
-`AgentTask` rows that nobody claims.
+Without `agent`, enqueue still returns `{"enqueued":N}` and nobody claims the
+rows.
 
 ---
 
-## What is already done
+## What is deployed
 
-- [x] Nest follow-ups enqueue route + `CRON_SECRET`
-- [x] Railway `cron-followups` at `0 13 * * *` UTC (8:00 AM CDT)
-- [x] Microsoft / sequences / Sage crons (separate services)
-- [x] App bridge code (`apps/app/app/eve/v1/[...path]/route.ts`)
-- [x] Agent dispatcher (`apps/agent/agent/schedules/dispatch.ts`, cron `* * * * *`)
-- [x] Local smoke (HANDOFF 2026-08-02): enqueue + `eve dev` dispatch wrote a
-      real `FollowUpSuggestion`
+- [x] Nest follow-ups enqueue (`GET`/`POST` `/internal/agent/followups` + `CRON_SECRET`)
+- [x] Railway crons: microsoft, sequences, followups, sage
+- [x] App bridge (`apps/app/app/eve/v1/[...path]/route.ts`)
+- [x] Agent dispatcher (`apps/agent/agent/schedules/dispatch.ts`)
+- [x] `Dockerfile.agent` + `scripts/railway-agent-start.sh` on `main`
+- [x] Railway service **`agent`** (always-on, same repo `jj-mobilemark/crm`)
+- [x] App vars: `AGENT_URL`, matching `AGENT_BRIDGE_SECRET`
+- [x] Agent vars: `DATABASE_URL`, `AI_GATEWAY_API_KEY`, `AGENT_BRIDGE_SECRET`,
+      `PORT=2000` (optional capabilities as set — see below)
 
-## What you still have to do
+### Runtime shape (do not “simplify”)
 
-### 1. Add a Docker image for the agent
+| Concern | Choice | Why |
+| --- | --- | --- |
+| Image | `oven/bun:1.3` + **Node 24** from NodeSource | eve requires Node ≥ 24; Bun installs the workspace |
+| Build | `bun install` + `turbo run build --filter=agent` | Same monorepo as api/app |
+| Start | `scripts/railway-agent-start.sh` → `node …/eve/bin/eve.js start` | `npx`/npm rejects `packageManager: bun`; Bun cannot host `just-bash` Module patches |
+| Sandbox | `just-bash` (runtime dep on `apps/agent`) | Railway has no Docker daemon / KVM for docker/microsandbox |
+| Port | `PORT=2000` | Matches `AGENT_URL=http://agent.railway.internal:2000` |
+| Networking | Private only is enough | Browser never talks to the agent; app proxies |
 
-There is **`Dockerfile.api`** and **`Dockerfile.app`**, but **no
-`Dockerfile.agent` yet**. Add one modeled on `Dockerfile.api`:
+---
 
-- Base: `oven/bun:1.3`
-- `bun install --frozen-lockfile`
-- `bunx turbo run build --filter=agent` (outputs under `apps/agent/.eve`)
-- Start: `bun run --cwd apps/agent start` (= `eve start`)
-- Expose the port eve listens on (local default **2000**; set `PORT=2000` on
-  the service if you pin it)
+## Variables
 
-Commit that Dockerfile before (or with) the Railway service.
-
-### 2. Create a Railway service named `agent`
-
-In project **MM-CRM** / environment **production**:
-
-1. New service from the same GitHub repo (`jj-mobilemark/crm`).
-2. Dockerfile path: `Dockerfile.agent` (once it exists).
-3. **Not** a cron service — this must stay **always on** so eve’s minute
-   schedule can fire.
-4. Private networking is enough for the app→agent hop; a public domain is
-   optional (the browser never talks to the agent directly).
-
-### 3. Set variables on `agent`
-
-Copy from root `.env` / existing Railway secrets. Required for a useful prod
-agent:
+### On service `agent`
 
 | Variable | Required? | Notes |
 | --- | --- | --- |
-| `DATABASE_URL` | **yes** | Same Postgres as `api` (Railway reference `${{Postgres.DATABASE_URL}}` or the shared URL `api` already uses) |
-| `AI_GATEWAY_API_KEY` | **yes** off Vercel | Model calls fail without it (local smoke needed this) |
-| `AGENT_BRIDGE_SECRET` | **yes** for Agent tab | Same value as on `app`. `openssl rand -base64 32` once |
-| `PORT` | recommended | `2000` to match docs / `AGENT_URL` |
+| `DATABASE_URL` | **yes** | Same Postgres as `api` (`${{Postgres.DATABASE_URL}}`) |
+| `AI_GATEWAY_API_KEY` | **yes** | Model calls fail without it |
+| `AGENT_BRIDGE_SECRET` | **yes** for Agent tab | Same string as on `app` |
+| `PORT` | **yes** (pin) | `2000` |
 
-Optional (agent works with none; each unlocks a capability — see
-`.env.example`):
+Optional capability keys (each unlocks one source; agent runs with none —
+see `apps/agent/agent/lib/capabilities.ts`):
 
-`PERPLEXITY_API_KEY`, `RAPIDAPI_KEY`, `CONTEXT_DEV_API_KEY`, `GITHUB_TOKEN`,
-`BLOB_READ_WRITE_TOKEN`.
+| Variable | Boot label |
+| --- | --- |
+| `RAPIDAPI_KEY` | LinkedIn (LinkDAPI) |
+| `PERPLEXITY_API_KEY` | Web research |
+| `CONTEXT_DEV_API_KEY` | Company brand data |
+| `GITHUB_TOKEN` | Higher GitHub rate limits |
+| `BLOB_READ_WRITE_TOKEN` | Avatar mirroring |
 
-Do **not** put Sage / Microsoft / `CRON_SECRET` on the agent unless a tool
-actually needs them (today it does not).
+Put these **only on `agent`**, never on `app` / `api`. Do not put Sage /
+Microsoft / `CRON_SECRET` on the agent unless a tool needs them (today none
+do).
 
-### 4. Point the app at the agent
-
-On Railway service **`app`**:
+### On service `app`
 
 | Variable | Value |
 | --- | --- |
-| `AGENT_URL` | Private: `http://agent.railway.internal:2000` (adjust port if you chose another). Public only if you gave the agent a domain. |
-| `AGENT_BRIDGE_SECRET` | **Identical** string as on `agent` |
+| `AGENT_URL` | `http://agent.railway.internal:2000` |
+| `AGENT_BRIDGE_SECRET` | Identical to `agent` |
 
-Redeploy **`app`** after setting these (runtime env; no need to bake into the
-Next build unless you later put them behind `NEXT_PUBLIC_*`, which you must
-not).
+Redeploy `app` after changing these (runtime; not `NEXT_PUBLIC_*`). Prefer
+the internal hostname the same way as
+`INTERNAL_API_URL=http://api.railway.internal:3001`.
 
-Prefer the **internal** hostname the same way you use
-`INTERNAL_API_URL=http://api.railway.internal:3001` for Nest — avoids
-Cloudflare hairpin issues.
+---
 
-### 5. Deploy and smoke
+## Smoke / verify
 
-1. Deploy `agent`; wait until healthy / listening.
-2. From a machine with `CRON_SECRET`:
+1. Agent logs should show listening on `:2000` and capability on/off lines.
+2. Enqueue (prod cron uses **GET**; POST also works):
 
    ```bash
-   curl -fsS -X POST \
+   curl -fsS -X GET \
      -H "Authorization: Bearer $CRON_SECRET" \
      https://api.mobilemarksalestool.com/internal/agent/followups
    ```
 
-   Expect `{"enqueued":N}` with N ≥ 1 if at least one mailbox is connected.
+   Expect `{"enqueued":N}` when at least one mailbox is connected. Use the
+   **Railway `api` service** `CRON_SECRET` (local `.env` may differ).
 
-3. Within ~1 minute, eve’s dispatcher should claim those tasks. Check agent
-   logs for schedule `dispatch` / tool `propose_followups`.
-4. In the CRM UI: open **`/follow-ups`** — new `PROPOSED` rows should appear.
-5. Open any contact → **Agent** tab — should stream, not `502` / “not
-   configured”.
-
-Failure table (same as local, from `docs/agent.md`):
+3. Within ~1 minute, agent logs should show dispatch / follow-up tool work.
+4. UI: **`/follow-ups`** for new `PROPOSED` rows; any contact → **Agent** tab
+   should stream (not `502` / “not configured”).
 
 | Symptom | Cause |
 | --- | --- |
@@ -140,10 +122,13 @@ Failure table (same as local, from `docs/agent.md`):
 | Agent tab `502` / offline | Agent down or `AGENT_URL` wrong on app |
 | `enqueued` but empty `/follow-ups` | Agent not running, or no `AI_GATEWAY_API_KEY` |
 | Model / gateway errors in agent logs | Missing or bad `AI_GATEWAY_API_KEY` |
+| Build: “couldn't locate Dockerfile.agent” | File not on the Git commit Railway built |
+| Crash: npm `EBADDEVENGINES` / `packageManager bun` | Start used `npx`; use `railway-agent-start.sh` |
+| `DefenseInDepthBox: Module._resolveFilename` | eve started under Bun; must be Node |
 
 ---
 
-## End-state diagram (all operational)
+## Diagram
 
 ```
                     ┌──────────── cron-microsoft (*/5)
@@ -164,21 +149,9 @@ app ── /eve/v1/* ── AGENT_URL ──► agent (eve :2000, always on)
 
 ---
 
-## Out of scope for “agent online”
+## Out of scope / optional next
 
-These are separate and already partly wired:
-
-- Sequences send path still needs Entra **Mail.Send** on connected accounts.
-- Optional enrichment vendors (Perplexity, LinkDAPI, …) are capability toggles,
-  not required to process follow-up tasks from mailbox history alone.
-
----
-
-## Suggested order of work for the next agent / human
-
-1. Add `Dockerfile.agent` + Railway `agent` service (steps 1–2).
-2. Set `DATABASE_URL` + `AI_GATEWAY_API_KEY` on `agent`; deploy.
-3. Confirm dispatcher claims a manually enqueued follow-ups batch (step 5.2–5.3).
-4. Set matching `AGENT_BRIDGE_SECRET` on `app` + `agent`; set `AGENT_URL` on
-   `app`; redeploy app; smoke Agent tab (steps 4 + 5.5).
-5. Update this file’s status line and `HANDOFF.md` Current state when green.
+- Sequences still need Entra **Mail.Send** on connected accounts.
+- Extra enrichment keys (`PERPLEXITY_API_KEY`, `CONTEXT_DEV_API_KEY`, …) are
+  toggles — not required for mailbox-based follow-ups. LinkedIn needs
+  `RAPIDAPI_KEY` on **`agent`** only.
