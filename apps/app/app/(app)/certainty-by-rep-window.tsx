@@ -24,9 +24,10 @@ import {
 
 const LABELS: Record<CertaintyByRepWindow, string> = {
 	this_month: "This month",
-	next_30: "Next 30 days",
-	next_3m: "Next 3 months",
-	next_6m: "Next 6 months",
+	last_month: "Last month",
+	this_quarter: "This quarter",
+	last_quarter: "Last quarter",
+	ytd: "YTD",
 	custom: "Custom",
 };
 
@@ -51,10 +52,9 @@ function monthEndDay(): string {
 }
 
 /**
- * Close-date window for the certainty × rep grid.
+ * Historical close-date window for the deal-maturity × rep grid.
  *
- * Separate URL keys from the overview closed-won range so managers can look
- * at "this month's closings" without changing win-rate KPIs.
+ * Separate URL keys from the overview closed-won range.
  */
 export function CertaintyByRepWindowControl() {
 	const [params, setParams] = useQueryStates(overviewParsers);
@@ -121,7 +121,7 @@ export function CertaintyByRepWindowControl() {
 					>
 						<SelectTrigger
 							size="sm"
-							aria-label="Close window for certainty by rep"
+							aria-label="Close window for deal maturity by rep"
 						>
 							<SelectValue>{triggerLabel}</SelectValue>
 						</SelectTrigger>

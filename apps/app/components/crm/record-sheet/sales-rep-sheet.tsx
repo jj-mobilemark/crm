@@ -44,7 +44,7 @@ const DEAL_COLUMNS = [
 	{ header: "Deal", width: "w-[32%]", className: "pl-5" },
 	{ header: "Stage", width: "w-[18%]" },
 	{ header: "Amount", width: "w-[14%]", align: "right" as const },
-	{ header: "Certainty", width: "w-[12%]", align: "right" as const },
+	{ header: "Deal Maturity", width: "w-[12%]", align: "right" as const },
 	{ header: "Close", width: "w-[14%]" },
 	{ header: "Moved", width: "w-[10%]" },
 ];
@@ -197,7 +197,7 @@ function RepOverview({ summary }: { summary: RepSummary }) {
 				</div>
 			</DetailSheetSection>
 
-			<DetailSheetSection title="Certainty by close month">
+			<DetailSheetSection title="Deal Maturity by close month">
 				<p className="mb-3 text-muted-foreground text-xs">
 					Open deal amounts by stage for the current month and the next two
 				</p>
@@ -414,7 +414,7 @@ function RepActivity({ summary }: { summary: RepSummary }) {
 						</div>
 					</TableCell>
 					<TableCell className="text-muted-foreground text-xs capitalize">
-						{change.field === "probability" ? "Certainty" : change.field}
+						{change.field === "probability" ? "Deal Maturity" : change.field}
 					</TableCell>
 					<TableCell className="text-xs tabular-nums">
 						<span className="text-muted-foreground">

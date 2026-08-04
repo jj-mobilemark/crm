@@ -103,7 +103,7 @@ const COLUMNS: DataTableColumn<DealRow>[] = [
 	},
 	{
 		id: "probability",
-		header: "Certainty",
+		header: "Deal Maturity",
 		align: "right",
 		width: "w-[10%]",
 		hideBelow: "lg",

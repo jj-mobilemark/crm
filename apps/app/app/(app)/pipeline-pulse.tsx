@@ -96,7 +96,7 @@ export function PipelinePulse({ pulse }: { pulse: Pulse | undefined }) {
 					<CardHeader>
 						<CardTitle>Biggest movers</CardTitle>
 						<CardDescription>
-							Largest certainty, amount, and stage moves in the last{" "}
+							Largest deal maturity, amount, and stage moves in the last{" "}
 							{data.windowDays} days
 						</CardDescription>
 					</CardHeader>
@@ -150,7 +150,7 @@ export function PipelinePulse({ pulse }: { pulse: Pulse | undefined }) {
 					<CardHeader>
 						<CardTitle>Stuck deals</CardTitle>
 						<CardDescription>
-							Open deals with no stage or certainty move in {data.stuckDays}+
+							Open deals with no stage or deal maturity move in {data.stuckDays}+
 							days
 						</CardDescription>
 					</CardHeader>
@@ -212,8 +212,8 @@ export function PipelinePulse({ pulse }: { pulse: Pulse | undefined }) {
 				<CardHeader>
 					<CardTitle>Recent deal moves</CardTitle>
 					<CardDescription>
-						Certainty, stage, amount, close date, owner, and priority — app and
-						Sage, last {data.windowDays} days
+						Deal maturity, stage, amount, close date, owner, and priority — app
+						and Sage, last {data.windowDays} days
 					</CardDescription>
 				</CardHeader>
 				{recent.length === 0 ? (
@@ -322,7 +322,7 @@ function fieldLabel(field: string, toValue: string | null): string {
 	}
 	switch (field) {
 		case "probability":
-			return "Certainty";
+			return "Deal Maturity";
 		case "amount":
 			return "Amount";
 		case "expectedCloseDate":

@@ -1,17 +1,9 @@
 import { buildGeocodeQuery } from "./place-key";
+import type { GeocodeParts, GeocodeResult } from "./photon.geocoder";
 
 const NOMINATIM_URL = "https://nominatim.openstreetmap.org/search";
 /** Nominatim usage policy: max 1 request per second. */
 const MIN_INTERVAL_MS = 1100;
-
-export type NominatimResult =
-	| {
-			ok: true;
-			latitude: number;
-			longitude: number;
-			rawLabel: string | null;
-	  }
-	| { ok: false; reason: "empty" | "not_found" | "error"; detail?: string };
 
 /**
  * Thin Nominatim client with an in-process rate limit.
@@ -26,12 +18,7 @@ export class NominatimGeocoder {
 		private readonly baseUrl = NOMINATIM_URL,
 	) {}
 
-	async geocode(parts: {
-		city: string | null;
-		stateCode: string | null;
-		country: string | null;
-		countryCode: string | null;
-	}): Promise<NominatimResult> {
+	async geocode(parts: GeocodeParts): Promise<GeocodeResult> {
 		const query = buildGeocodeQuery(
 			parts.city,
 			parts.stateCode,

@@ -23,7 +23,7 @@ Keep the main `HANDOFF.md` for other tracks; update **both** when you stop.
 | 1 `SageOutbox` schema | **DONE** | Migration `20260803120000_add_sage_outbox` (already applied locally). |
 | 2 Reverse mappings | **DONE** | `toSage*` in `sage.mappings.ts` + unit tests. |
 | 3 `SagePushService.flush()` | **DONE** | Outbox drain under `withSageSession`, 3 retries, parent-before-child. |
-| 4 Human UI enqueue hooks | **DONE** | Companies / contacts / deals create+update (+ deal `setStage`). **+ Screening Approve** when parent has `sageCrmCompanyId` and no same-name Sage twin. |
+| 4 Human UI enqueue hooks | **DONE** | Companies / contacts / deals create+update (+ deal `setStage`). **+ Screening Approve** when parent has `sageCrmCompanyId` and no same-name Sage twin. **+ contact fact accept** for `title` / `name` (`decideFact`). |
 | 5 Immediate + periodic flush | **DONE** | `enqueueAndKick` + cron drains after pull on `/internal/sync/sage`. |
 | 6 Tests + smoke | **PARTIAL** | Unit tests green. Screening→Sage + UI→outbox smoke still owed in browser. |
 | Docs | **DONE** | This file + `sage-crm-sync.md` §4 6c / §5 item 7 updated. |
@@ -138,6 +138,24 @@ Nightly /internal/sync/sage (CRON_SECRET)
 ---
 
 ## Work log (newest first)
+
+### 2026-08-04 — Fact accept (title/name) enqueues Sage push
+
+**What was completed**
+- `contacts.decideFact` accepts for `title` or `name` now call
+  `sagePush.enqueueAndKick`, same as Details field saves.
+- File: `apps/api/src/contacts/contacts.service.ts`.
+
+**How and why**
+- Reps often accept a signature title and leave; without this, Sage
+  never gets the update unless they edit another pushable field.
+
+**Deviations**
+- None. Profile-URL facts still local-only (not in person push map).
+
+**What's next**
+- Soft smoke accept → outbox → Sage title. Lindsay's prior accept needs
+  a one-time re-save after deploy.
 
 ### 2026-08-03 — Screening Approve enqueues Sage person create
 

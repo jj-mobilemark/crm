@@ -25,6 +25,11 @@ it before stopping. The rules for maintaining it live in `AGENTS.md`
 
 - **Git**: `origin` = `jj-mobilemark/crm` (fork); `upstream` = `trycompai/crm`
   (read-only). Work on `main`.
+- **Fact accept → Sage push (DONE local 2026-08-04)**: Accepting a
+  contact fact for `title` or `name` enqueues `SageOutbox` the same way
+  as editing those fields in Details (`contacts.decideFact` →
+  `sagePush.enqueueAndKick`). LinkedIn/etc. facts still local-only.
+  File: `apps/api/src/contacts/contacts.service.ts`.
 - **Deals Owner default + Stage multiselect + contact company
   picker (DONE local 2026-08-04)**: `/deals` Owner facet defaults to
   `"me"` (signed-in user) so the list opens on your pipeline. Stage
@@ -35,11 +40,12 @@ it before stopping. The rules for maintaining it live in `AGENTS.md`
   `deals.service.ts`, `data-table.tsx`, `inline-field.tsx`,
   `contact-sheet.tsx`, `company-picker.tsx`.
 - **Certainty by rep + stage-locked certainty (DONE local 2026-08-04)**:
-  Everyone overview grid below forecast — reps × stage bands (10–90% +
-  Closed won/lost) with close window filter (`certWindow` URL; default
-  This month). API `dashboard.certaintyByRep`. Certainty no longer
-  independently editable; Sage pull uses stage band; migration
-  `20260804140000` applied locally. Docs: sage-crm-sync §3.3.
+  Everyone overview **Deal Maturity by rep** grid below forecast —
+  reps × stage bands with historical close windows (This month /
+  Last month / This quarter / Last quarter / YTD / Custom). API
+  `dashboard.certaintyByRep`. Certainty locked to stage; UI label is
+  "Deal Maturity". Migration `20260804140000` applied locally. Docs:
+  sage-crm-sync §3.3.
 - **Recent deal moves Amount column (DONE local 2026-08-04)**: Pulse
   feed includes current deal `amountCents`; Overview Recent deal moves
   shows an Amount column after Deal. Shared loader:
@@ -231,6 +237,51 @@ it before stopping. The rules for maintaining it live in `AGENTS.md`
 ---
 
 ## Work log
+
+### 2026-08-04 — Accepting title/name facts enqueues Sage push
+
+**What was completed**
+- `contacts.decideFact`: on accept of `title` or `name`, call
+  `sagePush.enqueueAndKick("contact", …)` after the local write.
+- Matches the human Details save path so reps do not need a second
+  field edit to write back to Sage.
+- Files: `apps/api/src/contacts/contacts.service.ts`,
+  `HANDOFF-SAGE-SYNC.md`.
+
+**How and why**
+- Accepting a signature suggestion is a deliberate human decision onto
+  Sage-mapped columns (`title` / `firstname`+`lastname`). Without
+  enqueue, the local record updates and Sage stays stale until someone
+  remembers to re-save another field.
+
+**Deviations**
+- None. LinkedIn/twitter/github accepts still do not push (not in
+  `toSagePersonFields`).
+
+**What's next**
+- Deploy API; for Lindsay Luba (already accepted before this change),
+  re-save Title once or nudge first name to enqueue the push.
+- Soft smoke: accept a title suggestion on a Sage-linked contact →
+  outbox row → Sage `title` updates.
+
+### 2026-08-04 — Deal Maturity labels + historical grid windows
+
+**What was completed**
+- Deal Maturity × rep presets are historical: This month / Last month /
+  This quarter / Last quarter / YTD / Custom (dropped Next 30/3m/6m).
+- Column headers: stage label on top (larger), % underneath.
+- UI copy "Certainty" → "Deal Maturity" on overview, pulse, deals
+  table, deal sheet, sales-rep sheet.
+
+**How and why**
+- Grid is a lookback, not a forecast. "Certainty" implied win odds;
+  maturity = progress through the sales process.
+
+**Deviations**
+- None.
+
+**What's next**
+- Smoke Everyone grid windows; commit/push when ready.
 
 ### 2026-08-04 — Deals Owner default, Stage multiselect, contact company picker
 

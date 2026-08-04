@@ -26,16 +26,17 @@ export const DASHBOARD_RANGES = [
 ] as const;
 
 /**
- * Close-date window for the Everyone certainty × rep grid.
+ * Close-date window for the Everyone deal-maturity × rep grid.
  *
- * Independent of {@link DASHBOARD_RANGES} — that one is closed-won looking back;
- * this one is "who is closing when" looking forward (plus This month).
+ * Historical lookback (not a forward forecast). Independent of
+ * {@link DASHBOARD_RANGES} on the overview closed-won strip.
  */
 export const CERTAINTY_BY_REP_WINDOWS = [
 	"this_month",
-	"next_30",
-	"next_3m",
-	"next_6m",
+	"last_month",
+	"this_quarter",
+	"last_quarter",
+	"ytd",
 	"custom",
 ] as const;
 

@@ -165,13 +165,13 @@ export function DealSheet({ dealId }: { dealId: string }) {
 								</span>
 							)}
 						</DetailSheetStat>
-						<DetailSheetStat label="Certainty">
+						<DetailSheetStat label="Deal Maturity">
 							{deal.probability === null || deal.probability === undefined ? (
 								<EmptyCellValue />
 							) : (
 								<span
 									className="tabular-nums"
-									title="Follows the deal stage — not edited separately"
+									title="Follows the deal stage — how far through the sales process"
 								>
 									{formatPercent(deal.probability / 100)}
 								</span>

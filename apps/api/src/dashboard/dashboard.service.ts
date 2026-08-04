@@ -142,10 +142,10 @@ type CertaintyWindow = {
 };
 
 /**
- * Close window for the certainty × rep grid.
+ * Close window for the deal-maturity × rep grid (historical).
  *
- * Forward presets start at today (or month start for this_month). Custom uses
- * inclusive calendar days like the overview closed-won control.
+ * Presets are calendar periods looking back. Custom uses inclusive calendar
+ * days like the overview closed-won control.
  */
 function resolveCertaintyWindow(
 	input: DashboardCertaintyByRepInput,
@@ -165,33 +165,39 @@ function resolveCertaintyWindow(
 		};
 	}
 
-	if (input.window === "next_30") {
-		const start = dayStart(now);
+	if (input.window === "last_month") {
 		return {
-			key: "next_30",
-			label: "Next 30 days",
-			start,
-			end: new Date(start.getTime() + 30 * DAY_MS),
+			key: "last_month",
+			label: "Last month",
+			start: monthStart(now, -1),
+			end: monthStart(now, 0),
 		};
 	}
 
-	if (input.window === "next_3m") {
-		const start = dayStart(now);
+	if (input.window === "this_quarter") {
 		return {
-			key: "next_3m",
-			label: "Next 3 months",
-			start,
-			end: monthStart(now, 3),
+			key: "this_quarter",
+			label: "This quarter",
+			start: quarterStart(now, 0),
+			end: quarterStart(now, 1),
 		};
 	}
 
-	if (input.window === "next_6m") {
-		const start = dayStart(now);
+	if (input.window === "last_quarter") {
 		return {
-			key: "next_6m",
-			label: "Next 6 months",
-			start,
-			end: monthStart(now, 6),
+			key: "last_quarter",
+			label: "Last quarter",
+			start: quarterStart(now, -1),
+			end: quarterStart(now, 0),
+		};
+	}
+
+	if (input.window === "ytd") {
+		return {
+			key: "ytd",
+			label: "YTD",
+			start: new Date(now.getFullYear(), 0, 1),
+			end: dayAfter(dayStart(now)),
 		};
 	}
 
@@ -202,6 +208,14 @@ function resolveCertaintyWindow(
 		start: monthStart(now, 0),
 		end: monthStart(now, 1),
 	};
+}
+
+/** Calendar quarter start; `offset` is quarters relative to the one `from` is in. */
+function quarterStart(from: Date, offset: number): Date {
+	const index = Math.floor(from.getMonth() / 3) + offset;
+	const year = from.getFullYear() + Math.floor(index / 4);
+	const quarter = ((index % 4) + 4) % 4;
+	return new Date(year, quarter * 3, 1);
 }
 
 type ResolvedRange = {

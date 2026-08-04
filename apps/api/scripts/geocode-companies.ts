@@ -1,21 +1,94 @@
+import "@crm/env/load";
 import { db, GeocodeCacheStatus } from "@crm/db";
 import { NominatimGeocoder } from "../src/geocode/nominatim.geocoder";
+import {
+	mapPool,
+	PhotonGeocoder,
+	type GeocodeParts,
+	type GeocodeResult,
+} from "../src/geocode/photon.geocoder";
 import { buildPlaceKey } from "../src/geocode/place-key";
 
 /**
  * Geocode companies that have a city but no coordinates.
  *
- * Groups by place key so ~14k rows only hit Nominatim once per unique
+ * Groups by place key so ~14k rows only hit the geocoder once per unique
  * city/state/country. Successful and failed lookups are cached forever.
  *
- *   bun run scripts/geocode-companies.ts
+ * Default provider is Photon (Komoot / OSM) with concurrency — much faster
+ * than Nominatim's 1 req/s. Use `--provider=nominatim` for the strict path.
+ *
+ *   bun run scripts/geocode-companies.ts --refresh-stale --dry-run
+ *   bun run scripts/geocode-companies.ts --refresh-stale
  *   bun run scripts/geocode-companies.ts --limit=50
- *   bun run scripts/geocode-companies.ts --dry-run
+ *   bun run scripts/geocode-companies.ts --provider=nominatim
+ *   bun run scripts/geocode-companies.ts --concurrency=8
  */
 const args = process.argv.slice(2);
 const dryRun = args.includes("--dry-run");
+const refreshStale = args.includes("--refresh-stale");
+const noFallback = args.includes("--no-fallback");
 const limitArg = args.find((arg) => arg.startsWith("--limit="));
 const limit = limitArg ? Number(limitArg.slice("--limit=".length)) : null;
+const concurrencyArg = args.find((arg) => arg.startsWith("--concurrency="));
+const concurrency = concurrencyArg
+	? Number(concurrencyArg.slice("--concurrency=".length))
+	: 8;
+const providerArg = args.find((arg) => arg.startsWith("--provider="));
+const provider = (providerArg?.slice("--provider=".length) ?? "photon") as
+	| "photon"
+	| "nominatim";
+
+if (refreshStale) {
+	const all = await db.company.findMany({
+		where: { city: { not: null } },
+		select: {
+			id: true,
+			city: true,
+			stateCode: true,
+			country: true,
+			countryCode: true,
+			geocodePlaceKey: true,
+			latitude: true,
+			longitude: true,
+		},
+	});
+	const staleIds: string[] = [];
+	for (const row of all) {
+		const expected = buildPlaceKey(
+			row.city,
+			row.stateCode,
+			row.countryCode ?? row.country,
+		);
+		if (!expected) continue;
+		const stale =
+			row.latitude == null ||
+			row.longitude == null ||
+			row.geocodePlaceKey !== expected;
+		if (stale) staleIds.push(row.id);
+	}
+	console.log(
+		`Stale / missing coords: ${staleIds.length} of ${all.length} companies with a city`,
+	);
+	if (!dryRun && staleIds.length > 0) {
+		const CHUNK = 500;
+		for (let i = 0; i < staleIds.length; i += CHUNK) {
+			const batch = staleIds.slice(i, i + CHUNK);
+			await db.company.updateMany({
+				where: { id: { in: batch } },
+				data: {
+					latitude: null,
+					longitude: null,
+					geocodePlaceKey: null,
+					geocodedAt: null,
+				},
+			});
+		}
+		console.log(`Cleared coords on ${staleIds.length} companies.`);
+	} else if (dryRun) {
+		console.log("Dry run — would clear those coords before geocoding.");
+	}
+}
 
 const companies = await db.company.findMany({
 	where: {
@@ -75,20 +148,34 @@ if (limit != null && Number.isFinite(limit) && limit > 0) {
 	places = places.slice(0, limit);
 }
 
+const effectiveConcurrency = provider === "nominatim" ? 1 : Math.max(1, concurrency);
+
 console.log(
-	`Companies needing coords: ${companies.length}; unique places: ${buckets.size}; will process: ${places.length}${dryRun ? " (dry-run)" : ""}`,
+	`Companies needing coords: ${companies.length}; unique places: ${buckets.size}; will process: ${places.length}; provider=${provider}; concurrency=${effectiveConcurrency}${dryRun ? " (dry-run)" : ""}`,
 );
 if (skippedNoKey > 0) {
 	console.log(`Skipped (no usable city): ${skippedNoKey}`);
 }
 
-const geocoder = new NominatimGeocoder();
+const photon = new PhotonGeocoder();
+const nominatim = new NominatimGeocoder();
+
+async function resolvePlace(parts: GeocodeParts): Promise<GeocodeResult> {
+	if (provider === "nominatim") {
+		return nominatim.geocode(parts);
+	}
+	const primary = await photon.geocode(parts);
+	if (primary.ok || noFallback) return primary;
+	return nominatim.geocode(parts);
+}
+
 let cacheHits = 0;
 let fetchedOk = 0;
 let fetchedFail = 0;
 let companiesUpdated = 0;
+let progressed = 0;
 
-for (const place of places) {
+await mapPool(places, effectiveConcurrency, async (place) => {
 	const cached = await db.geocodeCache.findUnique({
 		where: { placeKey: place.placeKey },
 	});
@@ -103,10 +190,12 @@ for (const place of places) {
 		longitude = cached.longitude;
 		status = cached.status;
 	} else if (dryRun) {
-		console.log(`[dry-run] would geocode ${place.placeKey} (${place.companyIds.length} companies)`);
-		continue;
+		console.log(
+			`[dry-run] would geocode ${place.placeKey} (${place.companyIds.length} companies)`,
+		);
+		return;
 	} else {
-		const result = await geocoder.geocode({
+		const result = await resolvePlace({
 			city: place.city,
 			stateCode: place.stateCode,
 			country: place.country,
@@ -127,9 +216,6 @@ for (const place of places) {
 					rawLabel: result.rawLabel,
 				},
 			});
-			console.log(
-				`ok  ${place.placeKey} → ${latitude.toFixed(4)}, ${longitude.toFixed(4)} (${place.companyIds.length})`,
-			);
 		} else {
 			fetchedFail += 1;
 			status =
@@ -145,13 +231,10 @@ for (const place of places) {
 					rawLabel: result.detail ?? result.reason,
 				},
 			});
-			console.log(
-				`fail ${place.placeKey} (${result.reason}${result.detail ? `: ${result.detail}` : ""})`,
-			);
 		}
 	}
 
-	if (dryRun) continue;
+	if (dryRun) return;
 
 	if (status === GeocodeCacheStatus.ok && latitude != null && longitude != null) {
 		const now = new Date();
@@ -166,14 +249,19 @@ for (const place of places) {
 		});
 		companiesUpdated += result.count;
 	} else {
-		// Mark the place key so we do not keep retrying empties every run without
-		// a cache row already covering it — companies stay without coords.
 		await db.company.updateMany({
 			where: { id: { in: place.companyIds }, geocodePlaceKey: null },
 			data: { geocodePlaceKey: place.placeKey },
 		});
 	}
-}
+
+	progressed += 1;
+	if (progressed % 200 === 0 || progressed === places.length) {
+		console.log(
+			`  progress ${progressed}/${places.length} (ok=${fetchedOk} fail=${fetchedFail} cache=${cacheHits})`,
+		);
+	}
+});
 
 console.log(
 	`\nDone. cacheHits=${cacheHits} fetchedOk=${fetchedOk} fetchedFail=${fetchedFail} companiesUpdated=${companiesUpdated}`,

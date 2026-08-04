@@ -17,8 +17,8 @@ import { CertaintyByRepWindowControl } from "./certainty-by-rep-window";
 import { overviewParsers } from "./overview-search-params";
 
 /**
- * Everyone overview: reps × stage certainty bands for the selected close
- * window. Counts only — open by expected close, won/lost by closedAt.
+ * Everyone overview: reps × deal-maturity (stage) bands for a historical
+ * close window. Counts only — open by expected close, won/lost by closedAt.
  */
 export function CertaintyByRepGrid() {
 	const trpc = useTRPC();
@@ -41,7 +41,7 @@ export function CertaintyByRepGrid() {
 	return (
 		<Card className="min-w-0">
 			<CardHeader>
-				<CardTitle>Certainty by rep</CardTitle>
+				<CardTitle>Deal Maturity by rep</CardTitle>
 				<CardDescription>
 					Open deals by expected close; Closed won / lost by close date —
 					deal counts
@@ -70,9 +70,11 @@ export function CertaintyByRepGrid() {
 										className="px-2 py-2.5 text-center font-medium"
 									>
 										<span className="flex flex-col items-center gap-0.5">
-											<span className="tabular-nums">{column.certainty}%</span>
-											<span className="font-normal text-[0.65rem] leading-tight">
+											<span className="text-foreground text-sm">
 												{column.label}
+											</span>
+											<span className="font-normal text-[0.65rem] leading-tight tabular-nums">
+												{column.certainty}%
 											</span>
 										</span>
 									</th>

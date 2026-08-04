@@ -207,7 +207,7 @@ export function SalesDashboard({ summary }: { summary: Summary }) {
 					description={`${rangeLabel} · deals closed lost`}
 				/>
 				<StatCard
-					label="Certainty moves"
+					label="Deal Maturity moves"
 					value={counts.certainty}
 					animate
 					description={`${formatCount(counts.stage, "stage move")} · ${formatCount(counts.amount, "amount move")}`}
@@ -216,7 +216,7 @@ export function SalesDashboard({ summary }: { summary: Summary }) {
 					label="Stuck"
 					tone="static"
 					value={stuck.length}
-					description={`Open, no stage/certainty move in ${pulse.stuckDays}d+`}
+					description={`Open, no stage/deal maturity move in ${pulse.stuckDays}d+`}
 				/>
 			</StatGroup>
 

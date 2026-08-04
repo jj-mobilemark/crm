@@ -81,7 +81,7 @@ export function dealStageLabel(stage: DealStage): string {
 	return PRESENTATION[stage].label;
 }
 
-/** Certainty % shown beside the stage name on the printed forecast. */
+/** Deal maturity % shown beside the stage name on the printed forecast. */
 export function dealStageCertainty(stage: DealStage): number {
 	switch (stage) {
 		case DealStage.DEMO_BOOKED:

@@ -810,6 +810,12 @@ export class ContactsService {
 			}
 		});
 
+		// Accepting title/name is a human decision onto Sage-pushable columns —
+		// same enqueue as contacts.update, so reps do not need a second edit.
+		if (accepted && (fact.field === "title" || fact.field === "name")) {
+			await this.sagePush.enqueueAndKick("contact", fact.contactId, userId);
+		}
+
 		this.logger.log({
 			message: "Fact decided",
 			factId: fact.id,

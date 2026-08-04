@@ -35,14 +35,15 @@ export const OVERVIEW_RANGES = [
 export type OverviewRange = (typeof OVERVIEW_RANGES)[number];
 
 /**
- * Close window for the Everyone certainty × rep grid.
+ * Close window for the Everyone deal-maturity × rep grid.
  * Kept in step with `CERTAINTY_BY_REP_WINDOWS` in the API contracts.
  */
 export const CERTAINTY_BY_REP_WINDOWS = [
 	"this_month",
-	"next_30",
-	"next_3m",
-	"next_6m",
+	"last_month",
+	"this_quarter",
+	"last_quarter",
+	"ytd",
 	"custom",
 ] as const;
 
@@ -57,7 +58,7 @@ export const overviewParsers = {
 	from: parseAsString,
 	/** `YYYY-MM-DD` — only sent when `range=custom`. */
 	to: parseAsString,
-	/** Certainty × rep grid window — Everyone only; independent of `range`. */
+	/** Deal-maturity × rep grid window — Everyone only; independent of `range`. */
 	certWindow: parseAsStringLiteral(CERTAINTY_BY_REP_WINDOWS).withDefault(
 		"this_month",
 	),
