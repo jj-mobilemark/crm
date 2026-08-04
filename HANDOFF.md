@@ -165,6 +165,31 @@ it before stopping. The rules for maintaining it live in `AGENTS.md`
 
 ## Work log
 
+### 2026-08-03 — Deploy + prod Sage website repair
+
+**What was completed**
+- Pushed `bee13d4` (mapping/UI/Research) and `35e060f` (faster repair
+  script + TCP-proxy runner) to `origin/main`.
+- Prod data repair via temporary Railway TCP proxy:
+  cleared remaining junk websites/domains and backfilled from contact
+  emails (2,166 updates in the final pass; earlier partial pass had
+  already cleared most notes). Proxy deleted after.
+- Verified prod Hitachi Rail CD US LTD:
+  `website=https://cleverdevices.com`, `domain=null` (domain still owned
+  by Clever Devices LTD). Dry-run now reports `toUpdate: 0`.
+
+**How and why**
+- Private Railway `DATABASE_URL` is not reachable from a laptop; same
+  temporary TCP-proxy pattern as the earlier prod restore.
+
+**Deviations**
+- None.
+
+**What's next**
+- Wait for Railway deploy of `api`/`app`/`agent` from `main`. Confirm
+  Research/Re-enrich on Hitachi in prod UI; ensure agent has
+  `PERPLEXITY_API_KEY` / optional `CONTEXT_DEV_API_KEY`.
+
 ### 2026-08-03 — Research/Re-enrich without Sage website notes
 
 **What was completed**
