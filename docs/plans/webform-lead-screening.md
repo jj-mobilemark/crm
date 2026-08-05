@@ -1,5 +1,11 @@
 # Website form leads → Screening
 
+**Status (DONE prod wiring 2026-08-05):** code on `main`; Entra application
+`Mail.Read` + Exchange policy group `CRM-Webform-Mailbox-Access` →
+`info@mobilemark.com`; Railway api `WEBFORM_MAILBOX`; `cron-webform` every
+5 minutes → `/internal/sync/webform`. Wait up to ~1h for policy grant, then
+smoke Screening for Web rows.
+
 Canonical plan for ingesting Mobile Mark website "Customer Question" emails
 into the Screening queue, routed by the sales territory map.
 
@@ -124,11 +130,13 @@ Unset `WEBFORM_MAILBOX` → ingest stays off (safe default).
 
 ### Step D — Cron the poller
 
-Call every 5–15 minutes (same pattern as Microsoft sync / daily-tasks):
+Railway service **`cron-webform`** (created 2026-08-05): curl image,
+schedule `*/5 * * * *`, same vars pattern as `cron-microsoft`
+(`API_PUBLIC_URL`, `CRON_SECRET`):
 
 ```bash
 curl -sS -H "Authorization: Bearer $CRON_SECRET" \
-  "https://<your-api-host>/internal/sync/webform"
+  "https://api.mobilemarksalestool.com/internal/sync/webform"
 ```
 
 First successful run creates a `webformMailboxSync` row and only walks recent

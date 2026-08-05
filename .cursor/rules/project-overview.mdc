@@ -87,6 +87,15 @@ surface on top, syncing bidirectionally (pull first, push later).
   service; `Dockerfile.agent` + Node 24 start script; app
   `AGENT_URL` / `AGENT_BRIDGE_SECRET`. Ops notes:
   `docs/plans/agent-railway.md`.
+- **Website form leads → Screening (DONE 2026-08-05)**: Customer Question
+  emails from `info@` → `PendingWebLead`, territory-routed into the same
+  Screening list as mail (Web/Mail badge + Claim). Territory map:
+  `data/sales-territory.json` + `@crm/db` `assignRep`. Prod: Entra app
+  `Mail.Read` (application) + Exchange access policy limited to
+  `info@` via group `CRM-Webform-Mailbox-Access`; api
+  `WEBFORM_MAILBOX=info@mobilemark.com`; Railway `cron-webform` every
+  5 min → `/internal/sync/webform`. Plan:
+  `docs/plans/webform-lead-screening.md`.
 - **TEMPORARY agent model (2026-08-04)**: `apps/agent/agent/agent.ts` is on
   `deepseek/deepseek-v4-pro` (cheaper while testing / burning tokens). **Plan
   to change back to `anthropic/claude-sonnet-5`** when testing is done. Luna

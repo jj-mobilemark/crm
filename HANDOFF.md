@@ -25,14 +25,18 @@ it before stopping. The rules for maintaining it live in `AGENTS.md`
 
 - **Git**: `origin` = `jj-mobilemark/crm` (fork); `upstream` = `trycompai/crm`
   (read-only). Work on `main`.
-- **Webform lead Screening (DONE local 2026-08-05)**: Customer Question
-  emails from shared mailbox → `PendingWebLead`, territory-routed into the
-  same Screening list as mail (Web/Mail badge + Claim for unassigned).
-  Territory: `data/sales-territory.json` + `@crm/db` `assignRep`. Ingest
-  off until `WEBFORM_MAILBOX` + app-only Graph `Mail.Read` are set; cron
-  `GET/POST /internal/sync/webform`. Plan:
+- **Webform lead Screening (DONE prod wiring 2026-08-05)**: Customer
+  Question emails from shared mailbox → `PendingWebLead`,
+  territory-routed into the same Screening list as mail (Web/Mail badge
+  + Claim for unassigned). Territory: `data/sales-territory.json` +
+  `@crm/db` `assignRep`. **Prod ready:** Entra application `Mail.Read`
+  + Exchange policy group `CRM-Webform-Mailbox-Access` → `info@` only;
+  api `WEBFORM_MAILBOX=info@mobilemark.com`; Railway `cron-webform`
+  (`*/5 * * * *`) → `GET /internal/sync/webform`. Policy may take up to
+  ~1h to fully grant; smoke with a manual curl after
+  `Test-ApplicationAccessPolicy` shows Granted. Plan:
   `docs/plans/webform-lead-screening.md`. Migration
-  `20260805140000_add_pending_web_lead` applied locally.
+  `20260805140000_add_pending_web_lead` applied on api deploy.
 - **Daily Task Push (DONE local 2026-08-05)**: Settings switch on the
   Microsoft card; opt-in emails open tasks at 9:00 America/Chicago via
   Graph `Mail.Send` (from/to same Outlook mailbox). Sections: Overdue /
@@ -302,6 +306,30 @@ it before stopping. The rules for maintaining it live in `AGENTS.md`
 ---
 
 ## Work log
+
+### 2026-08-05 — Webform Screening prod wiring (Entra + cron)
+
+**What was completed**
+- Entra/Exchange (ops): security group `CRM-Webform-Mailbox-Access`
+  (`info@mobilemark.com`) + Application Access Policy RestrictAccess for
+  the CRM Entra app Client ID; application `Mail.Read` assumed granted.
+- Railway api already had `WEBFORM_MAILBOX=info@mobilemark.com`.
+- Created Railway `cron-webform` (curl image, `*/5 * * * *`) calling
+  `GET $API_PUBLIC_URL/internal/sync/webform` with `CRON_SECRET`.
+- Documented in `.cursor/rules/project-overview.mdc`, this HANDOFF,
+  `docs/plans/webform-lead-screening.md`, `docs/plans/agent-railway.md`.
+
+**How and why**
+- Finish the ops path so Customer Question mail can land in Screening
+  without manual forwards.
+
+**Deviations**
+- None. Exchange policy replication can lag up to ~1 hour.
+
+**What's next**
+- After `Test-ApplicationAccessPolicy` → Granted for `info@`, smoke
+  `/internal/sync/webform` and confirm a Web row on `/screening`.
+- Optional: website form webhook later (bypass email).
 
 ### 2026-08-05 — Website form leads → Screening
 
