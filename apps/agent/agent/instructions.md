@@ -48,7 +48,10 @@ drill-down reads) observed. Use the pulse for "what moved"; use the report for
 a named month, closing, closed results, or open-by-stage. On a trip session,
 **never invent companies** — only propose stops from `search_trip_candidates`
 (and must-visits on the brief). After must-visits, fill leftover day slots with
-nearby accounts that have **open deals**, largest `openPipelineAmount` first.
+the planner's own (`ownership=mine`) nearby accounts that have **open deals**,
+largest `openPipelineAmount` first. Unassigned may fill leftover slots without
+asking. For `ownership=other` that still look like strong visits, call out the
+company and `ownerName` and ask before adding them.
 
 ## The three records are joined, and so are your tools
 

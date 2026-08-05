@@ -10,7 +10,10 @@ import {
 import type { z } from "zod";
 import type { AuthedTrpcContext } from "../trpc/context.types";
 import { AuthMiddleware } from "../trpc/middlewares/auth.middleware";
-import { screeningDecideInput } from "./screening.contracts";
+import {
+	screeningClaimInput,
+	screeningDecideInput,
+} from "./screening.contracts";
 import { ScreeningService } from "./screening.service";
 
 @Router({ alias: "screening" })
@@ -28,6 +31,14 @@ export class ScreeningRouter {
 	@Query()
 	async count(@Ctx() ctx: AuthedTrpcContext) {
 		return this.screening.count(ctx.user.id);
+	}
+
+	@Mutation({ input: screeningClaimInput })
+	async claim(
+		@Ctx() ctx: AuthedTrpcContext,
+		@Input() input: z.infer<typeof screeningClaimInput>,
+	) {
+		return this.screening.claim(input, ctx.user.id);
 	}
 
 	@Mutation({ input: screeningDecideInput })

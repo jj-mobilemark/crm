@@ -126,6 +126,15 @@ export class EnvironmentVariables {
 	@IsString()
 	SAGE_SOAP_PASSWORD?: string;
 
+	/**
+	 * Shared mailbox that receives website "Customer Question" form mail
+	 * (e.g. info@mobilemark.com). Optional — unset disables webform ingest.
+	 * Needs app-only Graph Mail.Read + Exchange access policy for this mailbox.
+	 */
+	@IsOptional()
+	@IsString()
+	WEBFORM_MAILBOX?: string;
+
 	// --- defaulted ----------------------------------------------------------
 
 	/** Where this API is reachable. Only needs setting off localhost. */

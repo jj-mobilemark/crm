@@ -1,5 +1,11 @@
+import { hasMsSendScopes } from "@crm/auth";
 import { type Db, GoogleSyncStatus } from "@crm/db";
-import { Injectable, Logger, NotFoundException } from "@nestjs/common";
+import {
+	BadRequestException,
+	Injectable,
+	Logger,
+	NotFoundException,
+} from "@nestjs/common";
 import { normalizeDomain } from "../companies/domain";
 import { ActivityStampService } from "../crm/activity-stamp.service";
 import { InjectDatabase } from "../database/database.constants";
@@ -26,6 +32,10 @@ export type ConnectionStatus = {
 	/** Whether Microsoft issued a refresh token. False means reconnect. */
 	hasRefreshToken: boolean;
 	sources: SourceStatus[];
+	/** Opt-in morning open-task email (America/Chicago 9:00). */
+	dailyTaskPush: boolean;
+	/** Whether Mail.Send is granted — required to turn on daily task push. */
+	canSendMail: boolean;
 };
 
 /** Microsoft may store scopes as full Graph URIs; match either form. */
@@ -56,10 +66,18 @@ export class MicrosoftConnectionService {
 		// loads, with no coordination between the redirect and a mutation.
 		await this.onConnected(userId);
 
-		const [granted, rows, hasRefreshToken] = await Promise.all([
+		const [granted, rows, hasRefreshToken, user, account] = await Promise.all([
 			this.tokens.grantedScopes(userId),
 			this.state.listForUser(userId),
 			this.tokens.hasRefreshToken(userId),
+			this.db.user.findUnique({
+				where: { id: userId },
+				select: { dailyTaskPush: true },
+			}),
+			this.db.account.findFirst({
+				where: { userId, providerId: MICROSOFT_PROVIDER_ID },
+				select: { scope: true },
+			}),
 		]);
 
 		const bySource = new Map(rows.map((row) => [row.source, row]));
@@ -78,7 +96,12 @@ export class MicrosoftConnectionService {
 			};
 		});
 
-		return { hasRefreshToken, sources };
+		return {
+			hasRefreshToken,
+			sources,
+			dailyTaskPush: user?.dailyTaskPush ?? false,
+			canSendMail: hasMsSendScopes(account?.scope),
+		};
 	}
 
 	/**
@@ -206,6 +229,30 @@ export class MicrosoftConnectionService {
 		}
 
 		await this.state.setAutoCreate(userId, source, enabled);
+	}
+
+	/**
+	 * Turns the morning open-task email on or off.
+	 *
+	 * Enabling needs Mail.Send — the same reconnect path sequences use.
+	 */
+	async setDailyTaskPush(userId: string, enabled: boolean): Promise<void> {
+		if (enabled) {
+			const account = await this.db.account.findFirst({
+				where: { userId, providerId: MICROSOFT_PROVIDER_ID },
+				select: { scope: true },
+			});
+			if (!hasMsSendScopes(account?.scope)) {
+				throw new BadRequestException(
+					"Reconnect Microsoft with Mail.Send to enable Daily Task Push.",
+				);
+			}
+		}
+
+		await this.db.user.update({
+			where: { id: userId },
+			data: { dailyTaskPush: enabled },
+		});
 	}
 
 	/**

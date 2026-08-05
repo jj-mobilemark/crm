@@ -13,7 +13,7 @@ Keep the main `HANDOFF.md` for other tracks; update **both** when you stop.
 
 ---
 
-## Current state (2026-08-03)
+## Current state (2026-08-05)
 
 ### Verdict vs plan
 
@@ -21,11 +21,11 @@ Keep the main `HANDOFF.md` for other tracks; update **both** when you stop.
 | --- | --- | --- |
 | 0 Verify SOAP `add`/`update` | **DONE** (live) | Variant A envelope confirmed. Opp 557 update restored. Add created **opp `805`** on company 24 (`forecast=1`) — **delete in Sage**. |
 | 1 `SageOutbox` schema | **DONE** | Migration `20260803120000_add_sage_outbox` (already applied locally). |
-| 2 Reverse mappings | **DONE** | `toSage*` in `sage.mappings.ts` + unit tests. |
+| 2 Reverse mappings | **DONE** | `toSage*` in `sage.mappings.ts` + unit tests. **+ company `acctmgr` from Owner** (2026-08-05). |
 | 3 `SagePushService.flush()` | **DONE** | Outbox drain under `withSageSession`, 3 retries, parent-before-child. |
-| 4 Human UI enqueue hooks | **DONE** | Companies / contacts / deals create+update (+ deal `setStage`). **+ Screening Approve** when parent has `sageCrmCompanyId` and no same-name Sage twin. **+ contact fact accept** for `title` / `name` (`decideFact`). |
+| 4 Human UI enqueue hooks | **DONE** | Companies / contacts / deals create+update (+ deal `setStage`). **+ Screening Approve** when parent has `sageCrmCompanyId` and no same-name Sage twin. **+ contact fact accept** for `title` / `name` (`decideFact`). **+ company `ownerId` change** (2026-08-05). |
 | 5 Immediate + periodic flush | **DONE** | `enqueueAndKick` + cron drains after pull on `/internal/sync/sage`. |
-| 6 Tests + smoke | **PARTIAL** | Unit tests green. Screening→Sage + UI→outbox smoke still owed in browser. |
+| 6 Tests + smoke | **PARTIAL** | Unit tests green. Screening→Sage + UI→outbox smoke still owed in browser. Owner→`acctmgr` smoke owed. |
 | Docs | **DONE** | This file + `sage-crm-sync.md` §4 6c / §5 item 7 updated. |
 
 ### Related: pipeline change log (not push, but touches pull)
@@ -138,6 +138,29 @@ Nightly /internal/sync/sage (CRON_SECRET)
 ---
 
 ## Work log (newest first)
+
+### 2026-08-05 — Company Owner → Sage `acctmgr` push
+
+**What was completed**
+- `toSageCompanyFields` writes `acctmgr` from mapped owner email
+  (`acctMgrNameForEmail`).
+- `pushCompany` loads `owner.email`; company update enqueues on `ownerId`.
+- Local coverage check: 5,985 owned Sage companies; 0 matchable-but-null
+  (Wallgren/Sertich/Moore unmatched by design).
+- Files: `sage.mappings.ts`, `sage-push.service.ts`, `companies.service.ts`,
+  `sage-mappings.spec.ts`, `docs/plans/sage-crm-sync.md` §3.1.
+
+**How and why**
+- Pull already mapped `acctmgr` → Owner; push only wrote company `name`,
+  and Owner edits did not enqueue. Local Owner changes now round-trip.
+
+**Deviations**
+- Null/unmapped owners omit `acctmgr` (do not clear Sage), same as deal
+  `assigneduserid`.
+
+**What's next**
+- Soft smoke: change a company Owner in UI → outbox → Sage Account Manager.
+- Nested phone/email/address push still deferred.
 
 ### 2026-08-04 — Fact accept (title/name) enqueues Sage push
 

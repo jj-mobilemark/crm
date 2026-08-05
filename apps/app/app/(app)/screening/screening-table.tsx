@@ -24,6 +24,7 @@ import { EmptyCellValue } from "@crm/ui/components/empty-cell";
 import { Icon } from "@crm/ui/components/icon";
 import { Label } from "@crm/ui/components/label";
 import { Spinner } from "@crm/ui/components/spinner";
+import { StatusIndicator } from "@crm/ui/components/status-indicator";
 import {
 	Table,
 	TableBody,
@@ -36,16 +37,15 @@ import { relativeTimeFromIso } from "@crm/ui/lib/format";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useId, useState } from "react";
 import { toast } from "sonner";
-import { useOpenRecord } from "@/components/crm/record-sheet/record-stack";
 import { formatCompanyDisambiguation } from "@/components/crm/company-disambiguation";
+import { useOpenRecord } from "@/components/crm/record-sheet/record-stack";
 import { companyNameGuessFromDomain } from "@/lib/company-name-guess";
 import { useCrmCache } from "@/lib/trpc/cache";
 import { useTRPC } from "@/lib/trpc/client";
 import type { RouterOutputs } from "@/lib/trpc/types";
 
 type PendingRow = RouterOutputs["screening"]["list"]["rows"][number];
-type SimilarMatch =
-	RouterOutputs["companies"]["similar"]["matches"][number];
+type SimilarMatch = RouterOutputs["companies"]["similar"]["matches"][number];
 
 function PendingActions({ row }: { row: PendingRow }) {
 	const trpc = useTRPC();
@@ -84,12 +84,24 @@ function PendingActions({ row }: { row: PendingRow }) {
 		}),
 	);
 
-	const busy = decide.isPending || checking;
+	const claim = useMutation(
+		trpc.screening.claim.mutationOptions({
+			onSuccess: async () => {
+				await invalidate();
+				toast.success("Lead claimed.");
+			},
+			onError: (error) => toast.error(error.message),
+		}),
+	);
+
+	const busy = decide.isPending || checking || claim.isPending;
 
 	async function approveWithCompanyCheck() {
 		setChecking(true);
 		try {
-			const name = companyNameGuessFromDomain(row.domain);
+			const name =
+				(row.source === "web" && row.companyName?.trim()) ||
+				companyNameGuessFromDomain(row.domain);
 			const result = await queryClient.fetchQuery(
 				trpc.companies.similar.queryOptions({
 					name: name || row.domain,
@@ -100,7 +112,11 @@ function PendingActions({ row }: { row: PendingRow }) {
 				setMatches([...result.matches]);
 				return;
 			}
-			decide.mutate({ id: row.id, decision: "approve" });
+			decide.mutate({
+				id: row.id,
+				source: row.source,
+				decision: "approve",
+			});
 		} catch (error) {
 			toast.error(
 				error instanceof Error
@@ -112,9 +128,10 @@ function PendingActions({ row }: { row: PendingRow }) {
 		}
 	}
 
-	function useExisting(companyId: string) {
+	function selectExistingCompany(companyId: string) {
 		decide.mutate({
 			id: row.id,
+			source: row.source,
 			decision: "approve",
 			createContact: { companyId },
 		});
@@ -123,6 +140,7 @@ function PendingActions({ row }: { row: PendingRow }) {
 	function createFromDomain() {
 		decide.mutate({
 			id: row.id,
+			source: row.source,
 			decision: "approve",
 			createContact: { preferDomainCompany: true },
 		});
@@ -132,6 +150,17 @@ function PendingActions({ row }: { row: PendingRow }) {
 		<>
 			<span className="flex flex-col items-end gap-2">
 				<span className="flex items-center gap-2">
+					{row.source === "web" && row.claimable ? (
+						<Button
+							size="sm"
+							variant="outline"
+							disabled={busy}
+							onClick={() => claim.mutate({ id: row.id })}
+						>
+							{claim.isPending ? <Spinner /> : null}
+							Claim
+						</Button>
+					) : null}
 					<Button
 						size="sm"
 						disabled={busy}
@@ -147,6 +176,7 @@ function PendingActions({ row }: { row: PendingRow }) {
 						onClick={() =>
 							decide.mutate({
 								id: row.id,
+								source: row.source,
 								decision: "reject",
 								suppressDomain,
 							})
@@ -179,9 +209,12 @@ function PendingActions({ row }: { row: PendingRow }) {
 					<DialogHeader>
 						<DialogTitle>Matching companies</DialogTitle>
 						<DialogDescription>
-							{row.domain} may already be in the CRM. The suggested company is
-							the best account match (Sage 100, contacts on this domain, size).
-							Use it, pick another, or create one named after the domain.
+							{row.source === "web" && row.companyName
+								? `${row.companyName} may already be in the CRM.`
+								: `${row.domain} may already be in the CRM.`}{" "}
+							The suggested company is the best account match (Sage 100,
+							contacts on this domain, size). Use it, pick another, or create
+							one named after the domain.
 						</DialogDescription>
 					</DialogHeader>
 
@@ -225,7 +258,7 @@ function PendingActions({ row }: { row: PendingRow }) {
 									variant={match.suggested ? "default" : "outline"}
 									size="sm"
 									disabled={decide.isPending}
-									onClick={() => useExisting(match.id)}
+									onClick={() => selectExistingCompany(match.id)}
 								>
 									Use this
 								</Button>
@@ -257,6 +290,19 @@ function PendingActions({ row }: { row: PendingRow }) {
 	);
 }
 
+function detailLine(row: PendingRow): string | null {
+	if (row.source === "web") {
+		const parts = [
+			row.companyName,
+			row.connectLocation ||
+				[row.locationText].filter(Boolean)[0]?.split("\n")[0],
+			row.assignedLabel,
+		].filter(Boolean);
+		return parts.length > 0 ? parts.join(" · ") : null;
+	}
+	return row.sampleSubject;
+}
+
 export function ScreeningTable() {
 	const trpc = useTRPC();
 	const list = useQuery(trpc.screening.list.queryOptions());
@@ -279,7 +325,7 @@ export function ScreeningTable() {
 					</EmptyMedia>
 					<EmptyTitle>Nothing to review</EmptyTitle>
 					<EmptyDescription>
-						Unmatched external mail will show up here after sync.
+						Unmatched mailbox people and website form leads show up here.
 					</EmptyDescription>
 				</EmptyHeader>
 			</Empty>
@@ -291,16 +337,14 @@ export function ScreeningTable() {
 			<Table>
 				<TableHeader>
 					<TableRow>
+						<TableHead>Source</TableHead>
 						<TableHead>Name</TableHead>
 						<TableHead className="hidden md:table-cell">Email</TableHead>
-						<TableHead className="hidden lg:table-cell">Domain</TableHead>
-						<TableHead className="text-right">Messages</TableHead>
-						<TableHead className="hidden md:table-cell">
-							Sample subject
-						</TableHead>
+						<TableHead className="hidden lg:table-cell">Company</TableHead>
 						<TableHead className="hidden text-right sm:table-cell">
-							Last seen
+							Seen
 						</TableHead>
+						<TableHead className="hidden md:table-cell">Detail</TableHead>
 						<TableHead className="text-right">
 							<span className="sr-only">Actions</span>
 						</TableHead>
@@ -308,7 +352,13 @@ export function ScreeningTable() {
 				</TableHeader>
 				<TableBody>
 					{rows.map((row) => (
-						<TableRow key={row.id}>
+						<TableRow key={`${row.source}-${row.id}`}>
+							<TableCell>
+								<StatusIndicator
+									tone={row.source === "web" ? "info" : "neutral"}
+									label={row.source === "web" ? "Web" : "Mail"}
+								/>
+							</TableCell>
 							<TableCell>
 								{row.displayName ? (
 									<span className="font-medium">{row.displayName}</span>
@@ -322,14 +372,10 @@ export function ScreeningTable() {
 								{row.email}
 							</TableCell>
 							<TableCell className="hidden lg:table-cell">
-								{row.domain}
-							</TableCell>
-							<TableCell className="text-right">{row.messageCount}</TableCell>
-							<TableCell className="hidden text-muted-foreground md:table-cell">
-								{row.sampleSubject ? (
-									<span className="truncate">{row.sampleSubject}</span>
+								{row.source === "web" && row.companyName ? (
+									row.companyName
 								) : (
-									<EmptyCellValue />
+									<span className="text-muted-foreground">{row.domain}</span>
 								)}
 							</TableCell>
 							<TableCell
@@ -337,6 +383,13 @@ export function ScreeningTable() {
 								suppressHydrationWarning
 							>
 								{relativeTimeFromIso(row.lastSeenAt)}
+							</TableCell>
+							<TableCell className="hidden max-w-xs text-muted-foreground md:table-cell">
+								{detailLine(row) ? (
+									<span className="line-clamp-2">{detailLine(row)}</span>
+								) : (
+									<EmptyCellValue />
+								)}
 							</TableCell>
 							<TableCell className="text-right">
 								<PendingActions row={row} />

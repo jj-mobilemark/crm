@@ -74,6 +74,13 @@ export function MicrosoftConnection() {
 		}),
 	);
 
+	const setDailyTaskPush = useMutation(
+		trpc.microsoft.setDailyTaskPush.mutationOptions({
+			onSuccess: () => cache.microsoft({ settle: "record" }),
+			onError: (error) => toast.error(error.message),
+		}),
+	);
+
 	const syncNow = useMutation(
 		trpc.microsoft.syncNow.mutationOptions({
 			onSuccess: () => cache.microsoft(),
@@ -213,6 +220,38 @@ export function MicrosoftConnection() {
 							</div>
 						);
 					})}
+
+					<div className="flex items-center justify-between gap-6">
+						<Label
+							htmlFor="ms-daily-task-push"
+							className="flex flex-col items-start gap-1"
+						>
+							<span className="text-sm">Daily Task Push</span>
+							<span className="font-normal text-muted-foreground text-xs">
+								{status.data.canSendMail
+									? "Email yourself an open-task summary at 9:00 AM Central"
+									: "Reconnect Microsoft with Mail.Send to enable this"}
+							</span>
+						</Label>
+
+						<Switch
+							id="ms-daily-task-push"
+							checked={status.data.dailyTaskPush}
+							disabled={
+								setDailyTaskPush.isPending ||
+								(!status.data.canSendMail && !status.data.dailyTaskPush)
+							}
+							onCheckedChange={(enabled) => {
+								if (enabled && !status.data.canSendMail) {
+									toast.error(
+										"Reconnect Microsoft with Mail.Send to enable Daily Task Push.",
+									);
+									return;
+								}
+								setDailyTaskPush.mutate({ enabled });
+							}}
+						/>
+					</div>
 				</section>
 			) : null}
 

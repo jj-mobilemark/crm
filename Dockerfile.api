@@ -6,6 +6,7 @@ WORKDIR /app
 COPY package.json bun.lock turbo.json ./
 COPY apps ./apps
 COPY packages ./packages
+COPY data ./data
 
 # prisma generate (postinstall) reads DATABASE_URL from prisma.config.ts —
 # only needed at build time for client generation, not a real connection.

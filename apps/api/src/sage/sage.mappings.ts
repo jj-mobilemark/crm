@@ -382,6 +382,23 @@ export function emailForAcctMgr(name: string | null | undefined): string | null 
 	return matchSageUserByName(name)?.email ?? null;
 }
 
+/**
+ * Display name for Sage `acctmgr` from a local owner email.
+ * Returns `"FirstName LastName"` for a mapped `SAGE_USERS` rep, else null.
+ */
+export function acctMgrNameForEmail(
+	email: string | null | undefined,
+): string | null {
+	const cleaned = clean(email)?.toLowerCase();
+	if (!cleaned) return null;
+	for (const user of SAGE_USERS) {
+		if (user.email.toLowerCase() === cleaned) {
+			return `${user.firstName} ${user.lastName}`.trim();
+		}
+	}
+	return null;
+}
+
 /** Sage CRM user id for a local owner email, or null when not a mapped rep. */
 export function sageUserIdForEmail(
 	email: string | null | undefined,
@@ -483,6 +500,8 @@ export function toSageOpportunityFields(
 export type CompanyPushInput = {
 	sageCrmCompanyId: string | null;
 	name: string;
+	/** Local owner's email -> Sage `acctmgr` display name when it is a mapped rep. */
+	ownerEmail: string | null;
 };
 
 export function toSageCompanyFields(
@@ -500,6 +519,8 @@ export function toSageCompanyFields(
 	// Never push `website`. In this tenant Sage uses that field for free-text
 	// credit/account notes ("FORMERLY …", "NET 30 …"), not URLs. Pushing would
 	// overwrite those notes.
+	const acctmgr = acctMgrNameForEmail(input.ownerEmail);
+	if (acctmgr) fields.push({ name: "acctmgr", value: acctmgr });
 	return fields;
 }
 

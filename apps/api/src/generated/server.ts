@@ -21,8 +21,8 @@ import { dashboardSummaryInput, dashboardRepSummaryInput, dashboardCertaintyByRe
 import { dealListInput, dealIdInput, dealCreateInput, dealUpdateArgs, setStageInput } from "../deals/deals.contracts";
 import { followupPrefsInput, followupDecideInput } from "../followups/followups.contracts";
 import { setAutoCreateInput, suppressDomainInput, threadInput, calendarEventInput } from "../google/google.contracts";
-import { msSetAutoCreateInput, msSuppressDomainInput, msThreadInput, msCalendarEventInput } from "../microsoft/microsoft.contracts";
-import { screeningDecideInput } from "../screening/screening.contracts";
+import { msSetAutoCreateInput, msSetDailyTaskPushInput, msSuppressDomainInput, msThreadInput, msCalendarEventInput } from "../microsoft/microsoft.contracts";
+import { screeningClaimInput, screeningDecideInput } from "../screening/screening.contracts";
 import { sequenceIdInput, enrollmentListInput, sequenceCreateInput, sequenceUpdateInput, sequenceReplaceStepsInput, sequenceEnrollInput, enrollmentIdInput } from "../sequences/sequences.contracts";
 import { tripPlanIdInput, tripPlanCreateInput, tripPlanUpdateInput, tripPlanCandidatesInput } from "../trip-plans/trip-plans.contracts";
 import type { ActivitiesRouter } from "../activities/activities.router";
@@ -211,6 +211,9 @@ const appRouter = t.router({
     setAutoCreate: publicProcedure
       .input(msSetAutoCreateInput)
       .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<MicrosoftRouter["setAutoCreate"]>>),
+    setDailyTaskPush: publicProcedure
+      .input(msSetDailyTaskPushInput)
+      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<MicrosoftRouter["setDailyTaskPush"]>>),
     suppressDomain: publicProcedure
       .input(msSuppressDomainInput)
       .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<MicrosoftRouter["suppressDomain"]>>),
@@ -226,6 +229,9 @@ const appRouter = t.router({
       .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<ScreeningRouter["list"]>>),
     count: publicProcedure
       .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<ScreeningRouter["count"]>>),
+    claim: publicProcedure
+      .input(screeningClaimInput)
+      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<ScreeningRouter["claim"]>>),
     decide: publicProcedure
       .input(screeningDecideInput)
       .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<ScreeningRouter["decide"]>>)

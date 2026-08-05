@@ -8,8 +8,8 @@ import {
  * Shared Trip Planner loaders — Nest tRPC and agent tools call the same
  * helpers so candidate lists and itinerary shapes cannot drift.
  *
- * Mechanical only: distance + deal windows + open-pipeline size.
- * No judgements about who to visit beyond that ranking.
+ * Mechanical only: distance + deal windows + open-pipeline size + ownership
+ * band (mine / unassigned / other). No judgements beyond that ranking.
  */
 
 export const TRIP_CANDIDATE_LIMIT = 60;
@@ -26,6 +26,25 @@ const OPEN_DEAL_STAGE_LIST = [...OPEN_DEAL_STAGES];
 
 /** Earth radius in miles (mean). */
 const EARTH_RADIUS_MI = 3958.8;
+
+export type TripOwnership = "mine" | "unassigned" | "other";
+
+/** Sort key: mine first, then unassigned, then other-owned. */
+function ownershipRank(ownership: TripOwnership): number {
+	if (ownership === "mine") return 0;
+	if (ownership === "unassigned") return 1;
+	return 2;
+}
+
+/** Classify a company relative to the trip planner. */
+export function resolveTripOwnership(
+	ownerId: string | null | undefined,
+	plannerUserId: string,
+): TripOwnership {
+	if (ownerId == null) return "unassigned";
+	if (ownerId === plannerUserId) return "mine";
+	return "other";
+}
 
 export type TripPlanSummary = {
 	id: string;
@@ -82,6 +101,10 @@ export type TripCandidate = {
 	milesFromHub: number;
 	outsideRadius: boolean;
 	mustVisit: boolean;
+	/** Relative to the trip planner (`TripPlan.userId`). */
+	ownership: TripOwnership;
+	/** Account owner's display name when `ownership` is `other`. */
+	ownerName: string | null;
 	dealCountInWindow: number;
 	/** Count of deals still in an open CRM stage (not won/lost/unqualified). */
 	openDealCount: number;
@@ -98,6 +121,8 @@ export type SearchTripCandidatesInput = {
 	activityMode: TripActivityMode;
 	activityYears: number;
 	mustVisitCompanyIds: string[];
+	/** Trip plan owner — used to mark mine / unassigned / other. */
+	plannerUserId: string;
 	/** Override default cap (agent + UI). */
 	limit?: number;
 };
@@ -251,6 +276,8 @@ export async function searchTripCandidates(
 			sage100CustomerNo: true,
 			latitude: true,
 			longitude: true,
+			ownerId: true,
+			owner: { select: { name: true } },
 			_count: { select: { contacts: true } },
 			deals: {
 				select: {
@@ -281,6 +308,8 @@ export async function searchTripCandidates(
 						sage100CustomerNo: true,
 						latitude: true,
 						longitude: true,
+						ownerId: true,
+						owner: { select: { name: true } },
 						_count: { select: { contacts: true } },
 						deals: {
 							select: {
@@ -342,6 +371,8 @@ export async function searchTripCandidates(
 				? null
 				: (Date.now() - lastDealMs) / (365.25 * 24 * 60 * 60 * 1000);
 
+		const ownership = resolveTripOwnership(row.ownerId, input.plannerUserId);
+
 		candidates.push({
 			id: row.id,
 			name: row.name,
@@ -353,6 +384,8 @@ export async function searchTripCandidates(
 			milesFromHub: Number.isFinite(miles) ? Math.round(miles * 10) / 10 : -1,
 			outsideRadius,
 			mustVisit,
+			ownership,
+			ownerName: ownership === "other" ? (row.owner?.name ?? null) : null,
 			dealCountInWindow,
 			openDealCount,
 			openPipelineAmount:
@@ -367,10 +400,12 @@ export async function searchTripCandidates(
 		});
 	}
 
-	// Must-visits first, then open-deal accounts by deal size, then activity /
-	// salvage signals, then nearer to the hub.
+	// Must-visits first, then ownership band (mine → unassigned → other), then
+	// open-deal accounts by deal size, then activity / salvage, then nearer.
 	candidates.sort((a, b) => {
 		if (a.mustVisit !== b.mustVisit) return a.mustVisit ? -1 : 1;
+		const ownCmp = ownershipRank(a.ownership) - ownershipRank(b.ownership);
+		if (ownCmp !== 0) return ownCmp;
 		const aOpen = a.openDealCount > 0;
 		const bOpen = b.openDealCount > 0;
 		if (aOpen !== bOpen) return aOpen ? -1 : 1;

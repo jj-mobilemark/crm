@@ -706,7 +706,8 @@ export class CompaniesService {
 				actor &&
 				(input.name !== undefined ||
 					input.website !== undefined ||
-					input.domain !== undefined)
+					input.domain !== undefined ||
+					input.ownerId !== undefined)
 			) {
 				await this.sagePush.enqueueAndKick("company", id, actor.id);
 			}

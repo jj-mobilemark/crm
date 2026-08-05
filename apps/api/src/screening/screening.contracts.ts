@@ -2,6 +2,8 @@ import { z } from "zod";
 
 export const screeningDecideInput = z.object({
 	id: z.string().min(1),
+	/** Mail harvest vs website form lead. */
+	source: z.enum(["mail", "web"]).default("mail"),
 	decision: z.enum(["approve", "reject"]),
 	/** Optional overrides when approving — defaults come from the harvested row. */
 	createContact: z
@@ -21,3 +23,9 @@ export const screeningDecideInput = z.object({
 });
 
 export type ScreeningDecideInput = z.infer<typeof screeningDecideInput>;
+
+export const screeningClaimInput = z.object({
+	id: z.string().min(1),
+});
+
+export type ScreeningClaimInput = z.infer<typeof screeningClaimInput>;

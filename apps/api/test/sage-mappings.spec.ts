@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { DealStage } from "@crm/db";
 import {
+	acctMgrNameForEmail,
 	emailForAcctMgr,
 	emailForSageUser,
 	isPushEcho,
@@ -432,13 +433,49 @@ describe("toSageOpportunityFields (local -> Sage)", () => {
 describe("toSageCompanyFields / toSagePersonFields", () => {
 	it("updates a company by companyid without pushing website", () => {
 		const fields = toSageCompanyFields(
-			{ sageCrmCompanyId: "24", name: "MOBILE MARK INC" },
+			{
+				sageCrmCompanyId: "24",
+				name: "MOBILE MARK INC",
+				ownerEmail: null,
+			},
 			"update",
 		);
 		expect(fields).toEqual([
 			{ name: "companyid", value: "24" },
 			{ name: "name", value: "MOBILE MARK INC" },
 		]);
+	});
+
+	it("pushes acctmgr when the owner is a mapped Sage rep", () => {
+		const fields = toSageCompanyFields(
+			{
+				sageCrmCompanyId: "24",
+				name: "MOBILE MARK INC",
+				ownerEmail: "swenzelman@mobilemark.com",
+			},
+			"update",
+		);
+		expect(fields).toContainEqual({
+			name: "acctmgr",
+			value: "Sarah Wenzelman",
+		});
+	});
+
+	it("omits acctmgr when the owner email is not a mapped rep", () => {
+		const fields = toSageCompanyFields(
+			{
+				sageCrmCompanyId: "24",
+				name: "MOBILE MARK INC",
+				ownerEmail: "outsider@example.com",
+			},
+			"update",
+		);
+		expect(fields.find((f) => f.name === "acctmgr")).toBeUndefined();
+	});
+
+	it("acctMgrNameForEmail returns First Last for known reps", () => {
+		expect(acctMgrNameForEmail("ken@mobilemark.com")).toBe("Ken Lukowski");
+		expect(acctMgrNameForEmail("unknown@mobilemark.com")).toBeNull();
 	});
 
 	it("creates a person under a parent company", () => {

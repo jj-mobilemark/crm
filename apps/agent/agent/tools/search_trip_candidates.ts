@@ -9,7 +9,7 @@ import { z } from "zod";
  */
 export default defineTool({
 	description:
-		"Search companies near a trip hub within the plan's radius and activity mode (ACTIVE = deal created/closed in the last N years OR any still-open deal; SALVAGE = no deal in that window). Returns a ranked shortlist: must-visits first, then accounts with open deals by deal size (openPipelineAmount), then other activity, then distance. Cap ~60. Never invent companies or totals.",
+		"Search companies near a trip hub within the plan's radius and activity mode (ACTIVE = deal created/closed in the last N years OR any still-open deal; SALVAGE = no deal in that window). Returns a ranked shortlist: must-visits first, then the planner's own accounts (ownership=mine), then unassigned, then other-owned. Within each band: open deals by deal size (openPipelineAmount), then other activity, then distance. Cap ~60. Never invent companies or totals.",
 	inputSchema: z.object({
 		tripPlanId: z.string().describe("The trip plan id from the session preamble."),
 		limit: z
@@ -36,8 +36,11 @@ export default defineTool({
 			activityMode: plan.activityMode,
 			activityYears: plan.activityYears,
 			mustVisitCompanyIds: plan.mustVisitCompanyIds,
+			plannerUserId: plan.userId,
 			limit,
 		});
+
+		const otherOwned = candidates.filter((c) => c.ownership === "other");
 
 		return {
 			found: true as const,
@@ -51,7 +54,14 @@ export default defineTool({
 			note:
 				candidates.length === 0
 					? "No companies matched the radius and activity filter. Say so plainly — do not invent stops."
-					: "Rank order is intentional: must-visits, then open-deal accounts by deal size, then the rest. Prefer filling leftover day slots with nearby open-deal companies (largest openPipelineAmount first). Use company ids from this list when building the itinerary. Call write_trip_itinerary when ready.",
+					: [
+							"Rank order is intentional: must-visits, then ownership (mine → unassigned → other), then open-deal size, then the rest.",
+							"Default the itinerary to ownership=mine (plus must-visits). Unassigned may fill leftover slots without asking.",
+							otherOwned.length > 0
+								? `There are ${otherOwned.length} other-owned account(s) on this shortlist. If any look like strong visit candidates (high openPipelineAmount or strong salvage signal), call them out by name and ownerName and ask the rep with ask_question before adding them — do not schedule another rep's account silently.`
+								: "No other-owned accounts on this shortlist.",
+							"Use company ids from this list when building the itinerary. Call write_trip_itinerary when ready.",
+						].join(" "),
 		};
 	},
 });

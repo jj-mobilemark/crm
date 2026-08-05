@@ -14,6 +14,7 @@ import { ConversationService } from "./conversation.service";
 import {
 	msCalendarEventInput,
 	msSetAutoCreateInput,
+	msSetDailyTaskPushInput,
 	msSuppressDomainInput,
 	msThreadInput,
 } from "./microsoft.contracts";
@@ -77,6 +78,15 @@ export class MicrosoftRouter {
 			input.source,
 			input.enabled,
 		);
+		return this.connection.status(ctx.user.id);
+	}
+
+	@Mutation({ input: msSetDailyTaskPushInput })
+	async setDailyTaskPush(
+		@Ctx() ctx: AuthedTrpcContext,
+		@Input() input: z.infer<typeof msSetDailyTaskPushInput>,
+	) {
+		await this.connection.setDailyTaskPush(ctx.user.id, input.enabled);
 		return this.connection.status(ctx.user.id);
 	}
 

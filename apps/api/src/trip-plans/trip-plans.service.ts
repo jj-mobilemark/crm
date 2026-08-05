@@ -169,6 +169,7 @@ export class TripPlansService {
 			activityMode: plan.activityMode,
 			activityYears: plan.activityYears,
 			mustVisitCompanyIds: plan.mustVisitCompanyIds,
+			plannerUserId: plan.userId,
 			limit,
 		});
 	}

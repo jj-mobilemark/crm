@@ -1,0 +1,295 @@
+{
+	"source": "Mobile Mark Sales Territory Map",
+	"source_pdf": "data/Mobile_Mark_Sales_Territory_Map.pdf",
+	"updated": "2026-04-14",
+	"updated_by": "KL",
+	"notes": [
+		"Ops rule (Nicole): derive Rep from BILL-TO geography via this territory map — not CRM account owner (stale) and not ship-to (drop-ships go to the customer's end user).",
+		"Cascade: exception (key account / distributor / gateway MFR by CUST# or name) → bill-to state/province/country → unmatched.",
+		"django_user_id / sage_user_id from Railway Postgres mobilemarkdata (prod) — users with Sage ID synced 2026-07-27.",
+		"Initials = first+last (email local-part pattern). Demo Sales (Django 1 / Sage 27) is excluded from matching.",
+		"Ken (MCA shared with Jose) — Django 3 / Sage 27. Full name / initials / email still TBD. Demo Sales also on Sage 27 — clear that link."
+	],
+	"geo_rule": "bill_to",
+	"reps": {
+		"RM": {
+			"rep_code": "RM",
+			"rep_name": "Rick Miller",
+			"email": "rmiller@mobilemark.com",
+			"sage_user_id": "48",
+			"django_user_id": 10,
+			"initials_confirmed": true
+		},
+		"NB": {
+			"rep_code": "NB",
+			"rep_name": "Nino Barker",
+			"email": "nbarker@mobilemark.com",
+			"sage_user_id": "36",
+			"django_user_id": 9,
+			"initials_confirmed": true
+		},
+		"DS": {
+			"rep_code": "DS",
+			"rep_name": "Dan Steklac",
+			"email": "dsteklac@mobilemark.com",
+			"sage_user_id": "43",
+			"django_user_id": 8,
+			"initials_confirmed": true,
+			"notes": "Django/Sage display name Daniel Steklac; map/stamp use Dan / DS."
+		},
+		"SW": {
+			"rep_code": "SW",
+			"rep_name": "Sarah Wenzelman",
+			"email": "swenzelman@mobilemark.com",
+			"sage_user_id": "28",
+			"django_user_id": 11,
+			"initials_confirmed": true
+		},
+		"JL": {
+			"rep_code": "JL",
+			"rep_name": "Jose Llorente",
+			"email": "jllorente@mobilemark.com",
+			"sage_user_id": "52",
+			"django_user_id": 21,
+			"initials_confirmed": true
+		},
+		"CT": {
+			"rep_code": "CT",
+			"rep_name": "Chris Talbert",
+			"email": "ctalbert@mobilemark.com",
+			"sage_user_id": "31",
+			"django_user_id": 6,
+			"initials_confirmed": true,
+			"notes": "Map label 'Chris T'. Distributor-owner / key-account / gateway MFR owner."
+		},
+		"HK": {
+			"rep_code": "HK",
+			"rep_name": "Harry Kim",
+			"email": "hkim@mobilemark.com",
+			"sage_user_id": "1",
+			"django_user_id": 20,
+			"initials_confirmed": true
+		},
+		"KEN": {
+			"rep_code": "KEN",
+			"rep_name": "Ken",
+			"email": null,
+			"sage_user_id": "27",
+			"django_user_id": 3,
+			"initials_confirmed": false,
+			"notes": "MCA shared with Jose. Sage 27 / Django 3. WARNING: Demo Sales (Django 1) is also linked to Sage 27 in prod — clear that link; confirm Ken's full name / initials / email."
+		}
+	},
+	"other_sage_users_not_on_map": [
+		{
+			"rep_name": "Demo Sales",
+			"email": "sales@antenna.com",
+			"sage_user_id": "27",
+			"django_user_id": 1,
+			"notes": "Test user — filter from match-rep candidates (collides with DS initials). Also shares Sage ID 27 with Ken on the territory map — resolve in Django."
+		},
+		{
+			"rep_name": "Mike Uxa",
+			"email": "muxa@mobilemark.com",
+			"sage_user_id": "51",
+			"django_user_id": 13
+		},
+		{
+			"rep_name": "Chris Deaño",
+			"email": "cdeano@mobilemark.com",
+			"sage_user_id": "49",
+			"django_user_id": 15
+		}
+	],
+	"us_states": {
+		"AL": "JL",
+		"AK": "RM",
+		"AZ": "RM",
+		"AR": "NB",
+		"CA": "RM",
+		"CO": "RM",
+		"CT": "SW",
+		"DE": "SW",
+		"DC": "SW",
+		"FL": "JL",
+		"GA": "JL",
+		"GU": "RM",
+		"HI": "RM",
+		"ID": "RM",
+		"IL": "DS",
+		"IN": "DS",
+		"IA": "NB",
+		"KS": "NB",
+		"KY": "JL",
+		"LA": "NB",
+		"ME": "SW",
+		"MD": "SW",
+		"MA": "SW",
+		"MI": "DS",
+		"MN": "NB",
+		"MS": "JL",
+		"MO": "NB",
+		"MT": "RM",
+		"NE": "NB",
+		"NV": "RM",
+		"NH": "SW",
+		"NJ": "SW",
+		"NM": "RM",
+		"NY": "SW",
+		"NC": "JL",
+		"ND": "NB",
+		"OH": "DS",
+		"OK": "NB",
+		"OR": "RM",
+		"PA": "SW",
+		"PR": "SW",
+		"RI": "SW",
+		"SC": "JL",
+		"SD": "NB",
+		"TN": "JL",
+		"TX": "NB",
+		"UT": "RM",
+		"VT": "SW",
+		"VA": "SW",
+		"VI": "SW",
+		"WA": "RM",
+		"WV": "SW",
+		"WI": "DS",
+		"WY": "RM"
+	},
+	"canada_provinces": {
+		"BC": "RM",
+		"AB": "RM",
+		"SK": "RM",
+		"MB": "RM",
+		"YT": "RM",
+		"NT": "RM",
+		"NU": "RM",
+		"ON": "DS",
+		"QC": "DS",
+		"NL": "DS",
+		"NB": "DS",
+		"NS": "DS",
+		"PE": "DS"
+	},
+	"international": {
+		"MX": { "rep_code": "SW", "label": "Mexico" },
+		"BR": { "rep_code": "SW", "label": "Brazil" },
+		"AR": { "rep_code": "SW", "label": "Argentina" },
+		"CL": { "rep_code": "RM", "label": "Chile" },
+		"PE": { "rep_code": "RM", "label": "Peru" },
+		"APAC": { "rep_code": "HK", "label": "Asia Pacific" },
+		"ME": { "rep_code": "HK", "label": "Middle East" }
+	},
+	"exceptions": {
+		"illinois_key_accounts": {
+			"rep_code": "CT",
+			"notes": "Overrides IL → DS. Prefer mas_customer_nos when filled; name match is fallback. Do not use bare 'UPS' (collides with ship-via).",
+			"accounts": [
+				{
+					"name": "Caterpillar",
+					"aliases": ["Caterpillar Inc", "Caterpillar Inc.", "CAT"],
+					"mas_customer_nos": []
+				},
+				{
+					"name": "RR Donnelley",
+					"aliases": [
+						"R.R. Donnelley",
+						"RR Donnelley / UPS",
+						"R.R. Donnelley / UPS",
+						"Donnelley"
+					],
+					"mas_customer_nos": []
+				}
+			]
+		},
+		"gateway_mfrs": {
+			"rep_code": "CT",
+			"notes": "Gateway manufacturers → Chris T (not geo). Short names (Digi) use word-boundary match.",
+			"accounts": [
+				{ "name": "CalAmp", "aliases": [], "mas_customer_nos": [] },
+				{ "name": "Cradlepoint", "aliases": [], "mas_customer_nos": [] },
+				{
+					"name": "Digi",
+					"aliases": ["Digi International"],
+					"mas_customer_nos": []
+				},
+				{ "name": "Ewon", "aliases": [], "mas_customer_nos": [] },
+				{
+					"name": "InHand",
+					"aliases": ["InHand Networks"],
+					"mas_customer_nos": []
+				},
+				{
+					"name": "MicroHard",
+					"aliases": ["Microhard"],
+					"mas_customer_nos": []
+				},
+				{ "name": "Moxa", "aliases": [], "mas_customer_nos": [] },
+				{ "name": "Peplink", "aliases": [], "mas_customer_nos": [] },
+				{ "name": "Rajant", "aliases": [], "mas_customer_nos": [] },
+				{
+					"name": "RedLion",
+					"aliases": ["Red Lion", "Red Lion Controls"],
+					"mas_customer_nos": []
+				},
+				{
+					"name": "Sierra Wireless",
+					"aliases": ["SierraWireless"],
+					"mas_customer_nos": []
+				},
+				{
+					"name": "Tektelic",
+					"aliases": ["TEKTELIC"],
+					"mas_customer_nos": []
+				}
+			]
+		},
+		"distributors": [
+			{
+				"name": "MCE Connectronics",
+				"aliases": ["MCE"],
+				"rep_code": "NB",
+				"mas_customer_nos": []
+			},
+			{
+				"name": "Novotech",
+				"aliases": [],
+				"rep_code": "CT",
+				"mas_customer_nos": []
+			},
+			{
+				"name": "Syynnex",
+				"aliases": ["Synnex", "TD Synnex", "SYNNEX", "Syyynnex"],
+				"rep_code": "CT",
+				"mas_customer_nos": [],
+				"notes": "Map spelling 'Syynnex'."
+			},
+			{
+				"name": "Talley",
+				"aliases": ["Talley Inc"],
+				"rep_code": "CT",
+				"mas_customer_nos": []
+			},
+			{
+				"name": "Tessco",
+				"aliases": ["TESSCO"],
+				"rep_code": "CT",
+				"mas_customer_nos": []
+			},
+			{
+				"name": "Outbase Imports",
+				"aliases": ["Outbase"],
+				"rep_code": "CT",
+				"mas_customer_nos": []
+			},
+			{
+				"name": "MCA",
+				"aliases": [],
+				"rep_codes": ["KEN", "JL"],
+				"mas_customer_nos": [],
+				"notes": "Shared Ken & Jose — leave ambiguous or route manually until policy set."
+			}
+		]
+	}
+}

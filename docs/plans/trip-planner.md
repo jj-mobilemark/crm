@@ -22,7 +22,9 @@ Mechanical data only in Nest/DB. Intelligence stays in the agent.
 1. **Persist trips** in Postgres; agent sessions key off `tripPlanId`.
 2. **“Active” = deals only** — deal `createdAt` or `closedAt` within N years
    (same idea as map `dealYears`).
-3. **No owner filter** — every account in the radius (ownership not ready).
+3. **Owner-aware candidates** — prefer the planner's accounts (`ownership=mine`),
+   then unassigned, then other-owned. Other-owned strong candidates stay on the
+   shortlist; the agent asks before scheduling them.
 4. **One agent** — extend the eve bridge; no second agent process.
 5. **PDF** — client generate-and-download; do not store the file on the server.
 
@@ -38,13 +40,17 @@ Mechanical data only in Nest/DB. Intelligence stays in the agent.
 
 ## Ranking (mechanical)
 
-Must-visit first → accounts with **open deals** (any open CRM stage) by
-`openPipelineAmount` (deal size) descending → deal count in window (ACTIVE) or
-years since last deal (SALVAGE) → distance ascending. Cap ~60 for the agent.
+Must-visit first → **ownership** (mine → unassigned → other) → accounts with
+**open deals** by `openPipelineAmount` (deal size) descending → deal count in
+window (ACTIVE) or years since last deal (SALVAGE) → distance ascending. Cap
+~60 for the agent.
 
 ACTIVE mode also includes companies that only have a still-open deal even if
 that deal was opened before the look-back window — so trip fill-ins are not
 limited to recent creates/closes.
+
+Other-owned accounts are not hidden. The agent must call them out (company +
+`ownerName`) and ask before adding them to the itinerary.
 
 ## Key files
 
@@ -61,7 +67,7 @@ limited to recent creates/closes.
 ## Out of scope (v1)
 
 - Map overlay / driving directions / hotels
-- Owner-scoped candidates
+- Hard-hiding other-owned accounts (reps may opt in after ask)
 - Comms-based activity
 - Server-stored PDF / emailing itinerary
 - Sage calendar push

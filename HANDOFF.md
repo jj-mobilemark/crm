@@ -25,6 +25,30 @@ it before stopping. The rules for maintaining it live in `AGENTS.md`
 
 - **Git**: `origin` = `jj-mobilemark/crm` (fork); `upstream` = `trycompai/crm`
   (read-only). Work on `main`.
+- **Webform lead Screening (DONE local 2026-08-05)**: Customer Question
+  emails from shared mailbox → `PendingWebLead`, territory-routed into the
+  same Screening list as mail (Web/Mail badge + Claim for unassigned).
+  Territory: `data/sales-territory.json` + `@crm/db` `assignRep`. Ingest
+  off until `WEBFORM_MAILBOX` + app-only Graph `Mail.Read` are set; cron
+  `GET/POST /internal/sync/webform`. Plan:
+  `docs/plans/webform-lead-screening.md`. Migration
+  `20260805140000_add_pending_web_lead` applied locally.
+- **Daily Task Push (DONE local 2026-08-05)**: Settings switch on the
+  Microsoft card; opt-in emails open tasks at 9:00 America/Chicago via
+  Graph `Mail.Send` (from/to same Outlook mailbox). Sections: Overdue /
+  Due today / Due this week / Other. Schema
+  `User.dailyTaskPush` + `dailyTaskPushLastSentOn`; route
+  `GET/POST /internal/notifications/daily-tasks` (`?force=1` for smoke);
+  Railway `cron-daily-tasks` at `0 14,15 * * *` UTC (needs api deploy).
+  Plan: `docs/plans/daily-task-push.md`.
+- **Owner ↔ Sage acctmgr push + Trip owner-aware (DONE local 2026-08-05)**:
+  Company Owner edits enqueue Sage push and write `acctmgr` (mapped reps
+  only). Local owner coverage verified: 5,985 owned / 0 matchable gaps
+  (former-rep blanks by design). Trip Planner ranks mine → unassigned →
+  other; agent asks before scheduling other-owned. Files:
+  `sage.mappings.ts`, `sage-push.service.ts`, `companies.service.ts`,
+  `trip-plan.ts`, `search_trip_candidates.ts`, `preamble.ts`,
+  `instructions.md`. Docs: `sage-crm-sync.md` §3.1, `trip-planner.md`.
 - **Map re-geocode after state/country (DONE local + prod 2026-08-04)**:
   Stale city-only place keys (`englewood||`) pinned wrong cities
   (Englewood CO→NJ, etc.). Cleared with `--refresh-stale`; re-ran with
@@ -52,10 +76,11 @@ it before stopping. The rules for maintaining it live in `AGENTS.md`
   edit workspace with brief + itinerary + agent. Files:
   `trip-planner-client.tsx`, `trip-planner/page.tsx`. Plan:
   `docs/plans/trip-planner.md`.
-- **Trip Planner (DONE local 2026-08-04)**: New `/trip-planner` nav
-  (Carbon Plane). Persisted `TripPlan` + agent kind `trip`
-  (`x-crm-trip` → `tripPlanId`). Deal-only ACTIVE/SALVAGE ranking via
-  shared `@crm/db` helpers; no owner filter. Agent tools
+- **Trip Planner (DONE local 2026-08-04; owner-aware 2026-08-05)**:
+  `/trip-planner` nav (Carbon Plane). Persisted `TripPlan` + agent kind
+  `trip` (`x-crm-trip` → `tripPlanId`). Deal-only ACTIVE/SALVAGE ranking
+  via shared `@crm/db` helpers; candidates prefer the planner's accounts
+  (mine → unassigned → other; agent asks before other-owned). Agent tools
   `read_trip_plan` / `search_trip_candidates` / `write_trip_itinerary`.
   Client PDF via `jspdf`. Plan: `docs/plans/trip-planner.md`.
   Migration `20260804150000_add_trip_plan` applied locally.
@@ -204,6 +229,8 @@ it before stopping. The rules for maintaining it live in `AGENTS.md`
   - `cron-followups` `0 13 * * *` → `/internal/agent/followups`
     (8:00 AM CDT). Agent claims these rows (see prod agent below).
   - `cron-sage` `0 6 * * *` → `/internal/sync/sage` (1:00 AM CDT)
+  - `cron-daily-tasks` `0 14,15 * * *` → `/internal/notifications/daily-tasks`
+    (Chicago 9:00 gate; needs api deploy with the route)
   Image `curlimages/curl:8.12.1`; start via `sh -c 'curl …'`;
   vars `API_PUBLIC_URL` + `CRON_SECRET` on each cron service.
 - **Prod agent (DONE 2026-08-03)**: Railway service `agent` always-on;
@@ -275,6 +302,90 @@ it before stopping. The rules for maintaining it live in `AGENTS.md`
 ---
 
 ## Work log
+
+### 2026-08-05 — Website form leads → Screening
+
+**What was completed**
+- Territory: `data/sales-territory.json` + `packages/db/src/sales-territory.ts`
+  (`assignRep`, `inferGeoFromForm`) with unit tests.
+- Prisma: `PendingWebLead` + `WebformMailboxSync`; migration
+  `20260805140000_add_pending_web_lead` applied locally.
+- Screening list/count merge mail + web; `claim` + `decide` with
+  `source: mail|web`; phone on `createFromScreening`.
+- Ingest: Customer Question parsers, app-only Graph token,
+  `WebformIngestService`, cron `/internal/sync/webform`; env
+  `WEBFORM_MAILBOX` (optional). `Dockerfile.api` copies `data/`.
+- UI: one Screening table with Mail/Web badge + Claim for unassigned.
+- Docs: `docs/plans/webform-lead-screening.md`; visitor plan points at
+  shared territory JSON.
+
+**How and why**
+- Replace manual forward from info@ to reps. Territory auto-assign when
+  clear; shared claim pool otherwise. Same Screening approve path for
+  company match + contact + optional Sage push.
+
+**Deviations**
+- None material. App-only Graph (not delegated shared-mailbox) as planned;
+  ingest stays off until IT grants application Mail.Read + mailbox policy.
+
+**What's next**
+- IT: app `Mail.Read` + access policy for `info@`; set `WEBFORM_MAILBOX`
+  on Railway api; add cron for `/internal/sync/webform`; deploy api
+  (migrate). Smoke with a real Customer Question message.
+- Optional later: website form webhook (bypass email).
+
+### 2026-08-05 — Daily Task Push (Settings + cron)
+
+**What was completed**
+- Schema: `User.dailyTaskPush` + `dailyTaskPushLastSentOn`; migration
+  `20260805120000_user_daily_task_push` applied locally.
+- Microsoft settings switch + `microsoft.setDailyTaskPush` /
+  status `dailyTaskPush` + `canSendMail`.
+- `DailyTaskPushService` buckets open tasks (Overdue / Due today /
+  Due this week / Other), HTML summary, Graph send to self; route
+  `/internal/notifications/daily-tasks` (`?force=1` for smoke).
+- Railway `cron-daily-tasks` (`curlimages/curl`, `0 14,15 * * *` UTC).
+- Docs: `docs/plans/daily-task-push.md`, `docs/plans/agent-railway.md`.
+
+**How and why**
+- Reps want a morning task list in Outlook without leaving the CRM
+  mailbox path already used by sequences.
+
+**Deviations**
+- None vs plan. Cron is live but the api route ships only after the
+  next api deploy + migrate.
+
+**What's next**
+- Deploy api (migrate + route). Local smoke with `?force=1`. Flip the
+  Settings switch with Mail.Send granted.
+
+### 2026-08-05 — Owner ↔ Sage acctmgr push + Trip Planner ownership
+
+**What was completed**
+- Company Owner → Sage `acctmgr` push (`acctMgrNameForEmail`,
+  `toSageCompanyFields`, `pushCompany`, enqueue on `ownerId` change).
+- Local coverage: 5,985 owned / 0 matchable gaps (former reps unmatched
+  by design) — no backfill re-run needed.
+- Trip Planner owner-aware candidates: `plannerUserId`,
+  `ownership` mine/unassigned/other, rank mine first; agent asks before
+  scheduling other-owned. Files: `trip-plan.ts`,
+  `search_trip_candidates.ts`, `preamble.ts`, `instructions.md`,
+  `trip-plans.service.ts`, `packages/db/test/trip-plan.spec.ts`.
+- Docs: `sage-crm-sync.md` §3.1, `trip-planner.md`,
+  `HANDOFF-SAGE-SYNC.md`.
+
+**How and why**
+- Sarah saw another rep's client in Trip Planner because candidates
+  ignored ownership. Pull already mapped `acctmgr` → Owner; push and
+  trip ranking did not use it.
+
+**Deviations**
+- Other-owned accounts stay on the shortlist (ask, do not hard-hide).
+- Unmapped/null owners omit `acctmgr` on push (do not wipe Sage).
+
+**What's next**
+- Soft smoke Owner edit → Sage Account Manager; Sarah re-test Trip
+  Planner in her region. Commit/push when ready.
 
 ### 2026-08-04 — Trip Planner: fix must-visit chip labels on reload
 

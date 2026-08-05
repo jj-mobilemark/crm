@@ -16,6 +16,7 @@ Architecture and evidence rules: [`docs/agent.md`](../agent.md). Env names:
 | --- | --- | --- |
 | `api` | Syncs mail; cron routes enqueue `AgentTask` rows | Online |
 | `cron-followups` | Daily 8:00 AM CDT → `/internal/agent/followups` | Online |
+| `cron-daily-tasks` | 14:00 + 15:00 UTC → daily task email (Chicago 9:00 gate) | Online |
 | **`agent` (eve)** | Claims due tasks every minute; model + tools; writes suggestions / enrichment | Online |
 | `app` | Proxies `/eve/v1/*` → `AGENT_URL` for the Agent tab | Online |
 
@@ -36,7 +37,7 @@ rows.
 ## What is deployed
 
 - [x] Nest follow-ups enqueue (`GET`/`POST` `/internal/agent/followups` + `CRON_SECRET`)
-- [x] Railway crons: microsoft, sequences, followups, sage
+- [x] Railway crons: microsoft, sequences, followups, sage, daily-tasks
 - [x] App bridge (`apps/app/app/eve/v1/[...path]/route.ts`)
 - [x] Agent dispatcher (`apps/agent/agent/schedules/dispatch.ts`)
 - [x] `Dockerfile.agent` + `scripts/railway-agent-start.sh` on `main`
@@ -134,6 +135,7 @@ the internal hostname the same way as
                     ┌──────────── cron-microsoft (*/5)
                     ├──────────── cron-sequences (*/5)
 Railway crons ──────┼──────────── cron-followups (08:00 CDT)
+                    ├──────────── cron-daily-tasks (14:00+15:00 UTC)
                     └──────────── cron-sage (01:00 CDT)
                                       │
                                       ▼

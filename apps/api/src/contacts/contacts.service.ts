@@ -337,6 +337,7 @@ export class ContactsService {
 		firstName: string;
 		lastName?: string;
 		email: string;
+		phone?: string;
 		companyId?: string | null;
 		preferDomainCompany?: boolean;
 		ownerId: string;
@@ -346,6 +347,7 @@ export class ContactsService {
 				firstName: input.firstName,
 				lastName: input.lastName,
 				email: input.email,
+				phone: input.phone,
 				companyId: input.companyId,
 				ownerId: input.ownerId,
 			},

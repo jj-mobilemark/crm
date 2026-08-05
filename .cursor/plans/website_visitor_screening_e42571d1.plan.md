@@ -120,7 +120,7 @@ Homepage-only visits stay in the vendor UI for marketing, **not** in Screening.
 New intake, sibling to mail Screening — same UI surface, different source:
 
 - New model e.g. `PendingVisitor` (or generalize Screening to a polymorphic intake). Fields: vendor id, company name, domain, country/region/state, pages[], visitCount, first/lastSeen, optional person fields if vendor supplies them (email, name, LinkedIn, title), `assignedUserId` nullable (null = shared pool), `claimedById`, status, matched `companyId` if any, source `WEBSITE`.
-- Territory config checked into repo (today it exists only as chat paste): e.g. [`data/sales-territory.json`](data/sales-territory.json) from your map + a small `assignRep(companyName, state, country)` helper implementing Nicole’s cascade: **exception → geo → unmatched**.
+- Territory config checked into repo: [`data/sales-territory.json`](../../data/sales-territory.json) + `assignRep` / `inferGeoFromForm` in [`packages/db/src/sales-territory.ts`](../../packages/db/src/sales-territory.ts) (shared with webform lead Screening — see `docs/plans/webform-lead-screening.md`). Cascade: **exception → geo → unmatched**.
 - Map `rep_code` / email → local `User` (same emails already in Sage user list). Resolve Ken / Demo Sales Sage-27 collision before using Sage IDs for routing.
 
 ### Routing rules

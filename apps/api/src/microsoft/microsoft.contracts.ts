@@ -14,6 +14,10 @@ export const msSetAutoCreateInput = z.object({
 	enabled: z.boolean(),
 });
 
+export const msSetDailyTaskPushInput = z.object({
+	enabled: z.boolean(),
+});
+
 export const msSuppressDomainInput = z.object({
 	domain: z.string().trim().min(1),
 	reason: z.string().trim().max(200).optional(),
@@ -30,4 +34,5 @@ export const msCalendarEventInput = z.object({
 });
 
 export type MsSetAutoCreateInput = z.infer<typeof msSetAutoCreateInput>;
+export type MsSetDailyTaskPushInput = z.infer<typeof msSetDailyTaskPushInput>;
 export type MsSuppressDomainInput = z.infer<typeof msSuppressDomainInput>;

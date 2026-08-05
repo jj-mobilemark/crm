@@ -24,30 +24,41 @@ export type * from "./generated/prisma/models";
 export type { ContactBriefSections, FactEvidence } from "./json";
 export {
 	loadPipelinePulse,
-	PULSE_WINDOW_DAYS,
-	STUCK_DAYS,
 	type PipelinePulse,
 	type PipelinePulseScope,
+	PULSE_WINDOW_DAYS,
+	STUCK_DAYS,
 } from "./pipeline-pulse";
 export {
 	calendarMonthBounds,
 	loadPipelineReport,
-	parseYearMonth,
-	reportOwnerWhere,
-	REPORT_DEAL_LIMIT,
 	type PipelineReport,
 	type PipelineReportMode,
 	type PipelineReportScope,
+	parseYearMonth,
+	REPORT_DEAL_LIMIT,
+	reportOwnerWhere,
 } from "./pipeline-report";
 export {
+	type AssignRepInput,
+	type AssignRepResult,
+	assignRep,
+	clearSalesTerritoryCache,
+	inferGeoFromForm,
+	loadSalesTerritory,
+	type TerritoryMap,
+} from "./sales-territory";
+export {
 	loadTripPlan,
-	searchTripCandidates,
-	writeTripItinerary,
-	TRIP_CANDIDATE_LIMIT,
+	resolveTripOwnership,
 	type SearchTripCandidatesInput,
+	searchTripCandidates,
+	TRIP_CANDIDATE_LIMIT,
 	type TripCandidate,
 	type TripItinerary,
 	type TripItineraryDay,
 	type TripItineraryStop,
+	type TripOwnership,
 	type TripPlanSummary,
+	writeTripItinerary,
 } from "./trip-plan";

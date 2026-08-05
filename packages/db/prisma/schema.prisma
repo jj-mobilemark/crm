@@ -26,6 +26,10 @@ model User {
   // CRM ownership. Better Auth owns every field above and `bun run
   // auth:generate` rewrites them; these back-relations are ours and have to be
   // put back if that ever wipes them.
+  /// Opt-in morning email of open tasks (America/Chicago 9:00). Default off.
+  dailyTaskPush          Boolean   @default(false)
+  /// Chicago calendar date `YYYY-MM-DD` of the last successful daily push.
+  dailyTaskPushLastSentOn String?
   ownedCompanies Company[]     @relation("CompanyOwner")
   ownedContacts  Contact[]     @relation("ContactOwner")
   ownedDeals     Deal[]        @relation("DealOwner")
@@ -39,6 +43,8 @@ model User {
   enrolledSequences    SequenceEnrollment[] @relation("SequenceEnroller")
   dealFieldChanges     DealFieldChange[]    @relation("DealFieldChangeActor")
   pendingContacts      PendingContact[]     @relation("PendingContactRep")
+  pendingWebLeadsAssigned PendingWebLead[]  @relation("PendingWebLeadAssignee")
+  pendingWebLeadsClaimed  PendingWebLead[]  @relation("PendingWebLeadClaimer")
   tripPlans            TripPlan[]           @relation("TripPlanOwner")
 
   @@unique([email])
@@ -1135,6 +1141,60 @@ model PendingContact {
   @@unique([userId, email])
   @@index([userId, status, lastSeenAt])
   @@map("pendingContact")
+}
+
+/// Website "Customer Question" form leads from the shared info@ mailbox.
+///
+/// Assigned when territory resolves a rep; `assignedUserId` null = shared claim
+/// pool. Distinct from mail `PendingContact` (richer fields + shared routing).
+model PendingWebLead {
+  id     String @id @default(cuid())
+  /// Graph message id or internetMessageId — ingest dedupe.
+  sourceMessageId String @unique
+  email           String
+  displayName     String?
+  domain          String
+  phone           String?
+  companyName     String?
+  locationText    String?
+  /// Form "Choose a Location to Connect with" when present.
+  connectLocation String?
+  comments        String?
+  sampleSubject   String?
+  stateCode       String?
+  countryCode     String?
+  /// Null = shared pool (first claim wins).
+  assignedUserId String?
+  assignedUser   User?   @relation("PendingWebLeadAssignee", fields: [assignedUserId], references: [id], onDelete: SetNull)
+  claimedById    String?
+  claimedBy      User?   @relation("PendingWebLeadClaimer", fields: [claimedById], references: [id], onDelete: SetNull)
+  claimedAt      DateTime?
+  receivedAt     DateTime @default(now())
+  /// PENDING | APPROVED | REJECTED
+  status      String    @default("PENDING")
+  decidedById String?
+  decidedAt   DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status, assignedUserId, receivedAt])
+  @@index([status, email])
+  @@map("pendingWebLead")
+}
+
+/// Cursor for the shared webform mailbox poller (singleton row).
+model WebformMailboxSync {
+  id           String    @id @default("default")
+  mailbox      String
+  /// ISO receivedDateTime high-water of the last processed message.
+  cursor       String?
+  lastSyncedAt DateTime?
+  lastError    String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@map("webformMailboxSync")
 }
 
 /// A follow-up the agent noticed in a rep's own synced mail and open deals —
