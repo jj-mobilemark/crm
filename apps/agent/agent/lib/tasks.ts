@@ -43,6 +43,57 @@ const LEASE_MS = 10 * 60_000;
 export const MAX_ATTEMPTS = 3;
 
 /**
+ * Sync/cron-driven research. Off unless `AGENT_AUTO_ENRICH` is explicitly true.
+ * Manual company Re-enrich / Research uses `company-profile` with priority ≥ 100.
+ */
+export function autoEnrichEnabled(): boolean {
+	const v = process.env.AGENT_AUTO_ENRICH?.trim().toLowerCase();
+	return v === "true" || v === "1" || v === "yes";
+}
+
+/** Priority floor for manual company sheet actions (`companyRequested`). */
+export const MANUAL_COMPANY_PRIORITY = 100;
+
+/**
+ * Closes outstanding sync/cron work when auto enrich is off so the dispatcher
+ * does not keep burning the AI Gateway on a backlog nobody asked for.
+ *
+ * Leaves unfinished manual company-profile rows (priority ≥ 100) alone.
+ */
+export async function retireAutoEnrichmentTasks(): Promise<number> {
+	if (autoEnrichEnabled()) return 0;
+
+	const now = new Date();
+	const outcome = "Skipped: auto enrich is off (AGENT_AUTO_ENRICH).";
+
+	const { count } = await db.agentTask.updateMany({
+		where: {
+			finishedAt: null,
+			OR: [
+				{
+					kind: {
+						in: [
+							"identify",
+							"meeting-prep",
+							"followups",
+							"profile",
+							"recheck",
+						],
+					},
+				},
+				{
+					kind: "company-profile",
+					priority: { lt: MANUAL_COMPANY_PRIORITY },
+				},
+			],
+		},
+		data: { finishedAt: now, outcome },
+	});
+
+	return count;
+}
+
+/**
  * Claims due work atomically.
  *
  * `FOR UPDATE SKIP LOCKED` inside the subquery is what makes this safe to run
@@ -56,10 +107,37 @@ export const MAX_ATTEMPTS = 3;
  *
  * Each claim charges an attempt. Rows that have spent their allowance are
  * skipped here and retired by `retireExhausted`.
+ *
+ * When auto enrich is off, only manual company-profile rows (priority ≥ 100)
+ * are claimable — everything else is retired by `retireAutoEnrichmentTasks`.
  */
 export async function claimDue(limit: number): Promise<LeasedTask[]> {
 	const now = new Date();
 	const until = new Date(now.getTime() + LEASE_MS);
+	const manualOnly = !autoEnrichEnabled();
+
+	if (manualOnly) {
+		return db.$queryRaw<LeasedTask[]>`
+			UPDATE "agentTask" AS t
+			SET "leasedUntil" = ${until},
+				"startedAt" = COALESCE(t."startedAt", ${now}),
+				"attempts" = t."attempts" + 1
+			FROM (
+				SELECT id FROM "agentTask"
+				WHERE "finishedAt" IS NULL
+					AND "dueAt" <= ${now}
+					AND ("leasedUntil" IS NULL OR "leasedUntil" < ${now})
+					AND "attempts" < ${MAX_ATTEMPTS}
+					AND kind = 'company-profile'
+					AND priority >= ${MANUAL_COMPANY_PRIORITY}
+				ORDER BY "priority" DESC, "dueAt" ASC
+				LIMIT ${limit}
+				FOR UPDATE SKIP LOCKED
+			) AS due
+			WHERE t.id = due.id
+			RETURNING t.id, t."contactId", t."companyId", t."userId", t.kind, t.reason, t.budget, t.attempts;
+		`;
+	}
 
 	return db.$queryRaw<LeasedTask[]>`
 		UPDATE "agentTask" AS t

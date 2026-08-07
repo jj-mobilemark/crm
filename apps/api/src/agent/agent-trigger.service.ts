@@ -1,6 +1,22 @@
 import type { Db } from "@crm/db";
 import { Injectable, Logger } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
+import type { EnvironmentVariables } from "../config/env.validation";
 import { InjectDatabase } from "../database/database.constants";
+
+/**
+ * Sync/cron-driven research is off unless `AGENT_AUTO_ENRICH` is explicitly
+ * true. Manual Re-enrich / Research (`companyRequested`) always enqueues.
+ *
+ * Default off: mail sync used to queue identify/company-profile for every new
+ * domain and burn the AI Gateway budget with nobody watching the Agent tab.
+ */
+export function isAgentAutoEnrichEnabled(
+	raw: string | undefined,
+): boolean {
+	const v = raw?.trim().toLowerCase();
+	return v === "true" || v === "1" || v === "yes";
+}
 
 /**
  * How the API tells the agent something happened.
@@ -21,13 +37,30 @@ import { InjectDatabase } from "../database/database.constants";
 export class AgentTriggerService {
 	private readonly logger = new Logger(AgentTriggerService.name);
 
-	constructor(@InjectDatabase() private readonly db: Db) {}
+	constructor(
+		@InjectDatabase() private readonly db: Db,
+		private readonly config: ConfigService<EnvironmentVariables, true>,
+	) {}
+
+	/** Sync/cron auto-research. Manual enrich bypasses this. */
+	private autoEnrich(): boolean {
+		return isAgentAutoEnrichEnabled(
+			this.config.get("AGENT_AUTO_ENRICH", { infer: true }),
+		);
+	}
 
 	/** A company we have never seen. Nothing on it but a domain. */
 	async companyCreated(
 		companyId: string,
 		reason = "New company",
 	): Promise<void> {
+		if (!this.autoEnrich()) {
+			this.logger.debug({
+				message: "Skipped auto company-profile (AGENT_AUTO_ENRICH off)",
+				companyId,
+			});
+			return;
+		}
 		await this.enqueue({
 			companyId,
 			kind: "company-profile",
@@ -37,13 +70,14 @@ export class AgentTriggerService {
 		});
 	}
 
-	/** A rep pressed a button and is watching. */
+	/** A rep pressed a button and is watching. Always enqueues. */
 	async companyRequested(companyId: string, reason: string): Promise<void> {
 		await this.enqueue({
 			companyId,
 			kind: "company-profile",
 			reason,
 			// Somebody is looking at the screen, so this goes to the front.
+			// priority >= 100 marks manual work when auto enrich is off.
 			priority: 100,
 			budget: 8,
 		});
@@ -57,6 +91,13 @@ export class AgentTriggerService {
 	 * name a placeholder" is a judgement about a person.
 	 */
 	async contactCreated(contactId: string, reason: string): Promise<void> {
+		if (!this.autoEnrich()) {
+			this.logger.debug({
+				message: "Skipped auto identify (AGENT_AUTO_ENRICH off)",
+				contactId,
+			});
+			return;
+		}
 		await this.enqueue({
 			contactId,
 			kind: "identify",
@@ -68,6 +109,13 @@ export class AgentTriggerService {
 
 	/** A meeting with someone we do not know yet, happening soon. */
 	async meetingSoon(contactId: string, when: Date): Promise<void> {
+		if (!this.autoEnrich()) {
+			this.logger.debug({
+				message: "Skipped auto meeting-prep (AGENT_AUTO_ENRICH off)",
+				contactId,
+			});
+			return;
+		}
 		await this.enqueue({
 			contactId,
 			kind: "meeting-prep",
@@ -86,6 +134,13 @@ export class AgentTriggerService {
 	 * at a time; a fresh mailbox tick does not queue a second one.
 	 */
 	async followupsDue(userId: string, reason: string): Promise<void> {
+		if (!this.autoEnrich()) {
+			this.logger.debug({
+				message: "Skipped auto followups (AGENT_AUTO_ENRICH off)",
+				userId,
+			});
+			return;
+		}
 		await this.enqueue({
 			userId,
 			kind: "followups",

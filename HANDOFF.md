@@ -25,6 +25,15 @@ it before stopping. The rules for maintaining it live in `AGENTS.md`
 
 - **Git**: `origin` = `jj-mobilemark/crm` (fork); `upstream` = `trycompai/crm`
   (read-only). Work on `main`.
+- **Agent auto-enrich OFF by default (DONE local 2026-08-07)**: Sync /
+  calendar / daily followups no longer enqueue `AgentTask` unless
+  `AGENT_AUTO_ENRICH=true` on **both** `api` and `agent`. Company sheet
+  Re-enrich / Research (`companyRequested`, priority ≥ 100) still
+  queues. Agent dispatcher retires auto backlog when the flag is off.
+  Files: `agent-trigger.service.ts`, `tasks.ts`, `dispatch.ts`,
+  `.env.example`, `env.validation.ts`, `docs/plans/agent-railway.md`.
+  **Needs deploy of `api` + `agent` to stop prod spend** (unset flag =
+  off; no Railway var required).
 - **External company APIs for PO intake (DONE 2026-08-07)**: Sister
   PO app. Auth `X-API-Key` → `CRM_API_KEY`.
   - `GET /company/:mas/order-defaults` (+ `?name=&zip=` exact; soft
@@ -327,6 +336,32 @@ it before stopping. The rules for maintaining it live in `AGENTS.md`
 ---
 
 ## Work log
+
+### 2026-08-07 — Agent auto-enrich gated (manual only by default)
+
+**What was completed**
+- `AGENT_AUTO_ENRICH` (default off): `companyCreated` / `contactCreated` /
+  `meetingSoon` / `followupsDue` no-op unless explicitly `true`.
+- Manual company Re-enrich / Research (`companyRequested`) always queues
+  (priority ≥ 100).
+- Agent dispatcher retires auto backlog and only claims manual
+  company-profile when the flag is off.
+- Docs: `.env.example`, `env.validation.ts`, `docs/plans/agent-railway.md`.
+- Tests: `apps/agent/test/tasks.integration.spec.ts`.
+
+**How and why**
+- Mail sync was queuing research for every new domain/nameless contact
+  and burning the Vercel AI Gateway budget with nobody using the Agent
+  tab. Code paths stay; flip `AGENT_AUTO_ENRICH=true` on api+agent to
+  restore.
+
+**Deviations**
+- Daily followups cron is gated by the same flag (also auto AI spend),
+  not only identify/company-profile.
+
+**What's next**
+- Deploy `api` + `agent` to Railway so prod stops auto-research. No
+  env var needed (unset = off). Optionally commit when asked.
 
 ### 2026-08-07 — POST /company/resolve for incomplete PO extracts
 

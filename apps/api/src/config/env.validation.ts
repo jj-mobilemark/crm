@@ -206,6 +206,17 @@ export class EnvironmentVariables {
 		message: "CRM_API_KEY must be at least 16 characters.",
 	})
 	CRM_API_KEY?: string;
+
+	/**
+	 * When unset/false, mail/calendar/cron do not enqueue research tasks —
+	 * only a rep clicking Re-enrich / Research on a company sheet does
+	 * (`companyRequested`). Set `true` to restore sync-driven identify,
+	 * company-profile, meeting-prep, and daily followups. Also set the same
+	 * value on the `agent` service so the dispatcher retires the backlog.
+	 */
+	@IsOptional()
+	@IsString()
+	AGENT_AUTO_ENRICH?: string;
 }
 
 export function validateEnv(

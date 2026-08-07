@@ -2,7 +2,12 @@ import { EnrichmentStatus } from "@crm/db";
 import { defineSchedule } from "eve/schedules";
 import crm from "../channels/crm";
 import { markRunning, settle } from "../lib/enrichment";
-import { claimDue, noteSession, retireExhausted } from "../lib/tasks";
+import {
+	claimDue,
+	noteSession,
+	retireAutoEnrichmentTasks,
+	retireExhausted,
+} from "../lib/tasks";
 
 /** Per tick. The cap is concurrency, not ambition — the queue keeps. */
 const BATCH = 5;
@@ -14,10 +19,6 @@ const BATCH = 5;
  * due and starts a session per row. What the work *is* comes from the row —
  * written by the API when something happened, or by the agent itself when it
  * decided a person was worth another look in a fortnight.
- *
- * This is the difference the plan is named for. The schedules it replaces said
- * "every 20 minutes, the ten oldest contacts", which treats the CEO of a live
- * opportunity and a bounced alias identically because they sorted adjacently.
  *
  * Handler form rather than markdown, because the batch has to be claimed in
  * code — and because a handler-form session can park for a human, which task
@@ -41,6 +42,17 @@ export default defineSchedule({
 							abandoned,
 							EnrichmentStatus.FAILED,
 							"Research was attempted several times and never completed.",
+						);
+					}
+				} catch {}
+
+				// When auto enrich is off, close sync/cron backlog so it cannot
+				// keep spending. Manual company sheet actions still claim.
+				try {
+					const retired = await retireAutoEnrichmentTasks();
+					if (retired > 0) {
+						console.log(
+							`[agent] retired ${retired} auto task(s) (AGENT_AUTO_ENRICH off)`,
 						);
 					}
 				} catch {}

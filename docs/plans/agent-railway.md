@@ -18,7 +18,7 @@ Architecture and evidence rules: [`docs/agent.md`](../agent.md). Env names:
 | `cron-followups` | Daily 8:00 AM CDT → `/internal/agent/followups` | Online |
 | `cron-daily-tasks` | 14:00 + 15:00 UTC → daily task email (Chicago 9:00 gate) | Online |
 | `cron-webform` | `*/5` → `/internal/sync/webform` (Customer Question → Screening) | Online |
-| **`agent` (eve)** | Claims due tasks every minute; model + tools; writes suggestions / enrichment | Online |
+| **`agent` (eve)** | Claims due tasks every minute; model + tools; writes suggestions / enrichment. Sync/cron auto-enqueue is **off** unless `AGENT_AUTO_ENRICH=true` on both `api` and `agent` — then only company sheet Re-enrich / Research runs. | Online |
 | `app` | Proxies `/eve/v1/*` → `AGENT_URL` for the Agent tab | Online |
 
 ```
@@ -70,6 +70,7 @@ rows.
 | `AI_GATEWAY_API_KEY` | **yes** | Model calls fail without it |
 | `AGENT_BRIDGE_SECRET` | **yes** for Agent tab | Same string as on `app` |
 | `PORT` | **yes** (pin) | `2000` |
+| `AGENT_AUTO_ENRICH` | no | Default **off**. Set `true` with the same on `api` to restore sync/cron research. When off, dispatcher retires auto backlog and only claims manual company Re-enrich / Research. |
 
 Optional capability keys (each unlocks one source; agent runs with none —
 see `apps/agent/agent/lib/capabilities.ts`):

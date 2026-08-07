@@ -3,7 +3,9 @@ import { db } from "@crm/db";
 import {
 	claimDue,
 	completeTask,
+	MANUAL_COMPANY_PRIORITY,
 	MAX_ATTEMPTS,
+	retireAutoEnrichmentTasks,
 	retireExhausted,
 	scheduleTask,
 } from "../agent/lib/tasks";
@@ -25,7 +27,10 @@ async function clear() {
 	await db.contact.deleteMany({ where: { email: { startsWith: "lease-" } } });
 }
 
-beforeEach(clear);
+beforeEach(() => {
+	process.env.AGENT_AUTO_ENRICH = "true";
+	return clear();
+});
 afterEach(clear);
 
 async function queue(
@@ -235,5 +240,71 @@ describe("scheduleTask", () => {
 
 		expect(second.id).toBe(first.id);
 		expect(await db.agentTask.count({ where: { kind } })).toBe(1);
+	});
+});
+
+describe("AGENT_AUTO_ENRICH off", () => {
+	it("claims only manual company-profile and retires auto backlog", async () => {
+		delete process.env.AGENT_AUTO_ENRICH;
+
+		const autoId = (
+			await db.agentTask.create({
+				data: {
+					kind: "identify",
+					reason: "sync",
+					dueAt: new Date(Date.now() - 1000),
+					priority: 20,
+					budget: 4,
+				},
+				select: { id: true },
+			})
+		).id;
+
+		const manualId = (
+			await db.agentTask.create({
+				data: {
+					kind: "company-profile",
+					reason: "A rep asked for a fresh look",
+					dueAt: new Date(Date.now() - 1000),
+					priority: MANUAL_COMPANY_PRIORITY,
+					budget: 8,
+				},
+				select: { id: true },
+			})
+		).id;
+
+		const lowCompany = (
+			await db.agentTask.create({
+				data: {
+					kind: "company-profile",
+					reason: "New company",
+					dueAt: new Date(Date.now() - 1000),
+					priority: 10,
+					budget: 4,
+				},
+				select: { id: true },
+			})
+		).id;
+
+		const retired = await retireAutoEnrichmentTasks();
+		expect(retired).toBeGreaterThanOrEqual(2);
+
+		const claimed = await claimDue(10);
+		expect(claimed.map((t) => t.id)).toContain(manualId);
+		expect(claimed.every((t) => t.id !== autoId && t.id !== lowCompany)).toBe(
+			true,
+		);
+
+		expect(
+			(await db.agentTask.findUnique({ where: { id: autoId } }))?.finishedAt,
+		).not.toBeNull();
+		expect(
+			(await db.agentTask.findUnique({ where: { id: lowCompany } }))
+				?.finishedAt,
+		).not.toBeNull();
+
+		await db.agentTask.deleteMany({
+			where: { id: { in: [autoId, manualId, lowCompany] } },
+		});
 	});
 });
