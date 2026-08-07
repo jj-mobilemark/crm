@@ -25,17 +25,17 @@ it before stopping. The rules for maintaining it live in `AGENTS.md`
 
 - **Git**: `origin` = `jj-mobilemark/crm` (fork); `upstream` = `trycompai/crm`
   (read-only). Work on `main`.
-- **Order-defaults endpoint (DONE prod 2026-08-06; `terms_code` added
-  same day)**: `GET /company/:masCustomerNo/order-defaults` (+
-  `GET /company/order-defaults?name=&zip=` fallback) for the sister
-  PO-processing app. `X-API-Key` → `CRM_API_KEY`. Returns
-  `attention`/`phone`/`email` (primary contact, fallback most-recent),
-  `terms_code` (from `SageRecordSnapshot.payload.company.mas_termscode`,
-  ~4.8k filled), `rep_owner` + `rep_territory` (labeled separately),
-  `is_distributor` — all `null`-safe, `fields_returned` lists what came
-  back. Still excludes `tracking`/`ship_via`/`freight`. Index
-  `Company.sage100CustomerNo` applied on prod deploy. Plan:
-  `docs/plans/sage-crm-sync.md` §7.
+- **External company APIs for PO intake (DONE 2026-08-07)**: Sister
+  PO app. Auth `X-API-Key` → `CRM_API_KEY`.
+  - `GET /company/:mas/order-defaults` (+ `?name=&zip=` exact; soft
+    `?name=` / `?email_domain=` / `?phone=` → candidates)
+  - **`POST /company/resolve`** — ranked resolve from letterhead/buyer/
+    email/MAS hint; ship-to never auto-accepted by default; vendor
+    names rejected; auto-accept ≥0.85 + MAS id. Files:
+    `company-resolve.service.ts`, `order-defaults.controller.ts`,
+    `crm-api-key.ts`, tests in `test/company-resolve.spec.ts`.
+  - order-defaults fields: attention/phone/email/terms_code/rep_*/
+    is_distributor. Still no tracking/ship_via/freight. Plan §7.
 - **Sage cron health (DONE prod 2026-08-06)**: Nightly `cron-sage` **is**
   running (`0 6 * * *` UTC = 1:00 AM CDT). Aug 5 06:00 failed mid-pull
   (`You are not logged on.`) but Railway stayed green (HTTP 200 with
@@ -327,6 +327,33 @@ it before stopping. The rules for maintaining it live in `AGENTS.md`
 ---
 
 ## Work log
+
+### 2026-08-07 — POST /company/resolve for incomplete PO extracts
+
+**What was completed**
+- New `POST /company/resolve` for the sister PO intake app when Bill-To
+  is missing: weighted signals (MAS hint → email → buyer/letterhead →
+  bill-to → phone → ship-to-as-candidate-only), vendor-name reject,
+  auto-accept only at confidence ≥ 0.85 with a MAS id and a clear top.
+- Extended `GET /company/order-defaults` soft lookups: `?name=` alone,
+  `?email_domain=`, `?phone=` return ranked candidates (no longer 400
+  when ZIP is absent). Exact `?name=&zip=` unchanged.
+- Shared `assertCrmApiKey` helper. Tests against local MCL ENTERPRISES
+  (`0007242`) pass. Docs: `docs/plans/sage-crm-sync.md` §7.
+
+**How and why**
+- PO pages often only have letterhead + ship-to + email. Resolve must
+  understand signal roles and prefer Sage-backed MAS accounts for CUST #;
+  intake then calls existing order-defaults for stamp defaults.
+
+**Deviations**
+- Response `company_id` / `sage_company_id` are strings (cuid / Sage
+  string ids), not integers as in the intake brief — matches this
+  schema. `terms_description` only for known codes in a small local map.
+
+**What's next**
+- Deploy + smoke from the sister app with the MCL / Urban Transportation
+  PO case. Still deferred: tracking / ship_via / freight.
 
 ### 2026-08-06 — Order-defaults: add `terms_code` from Sage snapshot
 

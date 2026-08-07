@@ -1,4 +1,5 @@
 import { Module } from "@nestjs/common";
+import { CompanyResolveService } from "./company-resolve.service";
 import { OrderDefaultsController } from "./order-defaults.controller";
 import { OrderDefaultsService } from "./order-defaults.service";
 import { SagePullService } from "./sage-pull.service";
@@ -13,9 +14,8 @@ import { SageSyncController } from "./sage-sync.controller";
  * A missing `SAGE_SOAP_*` leaves the client unconfigured rather than throwing,
  * so the feature is simply absent on a self-host that has no Sage.
  *
- * `OrderDefaultsController` reads the same Sage-pulled Company/Contact rows
- * for an external caller (§7 of the plan) — no SOAP involved, so it works
- * even where `SAGE_SOAP_*` is unset, as long as the data was pulled before.
+ * External read endpoints (`order-defaults`, `resolve`) use the same Sage-
+ * pulled rows — no SOAP at request time.
  */
 @Module({
 	controllers: [SageSyncController, OrderDefaultsController],
@@ -24,6 +24,7 @@ import { SageSyncController } from "./sage-sync.controller";
 		SagePullService,
 		SagePushService,
 		OrderDefaultsService,
+		CompanyResolveService,
 	],
 	exports: [SageSoapClient, SagePullService, SagePushService],
 })
