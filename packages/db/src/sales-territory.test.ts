@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test";
 import {
 	assignRep,
 	inferGeoFromForm,
+	isDistributor,
 	loadSalesTerritory,
 } from "../src/sales-territory";
 
@@ -65,6 +66,21 @@ describe("assignRep", () => {
 		expect(
 			assignRep(map, { companyName: "TESSCO Technologies" })?.repCode,
 		).toBe("CT");
+	});
+});
+
+describe("isDistributor", () => {
+	it("flags a distributor on the exception list", () => {
+		expect(isDistributor(map, "TESSCO Technologies")).toBe(true);
+	});
+
+	it("does not flag an ordinary company", () => {
+		expect(isDistributor(map, "Acme Widgets")).toBe(false);
+	});
+
+	it("handles missing/empty names without throwing", () => {
+		expect(isDistributor(map, null)).toBe(false);
+		expect(isDistributor(map, "")).toBe(false);
 	});
 });
 

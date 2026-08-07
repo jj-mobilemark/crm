@@ -284,6 +284,8 @@ model Company {
   @@index([name])
   @@index([lastActivityAt])
   @@index([geocodePlaceKey])
+  /// Lookup key for the external order-defaults endpoint (`/company/:masCustomerNo/order-defaults`).
+  @@index([sage100CustomerNo])
   @@map("company")
 }
 

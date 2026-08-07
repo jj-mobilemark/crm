@@ -456,7 +456,10 @@ Mark records.
 8. **Later: Sage 100 order history.** `MasHeader` (open-order headers) and
    `MasOrderDetailHistory` (invoice/shipment lines) join to a company via
    `mas_ardivisionno` + `mas_customerno` (kept in the company snapshot). A
-   read-only order-history view is a natural follow-on phase.
+   read-only order-history view is a natural follow-on phase. **Note:** SOAP
+   probes for those entities fail today; for PO extract/enrich **gold** the
+   sister repo uses a manual Sage 100 AR line export — see
+   `MM-Doc-Scanner/docs/SAGE_AR_EXPORT_GUIDE.md` (not a CRM sync path).
 
 ---
 
@@ -665,3 +668,58 @@ Every write is keyed by the unique `sageCrm*Id` (and snapshots by
 (`domain`/`email`) only when there is no sageId match. So re-running any page,
 overlapping the high-water, or resuming after a crash all converge to the same
 state — which is what makes the throttled, many-tick, resumable design safe.
+
+---
+
+## 7. Order-defaults endpoint — feasibility (2026-08-06, no code yet)
+
+A sister project (quoting/doc-scanner app) drafted a brief asking for an
+`order-defaults` lookup — 6 "stamp" fields it cannot fill today: `tracking`
+(shipment-notice email), `ship_date`, `ship_via`, `attention`, `phone`,
+`email`. Its brief proposes a new "replica-DB light app" as one candidate
+source. This CRM's Sage pull (§6, DONE) already **is** that replica, so it is
+worth recording what this repo could answer today versus what needs new
+mapping, before any endpoint gets built.
+
+### 7.1 What already maps cleanly
+
+| Stamp field | Source | Fit |
+| --- | --- | --- |
+| Key `mas_customer_no` | `Company.sage100CustomerNo` (+ `sage100ArDivisionNo`) | Exact match, but **no index today** — add one before this is a hot lookup path |
+| Key fallback name+ZIP | `Company.name` + `Company.postalCode` | Works, but one address per company (no bill-to/ship-to split) |
+| `attention` | `Company.primaryContactId` → `Contact` (set from Sage `primarypersonid`) | Whatever Sage marked primary, not a verified "purchasing" role |
+| `phone` / `email` | `Contact.phone` / `Contact.email` | Same primary-contact caveat |
+| rep | `Company.ownerId` (← `acctmgr`) or `assignRep()` (`data/sales-territory.json`) | Two independent, already-built sources |
+| distributor (`*D` suffix) | `data/sales-territory.json` `exceptions.distributors[]` | Name-list heuristic, not a Sage/Company field |
+
+### 7.2 What is missing
+
+- `tracking` (shipment-notice email) and an AP/billing email — only one
+  `Company.email` exists; Sage often puts this kind of text in notes/website
+  rather than a clean field (see the `<>`-stripping and "NET 30 in website"
+  notes elsewhere in this doc).
+- `ship_via` and a freight account number — not mapped from Sage anywhere,
+  not columns on `Company` or `Deal`.
+- `ship_date` — order-level, not a company default. Needs Sage 100
+  `MasHeader` / `MasOrderDetailHistory` (§4 item 8), and the SOAP probe for
+  those entities already failed once.
+- `terms_code` — currently dropped as unmapped free text, not stored as a
+  code.
+- A real distributor column — today it is a name list, not Sage `type` or a
+  `Company` boolean.
+
+Some of this may already be sitting unused in `SageRecordSnapshot` (39.5k raw
+payloads from the full pull) — worth grepping a few real company/person
+snapshots for ship-via/freight/AP-email-shaped keys before assuming Sage has
+none of it.
+
+### 7.3 If this gets built
+
+Mechanical only (fits the "intelligence never in the API" rule — this would
+return stored facts, never a guess): a new route under `apps/api/src/sage/`,
+lookup by `sage100CustomerNo` → name+ZIP fallback, partial response with
+explicit `null`s for fields not yet sourced. No `X-API-Key` auth pattern
+exists in this repo yet; the closest precedent is the `Authorization: Bearer
+$CRON_SECRET` guard already used on `/internal/sync/*` — a dedicated new
+secret (not the cron one) would be the right scope for an external caller.
+Not scheduled; recorded here so the next agent doesn't re-derive it.

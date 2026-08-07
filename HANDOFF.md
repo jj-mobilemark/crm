@@ -25,6 +25,36 @@ it before stopping. The rules for maintaining it live in `AGENTS.md`
 
 - **Git**: `origin` = `jj-mobilemark/crm` (fork); `upstream` = `trycompai/crm`
   (read-only). Work on `main`.
+- **Order-defaults endpoint (DONE local 2026-08-06, not yet deployed)**:
+  `GET /company/:masCustomerNo/order-defaults` (+ `GET
+  /company/order-defaults?name=&zip=` fallback) for the sister
+  PO-processing app — v1 scope agreed over chat, not a written brief.
+  `X-API-Key` guard on `CRM_API_KEY` (not `CRON_SECRET` — different
+  caller/scope). Returns `attention`/`phone`/`email` (primary contact,
+  fallback most-recent), `rep_owner` + `rep_territory` (labeled
+  separately, not reconciled here), `is_distributor` (name-list
+  heuristic) — all `null`-safe, `fields_returned` lists what came back.
+  Deliberately excludes `tracking`/`ship_via`/`freight`/`terms_code` (no
+  columns exist yet). Files: `apps/api/src/sage/order-defaults.{service,
+  controller}.ts`, `sage.module.ts`; `isDistributor` added to
+  `packages/db/src/sales-territory.ts` (+ export + test); new index
+  `Company.sage100CustomerNo` (migration
+  `20260806190000_add_sage100_customer_no_index` — **hand-written SQL,
+  not run through `prisma migrate dev`**, sandbox had no DB access; apply
+  with `db:migrate`/`db:deploy` before relying on it); `CRM_API_KEY` in
+  `env.validation.ts` + `.env.example`. Plan: `docs/plans/sage-crm-sync.md`
+  §7.
+- **Sage cron health (DONE prod 2026-08-06)**: Nightly `cron-sage` **is**
+  running (`0 6 * * *` UTC = 1:00 AM CDT). Aug 5 06:00 failed mid-pull
+  (`You are not logged on.`) but Railway stayed green (HTTP 200 with
+  `outcome:failed`). Aug 5 18:26 manual + Aug 6 06:04 + Aug 6 manual
+  smoke all `ok` (companies upserted; deal changes can be 0). Fixes
+  deployed to prod api (Railway upload, **not yet committed to git**):
+  session-loss restart on incremental walk; `/internal/sync/sage`
+  returns **503** on hard failure so `curl -f` marks cron red. Cron
+  start commands for `cron-sage` + `cron-daily-tasks` use literal
+  `https://api.mobilemarksalestool.com` (daily-tasks was failing with
+  empty `$API_PUBLIC_URL` → curl error 3).
 - **Webform lead Screening (DONE prod wiring 2026-08-05)**: Customer
   Question emails from shared mailbox → `PendingWebLead`,
   territory-routed into the same Screening list as mail (Web/Mail badge
@@ -37,14 +67,13 @@ it before stopping. The rules for maintaining it live in `AGENTS.md`
   `Test-ApplicationAccessPolicy` shows Granted. Plan:
   `docs/plans/webform-lead-screening.md`. Migration
   `20260805140000_add_pending_web_lead` applied on api deploy.
-- **Daily Task Push (DONE local 2026-08-05)**: Settings switch on the
-  Microsoft card; opt-in emails open tasks at 9:00 America/Chicago via
-  Graph `Mail.Send` (from/to same Outlook mailbox). Sections: Overdue /
-  Due today / Due this week / Other. Schema
-  `User.dailyTaskPush` + `dailyTaskPushLastSentOn`; route
-  `GET/POST /internal/notifications/daily-tasks` (`?force=1` for smoke);
-  Railway `cron-daily-tasks` at `0 14,15 * * *` UTC (needs api deploy).
-  Plan: `docs/plans/daily-task-push.md`.
+- **Daily Task Push (DONE prod cron fix 2026-08-06)**: Settings switch on
+  the Microsoft card; opt-in emails open tasks at 9:00 America/Chicago
+  via Graph `Mail.Send`. Route
+  `GET/POST /internal/notifications/daily-tasks` (`?force=1` smoke OK).
+  Railway `cron-daily-tasks` `0 14,15 * * *` UTC — start command fixed
+  (literal API host; was `URL rejected: No host part`). Plan:
+  `docs/plans/daily-task-push.md`.
 - **Owner ↔ Sage acctmgr push + Trip owner-aware (DONE local 2026-08-05)**:
   Company Owner edits enqueue Sage push and write `acctmgr` (mapped reps
   only). Local owner coverage verified: 5,985 owned / 0 matchable gaps
@@ -306,6 +335,114 @@ it before stopping. The rules for maintaining it live in `AGENTS.md`
 ---
 
 ## Work log
+
+### 2026-08-06 — Order-defaults endpoint for the PO-processing sister app
+
+**What was completed**
+- New external, read-only lookup for the doc-scanner / PO-processing sister
+  app, agreed after a feasibility discussion (see §7 added to
+  `docs/plans/sage-crm-sync.md`):
+  - `GET /company/:masCustomerNo/order-defaults` — primary lookup by
+    `Company.sage100CustomerNo`.
+  - `GET /company/order-defaults?name=&zip=` — fallback lookup by name +
+    postal code when the caller has no MAS customer number.
+  - Both guarded by `X-API-Key` against `CRM_API_KEY` (new optional env
+    var, `env.validation.ts` + `.env.example`; constant-time compare,
+    503 if unset, 403 on mismatch — same shape as the existing
+    `CRON_SECRET` guards but a separate secret/scope).
+  - Response fields: `mas_customer_no`, `mas_ar_division_no`, `attention`
+    / `phone` / `email` (company's primary contact, falling back to
+    most-recently-created contact — the same rule `CompaniesService`
+    already uses), `rep_owner` (Company owner ← Sage `acctmgr`) and
+    `rep_territory` (from `assignRep()` / `data/sales-territory.json`)
+    returned **separately, not reconciled** so the caller can cross-check,
+    `is_distributor` (new `isDistributor()` helper — same
+    `exceptions.distributors` name list `assignRep` already uses, but
+    independent of rep resolution so an ambiguous-rep distributor still
+    reports `true`), and `fields_returned` (which of the above came back
+    non-null). `tracking`, `ship_via`, `freight_acct`, `terms_code`
+    deliberately omitted — no source for them yet.
+  - New files: `apps/api/src/sage/order-defaults.service.ts`,
+    `order-defaults.controller.ts`; registered in `sage.module.ts`.
+  - `packages/db/src/sales-territory.ts`: added `isDistributor()`
+    (exported from `index.ts`), plus tests in `sales-territory.test.ts`.
+  - `packages/db/prisma/schema.prisma`: `@@index([sage100CustomerNo])` on
+    `Company` (was unindexed) — migration
+    `20260806190000_add_sage100_customer_no_index`.
+
+**How and why**
+- Kept this mechanical (returns stored facts, never infers) so it doesn't
+  cross the "intelligence never in the API" line — lives in
+  `apps/api/src/sage/` alongside the rest of the Sage-derived data, even
+  though it never calls SOAP itself; it only reads what the nightly pull
+  already wrote.
+- `rep_owner` and `rep_territory` are intentionally two separate fields
+  rather than one merged "best guess" — the sister app asked to see both
+  so it can reconcile them itself.
+- Response is snake_case to match the sister app's existing
+  `docs/ENRICHMENT.md`-style contracts (its own repo, not this one).
+
+**Deviations**
+- The migration SQL was **hand-written**, not generated by
+  `prisma migrate dev` — the sandbox this was built in had no Docker/DB
+  access (`permission denied` on the Docker socket). The SQL is a single
+  `CREATE INDEX`, matches the format of every other migration in the
+  repo, and was verified by `tsc --noEmit` + `bun test`, but it has never
+  actually run against a live database. **Run `db:migrate` (or
+  `db:deploy` in prod) and confirm it applies cleanly before depending on
+  it.**
+- No route/API-key guard test was added (the existing `/internal/sync/*`
+  controllers don't have unit tests for their guards either — the closest
+  precedent, `sage-session-lost.spec.ts`, tests a pure function, not the
+  controller). Worth adding an e2e/integration test once there's a DB to
+  test against.
+
+**What's next**
+- Run the new migration against a real Postgres and generate the Prisma
+  client (`db:generate`) — confirm `sage100CustomerNo` index applies and
+  nothing else drifted.
+- Commit and deploy; set `CRM_API_KEY` in Railway (generate with
+  `openssl rand -hex 32`) and hand it to the sister app alongside the
+  route docs already given to that team in chat.
+- Smoke-test both routes against a couple of known Mobile Mark
+  `sage100CustomerNo` values once deployed.
+- Longer term (design-only, §7 of the plan): mapping `tracking`/AP email/
+  `ship_via`/freight from Sage snapshots or Sage 100 ODBC, if that access
+  ever lands.
+
+### 2026-08-06 — Sage cron false-green + daily-tasks empty URL
+
+**What was completed**
+- Diagnosed Railway `cron-sage` logs: Aug 5 06:00 pull
+  `failed` / `You are not logged on.` while Railway showed success
+  (HTTP 200). Aug 6 06:04 + manual smoke `ok` (184 companies; 0 deals
+  in window — Overview pulse can look stale when only companies move).
+- Code (prod-deployed via Railway upload; **git commit still needed**):
+  - `isSageSessionLost` + incremental restart on session drop
+    (`sage.constants.ts`, `sage-pull.service.ts`, `sage-soap.client.ts`)
+  - `/internal/sync/sage` → **503** on hard failure
+    (`sage-sync.controller.ts`) so `curl -f` fails the cron
+  - `test/sage-session-lost.spec.ts`
+- Railway cron start commands: `cron-sage` + `cron-daily-tasks` now
+  call `https://api.mobilemarksalestool.com/...` literally.
+  `cron-daily-tasks` had been failing with curl error 3 (empty host)
+  despite `API_PUBLIC_URL` showing in variables; `?force=1` smoke OK.
+
+**How and why**
+- Session-stateful Sage `next` cannot resume after kick/timeout —
+  restart the changed-set walk (idempotent upserts). Make cron health
+  match pull outcome. Unblock daily-tasks by not relying on empty
+  runtime expansion of `$API_PUBLIC_URL`.
+
+**Deviations**
+- Prod api deployed from local tree without a git commit/push — commit
+  the Sage files so GitHub and Railway stay aligned.
+
+**What's next**
+- Commit + push the Sage sync resilience changes.
+- Watch tonight’s `cron-sage` (06:00 UTC): expect green only when
+  `outcome:ok`; red + 503 if session drops after restart budget.
+- Confirm `cron-daily-tasks` at next 14:00/15:00 UTC run.
 
 ### 2026-08-05 — Webform Screening prod wiring (Entra + cron)
 

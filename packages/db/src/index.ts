@@ -45,6 +45,7 @@ export {
 	assignRep,
 	clearSalesTerritoryCache,
 	inferGeoFromForm,
+	isDistributor,
 	loadSalesTerritory,
 	type TerritoryMap,
 } from "./sales-territory";

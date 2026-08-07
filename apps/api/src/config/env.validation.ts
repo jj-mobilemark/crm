@@ -192,6 +192,20 @@ export class EnvironmentVariables {
 	@IsOptional()
 	@IsUrl({ require_tld: false })
 	APP_PUBLIC_URL?: string;
+
+	/**
+	 * `X-API-Key` guard on `GET /company/:masCustomerNo/order-defaults` (and
+	 * its `/company/order-defaults?name=&zip=` fallback). External read-only
+	 * lookup for the sister PO-processing app — see
+	 * `docs/plans/sage-crm-sync.md` §7. Unset refuses the route rather than
+	 * running unguarded. At least 16 characters.
+	 */
+	@IsOptional()
+	@IsString()
+	@MinLength(16, {
+		message: "CRM_API_KEY must be at least 16 characters.",
+	})
+	CRM_API_KEY?: string;
 }
 
 export function validateEnv(

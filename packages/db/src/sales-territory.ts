@@ -232,6 +232,25 @@ export function assignRep(
 	return null;
 }
 
+/**
+ * Is this company on the distributor exception list, independent of rep
+ * resolution? Used for the `is_distributor` field on the order-defaults
+ * endpoint — a distributor can still resolve to a shared/ambiguous rep
+ * (`rep_codes` with more than one entry), so this cannot be derived from
+ * `assignRep`'s return value alone.
+ */
+export function isDistributor(
+	map: TerritoryMap,
+	companyName?: string | null,
+): boolean {
+	const company = companyName?.trim() ?? "";
+	if (!company) return false;
+
+	return map.exceptions.distributors.some((account) =>
+		nameMatches(company, account, account.name.length <= 4),
+	);
+}
+
 const US_STATE_NAMES: Record<string, string> = {
 	alabama: "AL",
 	alaska: "AK",
