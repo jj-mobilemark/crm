@@ -671,55 +671,34 @@ state — which is what makes the throttled, many-tick, resumable design safe.
 
 ---
 
-## 7. Order-defaults endpoint — feasibility (2026-08-06, no code yet)
+## 7. Order-defaults endpoint (BUILT 2026-08-06; `terms_code` 2026-08-06)
 
-A sister project (quoting/doc-scanner app) drafted a brief asking for an
-`order-defaults` lookup — 6 "stamp" fields it cannot fill today: `tracking`
-(shipment-notice email), `ship_date`, `ship_via`, `attention`, `phone`,
-`email`. Its brief proposes a new "replica-DB light app" as one candidate
-source. This CRM's Sage pull (§6, DONE) already **is** that replica, so it is
-worth recording what this repo could answer today versus what needs new
-mapping, before any endpoint gets built.
+External read-only lookup for the sister PO-processing / doc-scanner app.
+Routes: `GET /company/:masCustomerNo/order-defaults` and
+`GET /company/order-defaults?name=&zip=`. Auth: `X-API-Key` → `CRM_API_KEY`.
 
-### 7.1 What already maps cleanly
+### 7.1 What the response returns today
 
 | Stamp field | Source | Fit |
 | --- | --- | --- |
-| Key `mas_customer_no` | `Company.sage100CustomerNo` (+ `sage100ArDivisionNo`) | Exact match, but **no index today** — add one before this is a hot lookup path |
+| Key `mas_customer_no` | `Company.sage100CustomerNo` (+ `sage100ArDivisionNo`) | Exact match; indexed (`@@index([sage100CustomerNo])`) |
 | Key fallback name+ZIP | `Company.name` + `Company.postalCode` | Works, but one address per company (no bill-to/ship-to split) |
-| `attention` | `Company.primaryContactId` → `Contact` (set from Sage `primarypersonid`) | Whatever Sage marked primary, not a verified "purchasing" role |
+| `attention` | `Company.primaryContactId` → `Contact` (Sage `primarypersonid`) | Sage primary, not a verified "purchasing" role |
 | `phone` / `email` | `Contact.phone` / `Contact.email` | Same primary-contact caveat |
-| rep | `Company.ownerId` (← `acctmgr`) or `assignRep()` (`data/sales-territory.json`) | Two independent, already-built sources |
-| distributor (`*D` suffix) | `data/sales-territory.json` `exceptions.distributors[]` | Name-list heuristic, not a Sage/Company field |
+| `terms_code` | `SageRecordSnapshot.payload.company.mas_termscode` | Sage 100 code string (e.g. `"03"`); ~4.8k of ~14k companies filled |
+| rep | `rep_owner` (`Company.owner` ← `acctmgr`) **and** `rep_territory` (`assignRep`) | Returned separately so the caller can reconcile |
+| distributor (`*D` suffix) | `isDistributor()` on `data/sales-territory.json` | Name-list heuristic, not a Sage/Company field |
 
-### 7.2 What is missing
+### 7.2 Still missing
 
 - `tracking` (shipment-notice email) and an AP/billing email — only one
   `Company.email` exists; Sage often puts this kind of text in notes/website
-  rather than a clean field (see the `<>`-stripping and "NET 30 in website"
-  notes elsewhere in this doc).
+  rather than a clean field.
 - `ship_via` and a freight account number — not mapped from Sage anywhere,
   not columns on `Company` or `Deal`.
 - `ship_date` — order-level, not a company default. Needs Sage 100
-  `MasHeader` / `MasOrderDetailHistory` (§4 item 8), and the SOAP probe for
-  those entities already failed once.
-- `terms_code` — currently dropped as unmapped free text, not stored as a
-  code.
-- A real distributor column — today it is a name list, not Sage `type` or a
-  `Company` boolean.
+  `MasHeader` / `MasOrderDetailHistory` (§4 item 8).
 
-Some of this may already be sitting unused in `SageRecordSnapshot` (39.5k raw
-payloads from the full pull) — worth grepping a few real company/person
-snapshots for ship-via/freight/AP-email-shaped keys before assuming Sage has
-none of it.
-
-### 7.3 If this gets built
-
-Mechanical only (fits the "intelligence never in the API" rule — this would
-return stored facts, never a guess): a new route under `apps/api/src/sage/`,
-lookup by `sage100CustomerNo` → name+ZIP fallback, partial response with
-explicit `null`s for fields not yet sourced. No `X-API-Key` auth pattern
-exists in this repo yet; the closest precedent is the `Authorization: Bearer
-$CRON_SECRET` guard already used on `/internal/sync/*` — a dedicated new
-secret (not the cron one) would be the right scope for an external caller.
-Not scheduled; recorded here so the next agent doesn't re-derive it.
+`terms_code` is **not** a first-class `Company` column yet — order-defaults
+reads it from the snapshot. Promote to a column later if the UI needs to
+show/sort it.

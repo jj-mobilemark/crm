@@ -11,6 +11,7 @@ import { InjectDatabase } from "../database/database.constants";
 const COMPANY_SELECT = {
 	id: true,
 	name: true,
+	sageCrmCompanyId: true,
 	sage100CustomerNo: true,
 	sage100ArDivisionNo: true,
 	stateCode: true,
@@ -39,6 +40,8 @@ export type OrderDefaults = {
 	attention: string | null;
 	phone: string | null;
 	email: string | null;
+	/** Sage 100 terms code from the company SOAP snapshot (`mas_termscode`). */
+	terms_code: string | null;
 	rep_owner: { name: string | null; email: string | null } | null;
 	rep_territory: {
 		rep_code: string;
@@ -54,8 +57,8 @@ export type OrderDefaults = {
  * Order-defaults lookup for external callers (the doc-scanner / PO-processing
  * sister app). Read-only, mechanical: it returns exactly what this CRM's Sage
  * pull already has, never a guess. See `docs/plans/sage-crm-sync.md` §7 for
- * what is and is not sourced yet (tracking/AP email, ship_via, freight,
- * terms_code are out of scope for v1 — no columns exist for them).
+ * what is and is not sourced yet (tracking/AP email, ship_via, freight are
+ * still out of scope — no columns / no snapshot field for them yet).
  */
 @Injectable()
 export class OrderDefaultsService {
@@ -82,10 +85,10 @@ export class OrderDefaultsService {
 		return this.toOrderDefaults(company, "name_zip");
 	}
 
-	private toOrderDefaults(
+	private async toOrderDefaults(
 		company: CompanyRow,
 		matchedBy: OrderDefaults["matched_by"],
-	): OrderDefaults {
+	): Promise<OrderDefaults> {
 		const contact = company.primaryContact ?? company.contacts[0] ?? null;
 		const attention = contact
 			? [contact.firstName, contact.lastName].filter(Boolean).join(" ")
@@ -98,6 +101,10 @@ export class OrderDefaultsService {
 			countryCode: company.countryCode,
 		});
 
+		const termsCode = await this.termsCodeFromSnapshot(
+			company.sageCrmCompanyId,
+		);
+
 		const result: OrderDefaults = {
 			matched_by: matchedBy,
 			company_id: company.id,
@@ -107,6 +114,7 @@ export class OrderDefaultsService {
 			attention: attention || null,
 			phone: contact?.phone ?? null,
 			email: contact?.email ?? null,
+			terms_code: termsCode,
 			rep_owner: company.owner
 				? { name: company.owner.name, email: company.owner.email }
 				: null,
@@ -127,6 +135,7 @@ export class OrderDefaultsService {
 				["attention", result.attention],
 				["phone", result.phone],
 				["email", result.email],
+				["terms_code", result.terms_code],
 				["rep_owner", result.rep_owner],
 				["rep_territory", result.rep_territory],
 			] as const
@@ -138,5 +147,33 @@ export class OrderDefaultsService {
 		result.fields_returned = fieldsReturned;
 
 		return result;
+	}
+
+	/**
+	 * Sage stores the AR terms code on the company SOAP record as
+	 * `mas_termscode` (e.g. "03"). We never promoted it to a Company column,
+	 * but the nightly pull keeps it in `SageRecordSnapshot` — read it from
+	 * there. Null when there is no Sage id, no snapshot, or an empty code.
+	 */
+	private async termsCodeFromSnapshot(
+		sageCrmCompanyId: string | null,
+	): Promise<string | null> {
+		if (!sageCrmCompanyId) return null;
+
+		const snapshot = await this.db.sageRecordSnapshot.findUnique({
+			where: {
+				entity_sageId: { entity: "company", sageId: sageCrmCompanyId },
+			},
+			select: { payload: true },
+		});
+		if (!snapshot) return null;
+
+		const payload = snapshot.payload as {
+			company?: { mas_termscode?: unknown };
+		};
+		const raw = payload.company?.mas_termscode;
+		if (typeof raw !== "string") return null;
+		const trimmed = raw.trim();
+		return trimmed.length > 0 ? trimmed : null;
 	}
 }

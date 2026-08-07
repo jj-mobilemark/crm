@@ -25,25 +25,17 @@ it before stopping. The rules for maintaining it live in `AGENTS.md`
 
 - **Git**: `origin` = `jj-mobilemark/crm` (fork); `upstream` = `trycompai/crm`
   (read-only). Work on `main`.
-- **Order-defaults endpoint (DONE local 2026-08-06, not yet deployed)**:
-  `GET /company/:masCustomerNo/order-defaults` (+ `GET
-  /company/order-defaults?name=&zip=` fallback) for the sister
-  PO-processing app — v1 scope agreed over chat, not a written brief.
-  `X-API-Key` guard on `CRM_API_KEY` (not `CRON_SECRET` — different
-  caller/scope). Returns `attention`/`phone`/`email` (primary contact,
-  fallback most-recent), `rep_owner` + `rep_territory` (labeled
-  separately, not reconciled here), `is_distributor` (name-list
-  heuristic) — all `null`-safe, `fields_returned` lists what came back.
-  Deliberately excludes `tracking`/`ship_via`/`freight`/`terms_code` (no
-  columns exist yet). Files: `apps/api/src/sage/order-defaults.{service,
-  controller}.ts`, `sage.module.ts`; `isDistributor` added to
-  `packages/db/src/sales-territory.ts` (+ export + test); new index
-  `Company.sage100CustomerNo` (migration
-  `20260806190000_add_sage100_customer_no_index` — **hand-written SQL,
-  not run through `prisma migrate dev`**, sandbox had no DB access; apply
-  with `db:migrate`/`db:deploy` before relying on it); `CRM_API_KEY` in
-  `env.validation.ts` + `.env.example`. Plan: `docs/plans/sage-crm-sync.md`
-  §7.
+- **Order-defaults endpoint (DONE prod 2026-08-06; `terms_code` added
+  same day)**: `GET /company/:masCustomerNo/order-defaults` (+
+  `GET /company/order-defaults?name=&zip=` fallback) for the sister
+  PO-processing app. `X-API-Key` → `CRM_API_KEY`. Returns
+  `attention`/`phone`/`email` (primary contact, fallback most-recent),
+  `terms_code` (from `SageRecordSnapshot.payload.company.mas_termscode`,
+  ~4.8k filled), `rep_owner` + `rep_territory` (labeled separately),
+  `is_distributor` — all `null`-safe, `fields_returned` lists what came
+  back. Still excludes `tracking`/`ship_via`/`freight`. Index
+  `Company.sage100CustomerNo` applied on prod deploy. Plan:
+  `docs/plans/sage-crm-sync.md` §7.
 - **Sage cron health (DONE prod 2026-08-06)**: Nightly `cron-sage` **is**
   running (`0 6 * * *` UTC = 1:00 AM CDT). Aug 5 06:00 failed mid-pull
   (`You are not logged on.`) but Railway stayed green (HTTP 200 with
@@ -335,6 +327,31 @@ it before stopping. The rules for maintaining it live in `AGENTS.md`
 ---
 
 ## Work log
+
+### 2026-08-06 — Order-defaults: add `terms_code` from Sage snapshot
+
+**What was completed**
+- `GET /company/.../order-defaults` now returns `terms_code` (Sage 100
+  AR code string, e.g. `"03"`) read from
+  `SageRecordSnapshot.payload.company.mas_termscode` via
+  `Company.sageCrmCompanyId`. No new Prisma column — the nightly pull
+  already stores it (~4.8k of ~14k company snapshots filled locally).
+- Files: `apps/api/src/sage/order-defaults.service.ts`; plan §7 and
+  Current state updated (`docs/plans/sage-crm-sync.md`, `HANDOFF.md`).
+
+**How and why**
+- Sister app asked for terms on the stamp; Sage CRM SOAP already carries
+  `mas_termscode` on company records. Snapshot join is mechanical and
+  avoids a schema migration until the CRM UI needs to show/sort terms.
+
+**Deviations**
+- None vs the snapshot-first approach called out in §7.2. Not promoted
+  to a `Company` column yet.
+
+**What's next**
+- Deploy + smoke a known MAS customer number that has a terms code
+  (e.g. local sample CoWAVE / `0006002` → `03`). Still deferred:
+  `tracking` / `ship_via` / freight.
 
 ### 2026-08-06 — Order-defaults endpoint for the PO-processing sister app
 
