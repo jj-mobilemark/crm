@@ -13,9 +13,11 @@ import {
 import { withSageSession } from "./sage-session";
 import { SageSoapClient } from "./sage-soap.client";
 import {
+	isSageSessionLost,
 	SAGE_INCREMENTAL_OVERLAP_MS,
 	SAGE_MAX_BACKFILL_PAGES,
 	SAGE_PAGE_DELAY_MS,
+	SAGE_SESSION_RESTART_LIMIT,
 	SAGE_TEST_NAME_PREDICATE,
 	SAGE_TEST_OPPORTUNITY_COMPANY_ID,
 	SAGE_UPDATED_COLUMN,
@@ -791,6 +793,7 @@ export class SagePullService {
 
 			let more = true;
 			let firstPage = true;
+			let sessionRestarts = 0;
 			while (more) {
 				if (summary.pages >= SAGE_MAX_BACKFILL_PAGES) break;
 				const page = firstPage
@@ -798,6 +801,31 @@ export class SagePullService {
 					: await this.soap.nextCompanies();
 				firstPage = false;
 				if (page.outcome !== "ok") {
+					// `next` is session-stateful — a dropped session cannot
+					// resume. Re-logon and restart the same changed-set walk
+					// (upserts are idempotent; counters reset for this walk).
+					if (
+						isSageSessionLost(page.reason) &&
+						sessionRestarts < SAGE_SESSION_RESTART_LIMIT
+					) {
+						sessionRestarts += 1;
+						this.logger.warn({
+							message:
+								"Sage session lost mid-incremental company walk; restarting",
+							reason: page.reason,
+							sessionRestarts,
+						});
+						this.soap.dropSession();
+						summary.pages = 0;
+						summary.companiesFetched = 0;
+						summary.companiesUpserted = 0;
+						summary.contactsUpserted = 0;
+						summary.snapshotsWritten = 0;
+						summary.skipped = 0;
+						firstPage = true;
+						more = true;
+						continue;
+					}
 					summary.outcome = page.outcome;
 					summary.reason = page.reason;
 					return summary;
@@ -832,12 +860,28 @@ export class SagePullService {
 			const oppPredicate = since
 				? `${SAGE_UPDATED_COLUMN.opportunity} > '${sageDate(since)}' AND oppo_deleted IS NULL`
 				: "oppo_deleted IS NULL";
-			const opps = await this.backfillOpportunitiesPredicate(
-				summary,
-				oppPredicate,
-				dryRun,
-			);
-			if (opps.outcome !== "ok") {
+			let oppRestarts = 0;
+			for (;;) {
+				const opps = await this.backfillOpportunitiesPredicate(
+					summary,
+					oppPredicate,
+					dryRun,
+				);
+				if (opps.outcome === "ok") break;
+				if (
+					isSageSessionLost(opps.reason) &&
+					oppRestarts < SAGE_SESSION_RESTART_LIMIT
+				) {
+					oppRestarts += 1;
+					this.logger.warn({
+						message:
+							"Sage session lost mid-incremental opportunity walk; restarting",
+						reason: opps.reason,
+						oppRestarts,
+					});
+					this.soap.dropSession();
+					continue;
+				}
 				summary.outcome = opps.outcome;
 				summary.reason = opps.reason;
 				return summary;

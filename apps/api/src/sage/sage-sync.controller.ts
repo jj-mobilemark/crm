@@ -3,6 +3,8 @@ import {
 	ForbiddenException,
 	Get,
 	Headers,
+	HttpException,
+	HttpStatus,
 	Logger,
 	Post,
 	ServiceUnavailableException,
@@ -64,8 +66,32 @@ export class SageSyncController {
 		// flush means another holder still has the lock — next cron picks it up.
 		const pull = await this.pull.runScheduled();
 		const push = await this.push.flush();
-		return { pull, push };
+		const body = { pull, push };
+
+		// Railway cron uses `curl -f` and treats HTTP 2xx as success. A JSON
+		// body with outcome=failed used to look green in the dashboard even
+		// when the Sage session dropped mid-pull — surface those as 503.
+		if (isHardSyncFailure(pull.outcome) || isHardSyncFailure(push.outcome)) {
+			this.logger.error({
+				message: "Sage sync finished with a hard failure",
+				pullOutcome: pull.outcome,
+				pushOutcome: push.outcome,
+				pullReason: "reason" in pull ? pull.reason : undefined,
+				pushReason: "reason" in push ? push.reason : undefined,
+			});
+			throw new HttpException(body, HttpStatus.SERVICE_UNAVAILABLE);
+		}
+
+		return body;
 	}
+}
+
+function isHardSyncFailure(outcome: string): boolean {
+	return (
+		outcome === "failed" ||
+		outcome === "auth-failed" ||
+		outcome === "not-configured"
+	);
 }
 
 /**

@@ -93,3 +93,27 @@ export const SAGE_MAX_BACKFILL_PAGES = 400;
  * re-read.
  */
 export const SAGE_INCREMENTAL_OVERLAP_MS = 60 * 60 * 1000;
+
+/**
+ * How many times an incremental walk may re-logon and restart after Sage
+ * drops the session mid-`next` (e.g. "You are not logged on."). Pagination
+ * is session-stateful, so a lost session cannot resume — only restart.
+ */
+export const SAGE_SESSION_RESTART_LIMIT = 2;
+
+/**
+ * True when a SOAP fault means the Web Services session is gone.
+ *
+ * A second `logon` elsewhere kicks the first; idle timeouts also drop it.
+ * `next` cannot recover — the caller must re-query from the start.
+ */
+export function isSageSessionLost(reason: string | undefined): boolean {
+	if (!reason) return false;
+	const lower = reason.toLowerCase();
+	return (
+		lower.includes("not logged on") ||
+		lower.includes("not logged in") ||
+		lower.includes("session has expired") ||
+		lower.includes("invalid session")
+	);
+}

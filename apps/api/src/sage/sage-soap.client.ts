@@ -77,6 +77,16 @@ export class SageSoapClient {
 	}
 
 	/**
+	 * Drop the cached session id without calling `logoff`.
+	 *
+	 * Use when Sage already said the session is dead ("You are not logged on.")
+	 * so the next call re-logons instead of sending a stale id.
+	 */
+	dropSession(): void {
+		this.sessionId = undefined;
+	}
+
+	/**
 	 * Query an entity with a Sage predicate (DB-column syntax, e.g.
 	 * `comp_name like 'Mobile Mark%'`). Returns the top-level records only —
 	 * nested child collections are dropped (use `queryCompanies` for the
