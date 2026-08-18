@@ -49,6 +49,15 @@ it before stopping. The rules for maintaining it live in `AGENTS.md`
     `crm-api-key.ts`, tests in `test/company-resolve.spec.ts`.
   - order-defaults fields: attention/phone/email/terms_code/rep_*/
     is_distributor. Still no tracking/ship_via/freight. Plan §7.
+- **Overview Closed won $11.9K vs Sage (verified 2026-08-18)**:
+  Number is not a Sage miss. Prod replica has **10 Closed won**
+  with August `closedAt` totaling **$65.5K** (Sage live: 11 /
+  $65.5K). Dashboard "This month" is Aug 1 → **now**, so 6 Won
+  deals whose `closedAt` is still later in August (target close
+  Aug 24–31) are excluded — those 6 are $53.5K. Sage leaves
+  `closed` blank on 156/265 Won deals ($6.7M); pull falls back to
+  `targetclose`. July $524.3K matches Sage. Opp 799 ($14) is Won
+  in Sage, still Proposal locally. TCP proxy used then deleted.
 - **Sage SOAP walk retries (DONE local 2026-08-18)**: Incremental
   pull restarts on session-lost **or** transport blips (timeout /
   unable to connect). SOAP deadline 90s (was 40s). `logon` retries
@@ -346,6 +355,41 @@ it before stopping. The rules for maintaining it live in `AGENTS.md`
 ---
 
 ## Work log
+
+### 2026-08-18 — Verify overview Closed won vs Sage
+
+**What was completed**
+- Live Sage SOAP: 269 Won opportunities. Dashboard-rule August
+  (Sage `closed` → `targetclose` → `opened`): **11 deals / $65,482**.
+  Sage `closed` in August: **1 deal / $5,207**. 156/265 Won deals
+  have no Sage `closed` date ($6.7M). July dashboard-rule:
+  **11 deals / $524,328** (matches the overview prior-period
+  $524.3K).
+- Prod replica (temporary TCP proxy, then deleted): **10 Closed
+  won** with August `closedAt` totaling **$65,468**. Sync high
+  water 2026-08-18 06:04 UTC. Opp 799 is Won in Sage, still
+  Proposal locally ($14).
+- Root cause of the $11.9K card: overview `this_month` is
+  `[month start, now)` in `dashboard.service.ts` `resolveRange`.
+  Four deals with `closedAt` already past (710, 770, 808, 771)
+  sum to $11.9K. Six more Won deals have `closedAt` = Sage
+  target close later this month (691 $23.6K, 789 $8.1K, 793
+  $7.1K, 779 $6.2K, 708 $4.9K, 773 $3.7K).
+
+**How and why**
+- User saw $11.9K Closed won (Everyone / This month) and asked
+  to check Sage. Queried Sage SOAP (Won + `oppo_closed` +
+  August `updateddate`) and prod `Deal` / `SageSyncState`.
+
+**Deviations**
+- None. Investigation only; no code change.
+
+**What's next**
+- If the card should show the full August Won total (~$65K),
+  either count calendar-month `closedAt` through month-end, or
+  stop using `targetclose` as `closedAt` for already-Won Sage
+  deals (use Sage `closed`, else `updateddate`). Do not ship
+  that without a product call — July already matches Sage.
 
 ### 2026-08-18 — Skip upstream v1.14.0; commit Sage walk retries
 
