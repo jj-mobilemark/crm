@@ -3,9 +3,12 @@ import { ConfigService } from "@nestjs/config";
 import type { EnvironmentVariables } from "../config/env.validation";
 import { type SageCredentials, sageCredentials } from "./sage.config";
 import {
+	SAGE_LOGON_RETRY_DELAYS_MS,
+	SAGE_LOGON_TRANSPORT_RETRIES,
 	SAGE_REQUEST_NS,
 	SAGE_REQUEST_TIMEOUT_MS,
 	SAGE_TYPE_NS,
+	isSageTransientFailure,
 	type SageEntity,
 	type SageWriteField,
 } from "./sage.constants";
@@ -349,6 +352,60 @@ export class SageSoapClient {
 			};
 		}
 
+		let lastFailure: SageResult<string> | undefined;
+		for (
+			let attempt = 0;
+			attempt < SAGE_LOGON_TRANSPORT_RETRIES;
+			attempt += 1
+		) {
+			if (attempt > 0) {
+				const delayMs =
+					SAGE_LOGON_RETRY_DELAYS_MS[
+						Math.min(attempt - 1, SAGE_LOGON_RETRY_DELAYS_MS.length - 1)
+					] ?? 10_000;
+				this.logger.warn({
+					message: "Sage logon transport failure; retrying",
+					attempt,
+					delayMs,
+					reason:
+						lastFailure && "reason" in lastFailure
+							? lastFailure.reason
+							: undefined,
+				});
+				await sleep(delayMs);
+			}
+
+			const result = await this.logonOnce();
+			if (result.outcome === "ok") return result;
+
+			// Bad credentials can LOCK the service account — never retry those.
+			if (result.outcome !== "failed" || !result.retryable) {
+				return result;
+			}
+			if (!isSageTransientFailure(result.reason)) {
+				return result;
+			}
+
+			lastFailure = result;
+		}
+
+		return (
+			lastFailure ?? {
+				outcome: "failed",
+				reason: "Sage logon failed after transport retries.",
+				retryable: true,
+			}
+		);
+	}
+
+	private async logonOnce(): Promise<SageResult<string>> {
+		if (!this.creds) {
+			return {
+				outcome: "not-configured",
+				reason: "Sage SOAP is not configured.",
+			};
+		}
+
 		const body =
 			`<tem:logon>` +
 			`<tem:Username>${escapeXml(this.creds.user)}</tem:Username>` +
@@ -565,4 +622,8 @@ function escapeXml(value: string): string {
 		.replace(/>/g, "&gt;")
 		.replace(/"/g, "&quot;")
 		.replace(/'/g, "&apos;");
+}
+
+function sleep(ms: number): Promise<void> {
+	return new Promise((resolve) => setTimeout(resolve, ms));
 }

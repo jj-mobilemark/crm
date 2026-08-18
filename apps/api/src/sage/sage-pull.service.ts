@@ -13,7 +13,7 @@ import {
 import { withSageSession } from "./sage-session";
 import { SageSoapClient } from "./sage-soap.client";
 import {
-	isSageSessionLost,
+	isSageWalkRestartable,
 	SAGE_INCREMENTAL_OVERLAP_MS,
 	SAGE_MAX_BACKFILL_PAGES,
 	SAGE_PAGE_DELAY_MS,
@@ -801,17 +801,18 @@ export class SagePullService {
 					: await this.soap.nextCompanies();
 				firstPage = false;
 				if (page.outcome !== "ok") {
-					// `next` is session-stateful — a dropped session cannot
-					// resume. Re-logon and restart the same changed-set walk
-					// (upserts are idempotent; counters reset for this walk).
+					// `next` is session-stateful — a dropped session or a
+					// mid-page timeout cannot resume. Re-logon and restart
+					// the same changed-set walk (upserts are idempotent;
+					// counters reset for this walk).
 					if (
-						isSageSessionLost(page.reason) &&
+						isSageWalkRestartable(page.reason) &&
 						sessionRestarts < SAGE_SESSION_RESTART_LIMIT
 					) {
 						sessionRestarts += 1;
 						this.logger.warn({
 							message:
-								"Sage session lost mid-incremental company walk; restarting",
+								"Sage walk interrupted mid-incremental company walk; restarting",
 							reason: page.reason,
 							sessionRestarts,
 						});
@@ -869,13 +870,13 @@ export class SagePullService {
 				);
 				if (opps.outcome === "ok") break;
 				if (
-					isSageSessionLost(opps.reason) &&
+					isSageWalkRestartable(opps.reason) &&
 					oppRestarts < SAGE_SESSION_RESTART_LIMIT
 				) {
 					oppRestarts += 1;
 					this.logger.warn({
 						message:
-							"Sage session lost mid-incremental opportunity walk; restarting",
+							"Sage walk interrupted mid-incremental opportunity walk; restarting",
 						reason: opps.reason,
 						oppRestarts,
 					});

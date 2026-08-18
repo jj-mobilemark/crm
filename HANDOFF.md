@@ -24,7 +24,11 @@ it before stopping. The rules for maintaining it live in `AGENTS.md`
 ## Current state (keep this section up to date)
 
 - **Git**: `origin` = `jj-mobilemark/crm` (fork); `upstream` = `trycompai/crm`
-  (read-only). Work on `main`.
+  (read-only). Work on `main`. Last upstream sync is `288d41a` (2 Aug).
+  **Passed on trycompai/crm v1.14.0** (18 Aug) — 150 upstream commits /
+  66 fork commits / 124 overlapping files; org model + colliding Prisma
+  timestamps. Revisit later via cherry-pick (Context.dev people +
+  enrichment queue), not a full merge onto `main`.
 - **Agent auto-enrich OFF by default (DONE local 2026-08-07)**: Sync /
   calendar / daily followups no longer enqueue `AgentTask` unless
   `AGENT_AUTO_ENRICH=true` on **both** `api` and `agent`. Company sheet
@@ -45,17 +49,23 @@ it before stopping. The rules for maintaining it live in `AGENTS.md`
     `crm-api-key.ts`, tests in `test/company-resolve.spec.ts`.
   - order-defaults fields: attention/phone/email/terms_code/rep_*/
     is_distributor. Still no tracking/ship_via/freight. Plan §7.
-- **Sage cron health (DONE prod 2026-08-06)**: Nightly `cron-sage` **is**
-  running (`0 6 * * *` UTC = 1:00 AM CDT). Aug 5 06:00 failed mid-pull
-  (`You are not logged on.`) but Railway stayed green (HTTP 200 with
-  `outcome:failed`). Aug 5 18:26 manual + Aug 6 06:04 + Aug 6 manual
-  smoke all `ok` (companies upserted; deal changes can be 0). Fixes
-  deployed to prod api (Railway upload, **not yet committed to git**):
-  session-loss restart on incremental walk; `/internal/sync/sage`
-  returns **503** on hard failure so `curl -f` marks cron red. Cron
-  start commands for `cron-sage` + `cron-daily-tasks` use literal
-  `https://api.mobilemarksalestool.com` (daily-tasks was failing with
-  empty `$API_PUBLIC_URL` → curl error 3).
+- **Sage SOAP walk retries (DONE local 2026-08-18)**: Incremental
+  pull restarts on session-lost **or** transport blips (timeout /
+  unable to connect). SOAP deadline 90s (was 40s). `logon` retries
+  3× with backoff on transport failure only — never on
+  `auth-failed`. Files: `sage.constants.ts`, `sage-soap.client.ts`,
+  `sage-pull.service.ts`, `test/sage-session-lost.spec.ts`. Needs
+  **api** deploy to land on prod.
+- **Sage cron health (re-checked prod 2026-08-17)**: Nightly
+  `cron-sage` is healthy (`0 6 * * *` UTC = 1:00 AM CDT). Last 7
+  nights (Aug 11–17) all `pull.outcome=ok` / `push.outcome=ok`, no
+  `failed` lines. This morning (Aug 17 06:05 UTC): 183 companies /
+  258 contacts / 0 deals, 441 snapshots, ~37s. Start command uses
+  internal `http://api.railway.internal:3001/internal/sync/sage`
+  (900s timeout, 3 retries). Other crons also green today. Always-on
+  `api` / `app` / `agent` / Postgres RUNNING. `cron-daily-tasks` still
+  uses public `https://api.mobilemarksalestool.com` (9 AM Chicago
+  run sent 0 — `considered:0`, likely nobody opted in).
 - **Webform lead Screening (DONE prod wiring 2026-08-05)**: Customer
   Question emails from shared mailbox → `PendingWebLead`,
   territory-routed into the same Screening list as mail (Web/Mail badge
@@ -336,6 +346,64 @@ it before stopping. The rules for maintaining it live in `AGENTS.md`
 ---
 
 ## Work log
+
+### 2026-08-18 — Skip upstream v1.14.0; commit Sage walk retries
+
+**What was completed**
+- Reviewed trycompai/crm [v1.14.0](https://github.com/trycompai/crm/releases/tag/v1.14.0).
+  Last common commit is still `288d41a`. Full merge would mix 150
+  upstream commits into 66 fork commits (Sage, Trip, Screening,
+  Microsoft, map). Human chose to pass.
+- Sage incremental pull: restart the walk on timeouts / connect
+  failures as well as "You are not logged on." SOAP timeout 90s.
+  Logon retries transport failures 3×; never retries `auth-failed`.
+  Files: `sage.constants.ts`, `sage-soap.client.ts`,
+  `sage-pull.service.ts`, `test/sage-session-lost.spec.ts`.
+
+**How and why**
+- v1.14.0 itself is small (Context.dev people, enrichment queue),
+  but taking the tag also pulls organizations, their Microsoft
+  module, and 3 Prisma timestamps that collide with this fork.
+  Cherry-pick later if those two features are wanted.
+- Nightly Sage already recovered from session loss (`5bb4ce0`);
+  remaining overnight fails were connect/timeout, so the same
+  restart path now covers those.
+
+**Deviations**
+- None from the human call to skip the upgrade.
+
+**What's next**
+- Deploy **api** so prod Sage cron gets the 90s timeout + logon
+  retries. Optional later: cherry-pick upstream #158 / #159 / #160
+  onto a branch; do not merge `v1.14.0` onto `main`.
+
+### 2026-08-17 — Railway cron health check (Sage + others)
+
+**What was completed**
+- Read-only Railway CLI check on project `MM-CRM` / `production`.
+- Confirmed all six cron services exist and are scheduled:
+  `cron-sage`, `cron-microsoft`, `cron-sequences`, `cron-webform`,
+  `cron-followups`, `cron-daily-tasks`.
+- Sage nightly pull/push `ok` for Aug 11–17 inclusive (today:
+  183 companies, 258 contacts, 0 deals). No Sage `failed` logs in
+  the retained window.
+- Other crons hitting 200 in the last day; api 4xx in 24h are
+  scanner 404s only (`/`, `/robots.txt`, `/.git/HEAD`).
+
+**How and why**
+- User asked to verify Sage sync and Railway cron jobs. Used
+  `railway service list`, `deployment list`, and bounded `railway logs`
+  (deploy + HTTP). Sage uses the private API host so edge HTTP logs
+  do not show it; cron-sage deploy logs carry the JSON body.
+
+**Deviations**
+- None. `cron-sage` start command is the internal URL (not the
+  public host noted in the 2026-08-06 handoff). That is working.
+
+**What's next**
+- No Railway action required. Optional: confirm whether anyone has
+  Daily Task Push enabled (`cron-daily-tasks` `considered:0` /
+  `sent:0` at 9 AM Chicago).
 
 ### 2026-08-07 — Agent auto-enrich gated (manual only by default)
 

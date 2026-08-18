@@ -62,7 +62,12 @@ export const SAGE_TEST_NAME_PREDICATE = "comp_name like 'Mobile Mark%'";
  */
 export const SAGE_TEST_OPPORTUNITY_COMPANY_ID = "24";
 
-export const SAGE_REQUEST_TIMEOUT_MS = 40_000;
+/**
+ * Per-request SOAP deadline. On-prem `eware.dll` sometimes stalls past 40s
+ * on hierarchical company pages when the link is slow; 90s still fails
+ * closed, but absorbs the common blips that used to kill the nightly walk.
+ */
+export const SAGE_REQUEST_TIMEOUT_MS = 90_000;
 
 // --- full pull / backfill (docs/plans/sage-crm-sync.md section 6) ------------
 
@@ -96,10 +101,20 @@ export const SAGE_INCREMENTAL_OVERLAP_MS = 60 * 60 * 1000;
 
 /**
  * How many times an incremental walk may re-logon and restart after Sage
- * drops the session mid-`next` (e.g. "You are not logged on."). Pagination
+ * drops the session mid-`next` (e.g. "You are not logged on.") or a
+ * transient transport failure (timeout / unable to connect). Pagination
  * is session-stateful, so a lost session cannot resume — only restart.
  */
 export const SAGE_SESSION_RESTART_LIMIT = 2;
+
+/**
+ * How many times `logon` may retry on a transport failure before giving up.
+ * Never used for `auth-failed` — bad credentials can lock the service account.
+ */
+export const SAGE_LOGON_TRANSPORT_RETRIES = 3;
+
+/** Backoff between transport-failed logon attempts (ms). */
+export const SAGE_LOGON_RETRY_DELAYS_MS = [2_000, 5_000, 10_000] as const;
 
 /**
  * True when a SOAP fault means the Web Services session is gone.
@@ -116,4 +131,33 @@ export function isSageSessionLost(reason: string | undefined): boolean {
 		lower.includes("session has expired") ||
 		lower.includes("invalid session")
 	);
+}
+
+/**
+ * True when the failure is a flaky path to on-prem Sage, not a SOAP fault.
+ *
+ * Bun/`fetch` surfaces connect problems as "Unable to connect…"; aborts
+ * become our own timeout string. These are safe to retry — unlike bad
+ * credentials, which must never be spam-retried.
+ */
+export function isSageTransientFailure(reason: string | undefined): boolean {
+	if (!reason) return false;
+	const lower = reason.toLowerCase();
+	return (
+		lower.includes("unable to connect") ||
+		lower.includes("able to access the url") ||
+		lower.includes("timed out") ||
+		lower.includes("timeout") ||
+		lower.includes("network") ||
+		lower.includes("econnreset") ||
+		lower.includes("econnrefused") ||
+		lower.includes("enotfound") ||
+		lower.includes("socket hang up") ||
+		lower.includes("fetch failed")
+	);
+}
+
+/** Session-lost or transport blip — both need a re-logon + walk restart. */
+export function isSageWalkRestartable(reason: string | undefined): boolean {
+	return isSageSessionLost(reason) || isSageTransientFailure(reason);
 }
