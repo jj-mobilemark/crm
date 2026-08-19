@@ -100,6 +100,14 @@ export const SAGE_MAX_BACKFILL_PAGES = 400;
 export const SAGE_INCREMENTAL_OVERLAP_MS = 60 * 60 * 1000;
 
 /**
+ * How long a local Sage push may keep the next pull from overwriting that
+ * row. Sage often leaves `updateddate` unchanged after our write, so a
+ * forever echo-guard would freeze the local row (opp 799: Won in Sage,
+ * Proposal here). After this window the pull trusts Sage again.
+ */
+export const SAGE_ECHO_TTL_MS = 2 * 60 * 60 * 1000;
+
+/**
  * How many times an incremental walk may re-logon and restart after Sage
  * drops the session mid-`next` (e.g. "You are not logged on.") or a
  * transient transport failure (timeout / unable to connect). Pagination

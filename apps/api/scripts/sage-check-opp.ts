@@ -23,6 +23,9 @@ const FIELDS = [
 	"status",
 	"type",
 	"targetclose",
+	"closed",
+	"opened",
+	"createddate",
 	"updateddate",
 	"assigneduserid",
 	"primarycompanyid",
@@ -103,6 +106,7 @@ async function main() {
 				dealType: true,
 				currency: true,
 				expectedCloseDate: true,
+				closedAt: true,
 				owner: { select: { name: true, email: true } },
 				sagePushedAt: true,
 				sageUpdatedAt: true,
@@ -122,16 +126,24 @@ async function main() {
 			},
 		});
 
-		const outbox = deal
-			? await db.sageOutbox.findMany({
-					where: { entity: "deal", localId: deal.id },
-					orderBy: { updatedAt: "desc" },
-					take: 10,
-				})
-			: [];
+		const [outbox, snapshot] = deal
+			? await Promise.all([
+					db.sageOutbox.findMany({
+						where: { entity: "deal", localId: deal.id },
+						orderBy: { updatedAt: "desc" },
+						take: 10,
+					}),
+					db.sageRecordSnapshot.findUnique({
+						where: {
+							entity_sageId: { entity: "opportunity", sageId: oppId },
+						},
+						select: { payload: true, updatedAt: true },
+					}),
+				])
+			: [[], null];
 
 		console.log("=== LOCAL ===");
-		console.log(JSON.stringify({ deal, outbox }, null, 2));
+		console.log(JSON.stringify({ deal, outbox, snapshot }, null, 2));
 	} catch (err) {
 		console.log("=== LOCAL ===");
 		console.log(

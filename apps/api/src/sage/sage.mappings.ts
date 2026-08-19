@@ -1,7 +1,10 @@
 import { DealStage } from "@crm/db";
 import { domainFromEmail, normalizeDomain } from "../companies/domain";
 import { certaintyForStage } from "../deals/deal-stage";
-import type { SageWriteField } from "./sage.constants";
+import {
+	SAGE_ECHO_TTL_MS,
+	type SageWriteField,
+} from "./sage.constants";
 import type { SageCompanyTree, SageRecord } from "./sage-xml";
 
 /**
@@ -226,13 +229,18 @@ export function mapOpportunity(record: SageRecord): MappedOpportunity | null {
  * True when a Sage `updateddate` is at/before our last push — i.e. the change
  * we are about to pull is our own write coming back. The pull should skip
  * overwriting local mapped fields in that case (local wins).
+ *
+ * The skip expires after {@link SAGE_ECHO_TTL_MS}. Sage often does not bump
+ * `updateddate` after our push, so a permanent guard would freeze the row.
  */
 export function isPushEcho(
 	sageUpdatedAt: Date | null | undefined,
 	sagePushedAt: Date | null | undefined,
+	now: Date = new Date(),
 ): boolean {
 	if (!sageUpdatedAt || !sagePushedAt) return false;
-	return sageUpdatedAt.getTime() <= sagePushedAt.getTime();
+	if (sageUpdatedAt.getTime() > sagePushedAt.getTime()) return false;
+	return now.getTime() - sagePushedAt.getTime() < SAGE_ECHO_TTL_MS;
 }
 
 /**

@@ -223,7 +223,7 @@ type ResolvedRange = {
 	label: string;
 	/** Inclusive start of the closed-won / performance window. */
 	start: Date;
-	/** Exclusive end of the window (usually "now", or the day after `to`). */
+	/** Exclusive end of the window (now, month-end for This month, or the day after `to`). */
 	end: Date;
 	previousStart: Date;
 	previousEnd: Date;
@@ -236,7 +236,10 @@ type ResolvedRange = {
  * Open pipeline and forecast ignore this. A short preset (Today) still gets a
  * previous period of the same length so the delta label stays comparable.
  */
-function resolveRange(input: DashboardSummaryInput, now: Date): ResolvedRange {
+export function resolveRange(
+	input: DashboardSummaryInput,
+	now: Date,
+): ResolvedRange {
 	const end = now;
 
 	if (
@@ -304,13 +307,17 @@ function resolveRange(input: DashboardSummaryInput, now: Date): ResolvedRange {
 	}
 
 	if (input.range === "this_month") {
+		// Full calendar month, not month-to-date. Sage often leaves `closed`
+		// blank, so Won deals are dated by target close — those dates still
+		// sit later this month and must count in Closed won.
 		const start = monthStart(now, 0);
-		const duration = Math.max(end.getTime() - start.getTime(), DAY_MS);
+		const monthEnd = monthStart(now, 1);
+		const duration = Math.max(monthEnd.getTime() - start.getTime(), DAY_MS);
 		return {
 			preset: "this_month",
 			label: "This month",
 			start,
-			end,
+			end: monthEnd,
 			previousStart: monthStart(now, -1),
 			previousEnd: start,
 			windowDays: Math.max(1, Math.ceil(duration / DAY_MS)),

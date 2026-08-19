@@ -516,10 +516,26 @@ describe("sageStageForPush / sageUserIdForEmail / isPushEcho", () => {
 
 	it("treats a Sage update at/before sagePushedAt as our own echo", () => {
 		const pushed = new Date("2026-08-03T12:00:00Z");
-		expect(isPushEcho(new Date("2026-08-03T11:59:00Z"), pushed)).toBe(true);
-		expect(isPushEcho(new Date("2026-08-03T12:00:00Z"), pushed)).toBe(true);
-		expect(isPushEcho(new Date("2026-08-03T12:01:00Z"), pushed)).toBe(false);
-		expect(isPushEcho(null, pushed)).toBe(false);
-		expect(isPushEcho(pushed, null)).toBe(false);
+		const shortlyAfter = new Date("2026-08-03T12:05:00Z");
+		expect(
+			isPushEcho(new Date("2026-08-03T11:59:00Z"), pushed, shortlyAfter),
+		).toBe(true);
+		expect(
+			isPushEcho(new Date("2026-08-03T12:00:00Z"), pushed, shortlyAfter),
+		).toBe(true);
+		expect(
+			isPushEcho(new Date("2026-08-03T12:01:00Z"), pushed, shortlyAfter),
+		).toBe(false);
+		expect(isPushEcho(null, pushed, shortlyAfter)).toBe(false);
+		expect(isPushEcho(pushed, null, shortlyAfter)).toBe(false);
+	});
+
+	it("stops treating a stale Sage timestamp as an echo after the TTL", () => {
+		const pushed = new Date("2026-08-03T12:00:00Z");
+		const sageStamp = new Date("2026-08-03T11:59:00Z");
+		const almostTwoHours = new Date("2026-08-03T13:59:59Z");
+		const twoHoursLater = new Date("2026-08-03T14:00:00Z");
+		expect(isPushEcho(sageStamp, pushed, almostTwoHours)).toBe(true);
+		expect(isPushEcho(sageStamp, pushed, twoHoursLater)).toBe(false);
 	});
 });

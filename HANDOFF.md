@@ -49,15 +49,15 @@ it before stopping. The rules for maintaining it live in `AGENTS.md`
     `crm-api-key.ts`, tests in `test/company-resolve.spec.ts`.
   - order-defaults fields: attention/phone/email/terms_code/rep_*/
     is_distributor. Still no tracking/ship_via/freight. Plan §7.
-- **Overview Closed won $11.9K vs Sage (verified 2026-08-18)**:
-  Number is not a Sage miss. Prod replica has **10 Closed won**
-  with August `closedAt` totaling **$65.5K** (Sage live: 11 /
-  $65.5K). Dashboard "This month" is Aug 1 → **now**, so 6 Won
-  deals whose `closedAt` is still later in August (target close
-  Aug 24–31) are excluded — those 6 are $53.5K. Sage leaves
-  `closed` blank on 156/265 Won deals ($6.7M); pull falls back to
-  `targetclose`. July $524.3K matches Sage. Opp 799 ($14) is Won
-  in Sage, still Proposal locally. TCP proxy used then deleted.
+- **Overview Closed won through month-end + opp 799 (DONE 2026-08-18)**:
+  "This month" now counts the full calendar month, not month-to-date
+  (`resolveRange` in `dashboard.service.ts`). Echo-guard TTL 2h —
+  Sage often does not bump `updateddate` after our push, which froze
+  rows. Prod repair from snapshots: **71 deals** remapped (incl.
+  opp 799 Proposal → Closed won). Open pipeline was inflated by
+  Sage Won/Lost rows left on open stages after the Aug 4 sageStage
+  migration. Needs **api** deploy for the month-end card. TCP proxy
+  used then deleted.
 - **Sage SOAP walk retries (DONE local 2026-08-18)**: Incremental
   pull restarts on session-lost **or** transport blips (timeout /
   unable to connect). SOAP deadline 90s (was 40s). `logon` retries
@@ -355,6 +355,39 @@ it before stopping. The rules for maintaining it live in `AGENTS.md`
 ---
 
 ## Work log
+
+### 2026-08-18 — Closed won full month + repair Sage stage drift
+
+**What was completed**
+- Overview "This month" now spans the calendar month (1st → next
+  1st), so Won deals dated later this month count. File:
+  `apps/api/src/dashboard/dashboard.service.ts`. Test:
+  `apps/api/test/dashboard-range.spec.ts`.
+- Echo-guard TTL 2 hours (`SAGE_ECHO_TTL_MS`). Sage often leaves
+  `updateddate` unchanged after our push; a permanent skip froze
+  local rows. Files: `sage.constants.ts`, `sage.mappings.ts`,
+  `test/sage-mappings.spec.ts`.
+- Prod repair from snapshots: **71 deals** remapped to match Sage
+  status (incl. opp **799** Proposal → Closed won). Script:
+  `apps/api/scripts/sage-repair-stale-echo.ts`. Second dry-run:
+  drifted=0. TCP proxy created then deleted.
+
+**How and why**
+- User asked to count the rest of the month and to fix 799.
+  799: Sarah marked Closed won in the app (3 Aug 20:16 UTC),
+  push succeeded, Sage `updateddate` stayed 15:16, nightly pull
+  echo-skipped, Aug 4 sageStage migration rewrote stage to Quote.
+  Same class: Sage status Won/Lost still sitting on open local
+  stages.
+
+**Deviations**
+- Repaired all 71 drifted rows, not only 799 — they were the
+  same mapping error.
+
+**What's next**
+- Deploy **api** so "This month" Closed won uses the month-end
+  window (~$65.5K for August, plus 799). Data repair is already
+  on prod Postgres.
 
 ### 2026-08-18 — Verify overview Closed won vs Sage
 
