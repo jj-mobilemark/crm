@@ -23,6 +23,13 @@ it before stopping. The rules for maintaining it live in `AGENTS.md`
 
 ## Current state (keep this section up to date)
 
+- **Overview Everyone activity hides others' mail (DONE local 2026-08-21)**:
+  Recent activity on `scope=everyone` no longer dumps every synced
+  Outlook/Gmail thread and calendar event. Team notes / calls / tasks /
+  stage changes stay; mailbox rows stay with the signed-in user (same
+  rule as overdue tasks). Files: `dashboard.service.ts`
+  `recentActivityWhere`, `dashboard-summary.tsx`,
+  `test/dashboard-range.spec.ts`. **Needs api + app deploy.**
 - **Git**: `origin` = `jj-mobilemark/crm` (fork); `upstream` = `trycompai/crm`
   (read-only). Work on `main`. Last upstream sync is `288d41a` (2 Aug).
   **Passed on trycompai/crm v1.14.0** (18 Aug) — 150 upstream commits /
@@ -355,6 +362,32 @@ it before stopping. The rules for maintaining it live in `AGENTS.md`
 ---
 
 ## Work log
+
+### 2026-08-21 — Hide other people's mail on Everyone overview
+
+**What was completed**
+- Overview Recent activity on `scope=everyone` no longer lists other
+  reps' synced email subjects or calendar titles. Filter:
+  `recentActivityWhere` in `apps/api/src/dashboard/dashboard.service.ts`.
+  Copy in `apps/app/app/(app)/dashboard-summary.tsx`. Tests in
+  `apps/api/test/dashboard-range.spec.ts`. Dropped `body` from this
+  payload so snippets never ride the overview.
+
+**How and why**
+- Mail sync projects one `Activity` per thread (`emailThreadId`) and
+  per calendar event (`calendarEventId`). Everyone was `where: {}`, so
+  the latest 12 rows were almost all other people's inbox. Everyone
+  means team pipeline, not shared mailboxes. Overdue tasks already
+  stayed on the acting user.
+
+**Deviations**
+- None. Company / contact timelines still show matched mail for that
+  record (account history, not a workspace dump).
+
+**What's next**
+- Deploy **api** + **app**. Confirm
+  `/?scope=everyone&range=this_month` Recent activity shows team CRM
+  rows plus your own mail only.
 
 ### 2026-08-18 — Closed won full month + repair Sage stage drift
 

@@ -1,5 +1,8 @@
 import { describe, expect, it } from "bun:test";
-import { resolveRange } from "../src/dashboard/dashboard.service";
+import {
+	recentActivityWhere,
+	resolveRange,
+} from "../src/dashboard/dashboard.service";
 
 describe("resolveRange this_month", () => {
 	it("spans the full calendar month, not month-to-date", () => {
@@ -26,5 +29,22 @@ describe("resolveRange this_month", () => {
 
 		expect(laterThisMonth >= range.start).toBe(true);
 		expect(laterThisMonth < range.end).toBe(true);
+	});
+});
+
+describe("recentActivityWhere", () => {
+	it("scopes Me to the acting user", () => {
+		expect(recentActivityWhere(true, "user-1")).toEqual({
+			createdById: "user-1",
+		});
+	});
+
+	it("keeps other people's CRM log on Everyone, not their mailbox", () => {
+		expect(recentActivityWhere(false, "user-1")).toEqual({
+			OR: [
+				{ createdById: "user-1" },
+				{ emailThreadId: null, calendarEventId: null },
+			],
+		});
 	});
 });

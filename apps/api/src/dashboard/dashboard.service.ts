@@ -218,6 +218,27 @@ function quarterStart(from: Date, offset: number): Date {
 	return new Date(year, quarter * 3, 1);
 }
 
+/**
+ * Recent activity on the overview.
+ *
+ * `"me"` is only the acting user. `"everyone"` is the team CRM log — notes,
+ * calls, tasks, stage changes — plus the acting user's own mailbox. Synced
+ * email threads and calendar events stay with the person whose inbox they
+ * came from. Same idea as overdue tasks: nobody else's mail is theirs to read.
+ */
+export function recentActivityWhere(
+	mine: boolean,
+	actingUserId: string,
+): Prisma.ActivityWhereInput {
+	if (mine) return { createdById: actingUserId };
+	return {
+		OR: [
+			{ createdById: actingUserId },
+			{ emailThreadId: null, calendarEventId: null },
+		],
+	};
+}
+
 type ResolvedRange = {
 	preset: DashboardSummaryInput["range"];
 	label: string;
@@ -477,14 +498,13 @@ export class DashboardService {
 				},
 			}),
 			this.db.activity.findMany({
-				where: mine ? { createdById: actingUserId } : {},
+				where: recentActivityWhere(mine, actingUserId),
 				orderBy: [{ createdAt: "desc" }],
 				take: 12,
 				select: {
 					id: true,
 					type: true,
 					subject: true,
-					body: true,
 					createdAt: true,
 					meta: true,
 					createdBy: { select: OWNER_SELECT },
