@@ -23,18 +23,13 @@ it before stopping. The rules for maintaining it live in `AGENTS.md`
 
 ## Current state (keep this section up to date)
 
-- **Sage Deal.currency id leak (DONE local 2026-09-09)**: Sage SOAP
-  `opportunity.currency` is a lookup id. Prod had ~78/564 deals with
-  the literal `"1"` (rest `"USD"`), which Power BI sliced as both.
-  Mapper now writes id `1` → `"USD"` (only confirmed Sage currency
-  id; no FX). Incremental sync rematerializes leaked ids on existing
-  rows before the SOAP walk so the next cron fixes them — not a
-  one-off SQL UPDATE. Files: `sage.mappings.ts`, `sage-pull.service.ts`,
-  `test/sage-mappings.spec.ts`, `docs/plans/sage-crm-sync.md` §3.3.
-  **Needs api deploy**, then nightly `cron-sage` or a manual
-  `/internal/sync/sage`. Confirm:
-  `SELECT currency, count(*) FROM deal GROUP BY 1` has no `'1'`.
-  Do not change MM-Analytics; the warehouse copies currency as-is.
+- **Sage Deal.currency id leak (DONE prod 2026-09-09)**: Mapper writes
+  Sage lookup id `1` → `"USD"`. Incremental sync rematerializes leaked
+  ids. **api** `b2761aa` is live. Manual Sage sync ran (SSH into `api`,
+  same `/internal/sync/sage` route as `cron-sage`; a from-source
+  redeploy of `cron-sage` finished without hitting the API). Confirm:
+  `SELECT currency, count(*) FROM deal GROUP BY 1` → **USD 565**, no
+  `'1'`. MM-Analytics unchanged.
 - **Overview Everyone activity hides others' mail (DONE local 2026-08-21)**:
   Recent activity on `scope=everyone` no longer dumps every synced
   Outlook/Gmail thread and calendar event. Team notes / calls / tasks /
@@ -410,11 +405,9 @@ it before stopping. The rules for maintaining it live in `AGENTS.md`
   also become `USD` so a Sage id cannot land on the column again.
 
 **What's next**
-- Deploy **api**. Then wait for nightly `cron-sage` (`0 6 * * *`
-  UTC) or hit `GET /internal/sync/sage`. Confirm:
-  `SELECT currency, count(*) FROM deal GROUP BY 1` does not
-  contain `'1'`. Warehouse / MM-Analytics needs no change — it
-  copies `deal.currency` as-is and only warn-tests USD.
+- Done on prod. Warehouse / MM-Analytics needs no change — it copies
+  `deal.currency` as-is and only warn-tests USD. Nightly `cron-sage`
+  will keep using the mapper.
 
 ### 2026-09-03 — Sage cron health re-check (Railway logs + prod DB)
 
