@@ -23,6 +23,18 @@ it before stopping. The rules for maintaining it live in `AGENTS.md`
 
 ## Current state (keep this section up to date)
 
+- **Sage Deal.currency id leak (DONE local 2026-09-09)**: Sage SOAP
+  `opportunity.currency` is a lookup id. Prod had ~78/564 deals with
+  the literal `"1"` (rest `"USD"`), which Power BI sliced as both.
+  Mapper now writes id `1` → `"USD"` (only confirmed Sage currency
+  id; no FX). Incremental sync rematerializes leaked ids on existing
+  rows before the SOAP walk so the next cron fixes them — not a
+  one-off SQL UPDATE. Files: `sage.mappings.ts`, `sage-pull.service.ts`,
+  `test/sage-mappings.spec.ts`, `docs/plans/sage-crm-sync.md` §3.3.
+  **Needs api deploy**, then nightly `cron-sage` or a manual
+  `/internal/sync/sage`. Confirm:
+  `SELECT currency, count(*) FROM deal GROUP BY 1` has no `'1'`.
+  Do not change MM-Analytics; the warehouse copies currency as-is.
 - **Overview Everyone activity hides others' mail (DONE local 2026-08-21)**:
   Recent activity on `scope=everyone` no longer dumps every synced
   Outlook/Gmail thread and calendar event. Team notes / calls / tasks /
@@ -72,16 +84,20 @@ it before stopping. The rules for maintaining it live in `AGENTS.md`
   `auth-failed`. Files: `sage.constants.ts`, `sage-soap.client.ts`,
   `sage-pull.service.ts`, `test/sage-session-lost.spec.ts`. Needs
   **api** deploy to land on prod.
-- **Sage cron health (re-checked prod 2026-08-17)**: Nightly
-  `cron-sage` is healthy (`0 6 * * *` UTC = 1:00 AM CDT). Last 7
-  nights (Aug 11–17) all `pull.outcome=ok` / `push.outcome=ok`, no
-  `failed` lines. This morning (Aug 17 06:05 UTC): 183 companies /
-  258 contacts / 0 deals, 441 snapshots, ~37s. Start command uses
-  internal `http://api.railway.internal:3001/internal/sync/sage`
-  (900s timeout, 3 retries). Other crons also green today. Always-on
-  `api` / `app` / `agent` / Postgres RUNNING. `cron-daily-tasks` still
-  uses public `https://api.mobilemarksalestool.com` (9 AM Chicago
-  run sent 0 — `considered:0`, likely nobody opted in).
+- **Sage cron health (re-checked prod 2026-09-03)**: Nightly
+  `cron-sage` is healthy (`0 6 * * *` UTC = 1:00 AM CDT). Aug 28–Sep 3:
+  6 clean nights, **1 hard failure (Aug 30, HTTP 503)** that never hit
+  the Nest app (no `api` log line at all that window) — reads as a
+  private-network blip, not a Sage session/auth problem; harmless
+  because the incremental cursor is idempotent (didn't advance, next
+  night re-covered it). `SageSyncState` confirms `status=IDLE`,
+  `lastError=null`, `highWaterUpdatedAt` = this morning 06:02 UTC;
+  `SageOutbox` has 0 `failed`. Start command uses internal
+  `http://api.railway.internal:3001/internal/sync/sage` (900s timeout,
+  3 retries). Always-on `api` / `app` / `agent` / Postgres RUNNING.
+  **Note:** `api`'s current deploy is from **2026-08-21** — several
+  "needs api deploy" items logged after that date (see entries below)
+  are still sitting undeployed on prod.
 - **Webform lead Screening (DONE prod wiring 2026-08-05)**: Customer
   Question emails from shared mailbox → `PendingWebLead`,
   territory-routed into the same Screening list as mail (Web/Mail badge
@@ -362,6 +378,116 @@ it before stopping. The rules for maintaining it live in `AGENTS.md`
 ---
 
 ## Work log
+
+### 2026-09-09 — Sage Deal.currency: map lookup id 1 → USD
+
+**What was completed**
+- Sage opportunity pull no longer writes the literal currency id
+  `"1"` onto `Deal.currency`. `mapSageCurrency` in
+  `apps/api/src/sage/sage.mappings.ts` maps confirmed Sage lookup
+  ids (`1` → `USD`), keeps a 3-letter ISO code, and defaults blank /
+  unknown non-ISO values to `USD`. `mapOpportunity` uses it.
+- Incremental Sage sync rematerializes existing leaked ids at the
+  start of `runIncremental` (`sage-pull.service.ts`) via the same
+  mapper, so the next cron corrects the ~78 bad prod rows without
+  a standalone SQL UPDATE.
+- Tests in `apps/api/test/sage-mappings.spec.ts`. Plan note in
+  `docs/plans/sage-crm-sync.md` §3.3. MM-Analytics untouched.
+
+**How and why**
+- Production 2026-09-09: ~78 of 564 deals had `currency = '1'`
+  (Sage currency id leaking through); the rest were `USD`. Power BI
+  therefore showed a slicer of `"1"` and `"USD"`. Incremental pull
+  only rewrites recently changed opportunities, so a mapper-only
+  fix would leave stale rows until Sage touched them. Rematerialize
+  on the next sync is the repair path the request asked for.
+- No FX: amounts stay as Sage sent them. Only the code is
+  normalised. The only confirmed Sage currency id in this tenant
+  is `1` = USD.
+
+**Deviations**
+- None from the request. Unknown numeric ids (none seen in prod)
+  also become `USD` so a Sage id cannot land on the column again.
+
+**What's next**
+- Deploy **api**. Then wait for nightly `cron-sage` (`0 6 * * *`
+  UTC) or hit `GET /internal/sync/sage`. Confirm:
+  `SELECT currency, count(*) FROM deal GROUP BY 1` does not
+  contain `'1'`. Warehouse / MM-Analytics needs no change — it
+  copies `deal.currency` as-is and only warn-tests USD.
+
+### 2026-09-03 — Sage cron health re-check (Railway logs + prod DB)
+
+**What was completed**
+- Read-only check on project `MM-CRM` / `production`, `cron-sage`
+  service, plus a direct (read-only) query against prod Postgres.
+- `cron-sage` deploy logs for the last 8 days (Aug 28 – Sep 3): six
+  clean nights (no `curl` error, meaning HTTP 2xx) and **one hard
+  failure on 2026-08-30 06:02 UTC** — `curl: (22) The requested URL
+  returned error: 503`, after retries. Checked `api` deploy logs for
+  the same window: **no `SageSyncController` log lines at all** (no
+  "Sage sync finished with a hard failure", no `/internal/sync/sage`
+  HTTP line) — the request never reached the Nest app, so this reads
+  as a private-network blip between `cron-sage` and `api`, not a Sage
+  SOAP/session failure. No `api` restart in that window either.
+- Confirmed via `SageSyncState` (temporary TCP proxy, deleted after):
+  `company` and `opportunity` both `status=IDLE`, `phase=incremental`,
+  `lastError=null`, `highWaterUpdatedAt` = **2026-09-03T06:02:04Z**
+  (this morning's run). `company.processed` = 14,254.
+  `SageRecordSnapshot`: 1,192 rows touched in the last 24h, 4,650 in
+  the last 7 days, most recent at 06:03:49 UTC today. `SageOutbox`:
+  5 `done`, 1 `pending`, **0 `failed`**. 233 companies / 985 contacts /
+  8 deals updated in the last 24h (any source, not Sage-only).
+- One-off diagnostic script (`apps/api/scripts/sage-status-check.ts`)
+  was written, run via `run-via-tcp-proxy.ts`, then **deleted** — not
+  meant to be a permanent script. TCP proxy created then removed
+  (`list_tcp_proxies` confirmed empty after).
+
+**How and why**
+- User asked to check Railway for whether the Sage sync is running
+  successfully, pointing at `docs/plans/sage-crm-sync.md`. Log-only
+  evidence (Aug 30 gap) wasn't conclusive on its own, so cross-checked
+  against `SageSyncState` / `SageRecordSnapshot` / `SageOutbox` directly
+  — the authoritative signal — via the standard temporary-TCP-proxy
+  pattern in `AGENTS.md`.
+- The idempotent design (§6.8 of the plan) means the Aug 30 gap is not
+  data loss: the incremental cursor didn't advance that night, so the
+  ~1h overlap plus every following night's `comp_updateddate > cursor`
+  query re-covers anything missed.
+
+**Deviations**
+- None. Investigation only; no code or schema changes shipped.
+
+**What's next**
+- Sage sync is healthy as of 2026-09-03. No action required. If the
+  Aug 30-style 503 (private-network, not app-level) recurs often,
+  worth a Railway support / metrics look at `api`'s private-network
+  reachability during that nightly window — not a Sage code issue.
+
+### 2026-08-24 — Sage cron health (Railway logs)
+
+**What was completed**
+- Read-only Railway check on project `MM-CRM` / `production`.
+- `cron-sage` last run 2026-08-24 06:04 UTC (1:04 AM CDT): SUCCESS.
+  API `GET /internal/sync/sage` 200 in 47.2s.
+- Pull JSON: 183 companies / 258 contacts / 0 deals / 441 snapshots /
+  3 skipped. Push: 0 processed (empty outbox).
+- Last 7 nights (Aug 18–24) all `pull.outcome=ok` / `push.outcome=ok`.
+  Aug 21 spike: 1339 companies / 2177 contacts / 4 deals.
+
+**How and why**
+- User asked how to verify Sage sync beyond the GUI SUCCESS badge.
+  Used `railway logs --service cron-sage --since 8d` (curl prints the
+  JSON body) and `api` logs for `Sage incremental finished`. No TCP
+  proxy; Postgres SSH key not set up.
+
+**Deviations**
+- None. Investigation only.
+
+**What's next**
+- No Railway action required. Optional: query `sageSyncState` /
+  `sageRecordSnapshot.updatedAt` via a temporary TCP proxy if you need
+  which rows actually changed vs re-upserted.
 
 ### 2026-08-21 — Hide other people's mail on Everyone overview
 

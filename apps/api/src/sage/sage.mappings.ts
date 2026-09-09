@@ -212,7 +212,7 @@ export function mapOpportunity(record: SageRecord): MappedOpportunity | null {
 		amount,
 		weightedAmount: weightedAmount(amount, probability),
 		probability,
-		currency: clean(record.currency) ?? "USD",
+		currency: mapSageCurrency(record.currency),
 		stage,
 		sageStage,
 		sageStatus,
@@ -280,6 +280,34 @@ export function mapSageDealStage(
 	}
 
 	return DealStage.DEMO_BOOKED;
+}
+
+/**
+ * Sage opportunity `currency` is a lookup id in this tenant, not an ISO
+ * code. SOAP often returns `"1"`; some rows already store `"USD"`.
+ *
+ * Only ids confirmed against this instance belong here. Do not invent
+ * FX rates or extra currencies. Unknown non-ISO values fall back to
+ * USD so a Sage id never lands on `Deal.currency`.
+ */
+export const SAGE_CURRENCY_IDS: Readonly<Record<string, string>> = {
+	"1": "USD",
+};
+
+const ISO_CURRENCY_CODE = /^[A-Za-z]{3}$/;
+
+/**
+ * Sage `currency` (lookup id or ISO code) → ISO 4217 code for `Deal.currency`.
+ *
+ * Blank, unknown ids, and other non-ISO junk become `"USD"`.
+ */
+export function mapSageCurrency(value: string | null | undefined): string {
+	const cleaned = clean(value);
+	if (!cleaned) return "USD";
+	const fromId = SAGE_CURRENCY_IDS[cleaned];
+	if (fromId) return fromId;
+	if (ISO_CURRENCY_CODE.test(cleaned)) return cleaned.toUpperCase();
+	return "USD";
 }
 
 /**

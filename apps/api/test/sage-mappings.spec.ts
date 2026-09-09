@@ -9,6 +9,7 @@ import {
 	mapCompanyTree,
 	mapContact,
 	mapOpportunity,
+	mapSageCurrency,
 	mapSageDealStage,
 	matchSageUserByName,
 	sage100Display,
@@ -216,6 +217,7 @@ describe("mapOpportunity", () => {
 		expect(mapped?.amount).toBe("90000");
 		expect(mapped?.weightedAmount).toBe("90000");
 		expect(mapped?.probability).toBe(100);
+		expect(mapped?.currency).toBe("USD");
 		expect(mapped?.stage).toBe(DealStage.CLOSED_WON);
 		expect(mapped?.sageStage).toBe("Closed Won");
 		expect(mapped?.sageStatus).toBe("Won");
@@ -275,6 +277,31 @@ describe("mapOpportunity", () => {
 		expect(fallback?.weightedAmount).toBe("125");
 	});
 
+	it("maps Sage currency id 1 to USD and keeps an ISO code", () => {
+		const fromId = mapOpportunity({
+			opportunityid: "4",
+			description: "x",
+			primarycompanyid: "24",
+			currency: "1",
+		});
+		expect(fromId?.currency).toBe("USD");
+
+		const alreadyIso = mapOpportunity({
+			opportunityid: "5",
+			description: "x",
+			primarycompanyid: "24",
+			currency: "usd",
+		});
+		expect(alreadyIso?.currency).toBe("USD");
+
+		const blank = mapOpportunity({
+			opportunityid: "6",
+			description: "x",
+			primarycompanyid: "24",
+		});
+		expect(blank?.currency).toBe("USD");
+	});
+
 	it("returns null without id, description, or company", () => {
 		expect(
 			mapOpportunity({
@@ -294,6 +321,22 @@ describe("mapOpportunity", () => {
 				description: "x",
 			}),
 		).toBeNull();
+	});
+});
+
+describe("mapSageCurrency", () => {
+	it("maps the confirmed Sage lookup id to USD", () => {
+		expect(mapSageCurrency("1")).toBe("USD");
+		expect(mapSageCurrency(" 1 ")).toBe("USD");
+	});
+
+	it("keeps a 3-letter ISO code and defaults the rest to USD", () => {
+		expect(mapSageCurrency("USD")).toBe("USD");
+		expect(mapSageCurrency("eur")).toBe("EUR");
+		expect(mapSageCurrency("")).toBe("USD");
+		expect(mapSageCurrency(null)).toBe("USD");
+		// Unknown Sage ids are not persisted — no FX, no leaked lookup id.
+		expect(mapSageCurrency("99")).toBe("USD");
 	});
 });
 

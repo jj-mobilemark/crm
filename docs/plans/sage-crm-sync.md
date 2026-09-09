@@ -235,7 +235,7 @@ to be exposed later, add `sage100ContactCode` then.
 | `amount` | `forecast` (else `total`) | **CORRECTED 2026-08-02** — see the box below. Sage `total` is empty/0 on every opportunity; the deal value lives in `forecast`. So `amount` (unweighted deal value) ← `forecast`, falling back to `total`. |
 | `weightedAmount` | computed | **CORRECTED** — `amount` × stage certainty /100. Sage has a free-form `certainty` field, but local CRM locks certainty to stage (2026-08-04). Null when there is no amount. |
 | `probability` | stage band | integer 0–100 from `STAGE_CERTAINTY[stage]` (not Sage `certainty` on pull). |
-| `currency` | `currency` | default `USD` if blank |
+| `currency` | `currency` | Sage lookup id `1` → `USD` (confirmed 2026-09-09; SOAP often returns the id). Keep a 3-letter ISO code. Default `USD` if blank or unknown. Never persist the Sage id. No FX. |
 | `stage` | `stage` + `status` | map to `DealStage` (see below) |
 | `expectedCloseDate` | `targetclose` | |
 | `closedAt` | `closed` → `targetclose` → `opened` | **CORRECTED** — real `closed` date; for a closed-stage deal with no close date, fall back to `targetclose` then `opened`. Never "now" (that bunched every dateless deal into the import month). Open deals: null. |

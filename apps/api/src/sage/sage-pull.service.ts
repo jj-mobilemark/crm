@@ -29,6 +29,7 @@ import {
 	mapCompanyTree,
 	mapContact,
 	mapOpportunity,
+	mapSageCurrency,
 	type MappedCompany,
 	type MappedContact,
 	type MappedOpportunity,
@@ -747,6 +748,12 @@ export class SagePullService {
 		options: { dryRun?: boolean } = {},
 	): Promise<SageBackfillSummary> {
 		const dryRun = options.dryRun ?? false;
+		// Incremental only rewrites recently changed opportunities. Leaked
+		// Sage currency ids on older deals would otherwise sit until Sage
+		// touches those rows. Remap first so the next cron fixes them.
+		if (!dryRun) {
+			await this.rematerializeDealCurrency();
+		}
 		if (!this.soap.isConfigured()) {
 			return emptyBackfill(
 				"not-configured",
@@ -908,6 +915,34 @@ export class SagePullService {
 			summary.reason = reason;
 			return summary;
 		}
+	}
+
+	/**
+	 * Rewrite `Deal.currency` values that are still Sage lookup ids (or other
+	 * non-ISO junk) through {@link mapSageCurrency}. No FX conversion.
+	 */
+	private async rematerializeDealCurrency(): Promise<number> {
+		const groups = await this.db.deal.groupBy({
+			by: ["currency"],
+			_count: { _all: true },
+		});
+		let updated = 0;
+		for (const group of groups) {
+			const currency = mapSageCurrency(group.currency);
+			if (currency === group.currency) continue;
+			const result = await this.db.deal.updateMany({
+				where: { currency: group.currency },
+				data: { currency },
+			});
+			updated += result.count;
+		}
+		if (updated > 0) {
+			this.logger.log({
+				message: "Rewrote Deal.currency Sage lookup ids to ISO codes",
+				updated,
+			});
+		}
+		return updated;
 	}
 
 	/** Opportunity walk against an arbitrary predicate (shared by incremental). */
