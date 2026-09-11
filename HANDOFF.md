@@ -23,6 +23,16 @@ it before stopping. The rules for maintaining it live in `AGENTS.md`
 
 ## Current state (keep this section up to date)
 
+- **Sage incremental pagination restart (DONE local 2026-09-11)**:
+  Nightly `cron-sage` was 503 on the first curl then 200 on `--retry`
+  because Sage SOAP `next` returned `List index out of bounds (75)`
+  (Sep 10) / `Query failed to run successfully.` (Sep 11). In-process
+  restart only covered session-lost + transport; those two faults now
+  restart the changed-set walk (`isSagePaginationFault`, same cap
+  `SAGE_SESSION_RESTART_LIMIT`). Files: `sage.constants.ts`,
+  `sage-pull.service.ts` comments, `test/sage-session-lost.spec.ts`,
+  `docs/plans/sage-crm-sync.md` §6.8. **Needs api deploy** so tonight's
+  cron does not wait 90s on curl.
 - **Sage Deal.currency id leak (DONE prod 2026-09-09)**: Mapper writes
   Sage lookup id `1` → `"USD"`. Incremental sync rematerializes leaked
   ids. **api** `b2761aa` is live. Manual Sage sync ran (SSH into `api`,
@@ -72,13 +82,12 @@ it before stopping. The rules for maintaining it live in `AGENTS.md`
   Sage Won/Lost rows left on open stages after the Aug 4 sageStage
   migration. Needs **api** deploy for the month-end card. TCP proxy
   used then deleted.
-- **Sage SOAP walk retries (DONE local 2026-08-18)**: Incremental
-  pull restarts on session-lost **or** transport blips (timeout /
-  unable to connect). SOAP deadline 90s (was 40s). `logon` retries
-  3× with backoff on transport failure only — never on
-  `auth-failed`. Files: `sage.constants.ts`, `sage-soap.client.ts`,
-  `sage-pull.service.ts`, `test/sage-session-lost.spec.ts`. Needs
-  **api** deploy to land on prod.
+- **Sage SOAP walk retries (DONE prod via `b2761aa` 2026-09-09)**:
+  Incremental pull restarts on session-lost **or** transport blips
+  (timeout / unable to connect). SOAP deadline 90s. `logon` retries
+  3× with backoff on transport failure only — never on `auth-failed`.
+  Pagination faults (`List index out of bounds` / company-opportunity
+  `Query failed…`) are the 2026-09-11 local follow-up above.
 - **Sage cron health (re-checked prod 2026-09-03)**: Nightly
   `cron-sage` is healthy (`0 6 * * *` UTC = 1:00 AM CDT). Aug 28–Sep 3:
   6 clean nights, **1 hard failure (Aug 30, HTTP 503)** that never hit
@@ -373,6 +382,45 @@ it before stopping. The rules for maintaining it live in `AGENTS.md`
 ---
 
 ## Work log
+
+### 2026-09-11 — Restart Sage incremental walk on pagination `next` faults
+
+**What was completed**
+- Nightly `cron-sage` first attempt was HTTP 503 two nights in a row
+  (Sep 10 `List index out of bounds (75)`, Sep 11 `Query failed to
+  run successfully.`), then curl `--retry-delay 90` succeeded on a
+  fresh `query`. Those SOAP `next` faults were not in
+  `isSageWalkRestartable`, so the API failed the request instead of
+  restarting the walk.
+- `isSagePaginationFault` now matches those two strings.
+  `isSageWalkRestartable` includes it (still only used by the
+  company/opportunity incremental walk). Cap unchanged:
+  `SAGE_SESSION_RESTART_LIMIT = 2`.
+- Files: `apps/api/src/sage/sage.constants.ts`, comments in
+  `sage-pull.service.ts`, `apps/api/test/sage-session-lost.spec.ts`,
+  `docs/plans/sage-crm-sync.md` §6.8.
+
+**How and why**
+- Sage `query`/`next` is session-stateful; a wedged `next` cannot
+  resume. Upserts are idempotent and high-water only advances after
+  a full walk, so an in-process restart is the same recovery curl
+  already did — without a 90s wait or a red 503 in cron logs.
+- "Query failed to run successfully" stays a non-transport, non-
+  session-lost fault (`isSageTransientFailure` / `isSageSessionLost`
+  unchanged). It is restartable only via the pagination helper, and
+  only on this walk — it is still a sticky error on `case` /
+  `quotes` / `orders` probes.
+
+**Deviations**
+- Earlier tests treated "Query failed to run successfully" as
+  *not* walk-restartable, to keep it distinct from session loss.
+  Prod evidence (Sep 10–11) showed it is a transient `next` flake
+  on company/opportunity, so the walk-restart test now expects true.
+
+**What's next**
+- Deploy **api**. Watch tonight's `cron-sage` (06:00 UTC): first
+  attempt should log a walk-restart warning and return HTTP 200,
+  not 503 + curl retry. `curl --retry 3` stays as the outer net.
 
 ### 2026-09-09 — Sage Deal.currency: map lookup id 1 → USD
 

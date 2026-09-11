@@ -109,9 +109,9 @@ export const SAGE_ECHO_TTL_MS = 2 * 60 * 60 * 1000;
 
 /**
  * How many times an incremental walk may re-logon and restart after Sage
- * drops the session mid-`next` (e.g. "You are not logged on.") or a
- * transient transport failure (timeout / unable to connect). Pagination
- * is session-stateful, so a lost session cannot resume — only restart.
+ * drops the session mid-`next`, a transport blip, or a pagination fault
+ * (`List index out of bounds` / `Query failed to run successfully`).
+ * Pagination is session-stateful, so `next` cannot resume — only restart.
  */
 export const SAGE_SESSION_RESTART_LIMIT = 2;
 
@@ -165,7 +165,34 @@ export function isSageTransientFailure(reason: string | undefined): boolean {
 	);
 }
 
-/** Session-lost or transport blip — both need a re-logon + walk restart. */
+/**
+ * True when Sage's session-stateful `query`/`next` cursor is wedged.
+ *
+ * Prod `cron-sage` 2026-09-10/11: first walk died on `next` with
+ * `List index out of bounds (75)` / `Query failed to run successfully.`,
+ * then curl's 90s retry succeeded on a fresh `query`. Restart the
+ * changed-set walk in-process instead of returning 503.
+ *
+ * The same "Query failed…" string is a *sticky* error on entities that
+ * are not actually queryable (`case`, `quotes`, `orders`, …). This helper
+ * is only used by the company/opportunity incremental walk, where that
+ * string is a transient mid-`next` flake. Do not reuse it to retry probes
+ * of other entities.
+ */
+export function isSagePaginationFault(reason: string | undefined): boolean {
+	if (!reason) return false;
+	const lower = reason.toLowerCase();
+	return (
+		lower.includes("list index out of bounds") ||
+		lower.includes("query failed to run successfully")
+	);
+}
+
+/** Session-lost, transport blip, or pagination fault — re-logon + restart. */
 export function isSageWalkRestartable(reason: string | undefined): boolean {
-	return isSageSessionLost(reason) || isSageTransientFailure(reason);
+	return (
+		isSageSessionLost(reason) ||
+		isSageTransientFailure(reason) ||
+		isSagePaginationFault(reason)
+	);
 }

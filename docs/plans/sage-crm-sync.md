@@ -669,6 +669,14 @@ Every write is keyed by the unique `sageCrm*Id` (and snapshots by
 overlapping the high-water, or resuming after a crash all converge to the same
 state — which is what makes the throttled, many-tick, resumable design safe.
 
+Incremental `query`/`next` is session-stateful. A mid-walk `next` fault
+cannot resume: the tick re-logons and re-queries the same changed set
+(capped by `SAGE_SESSION_RESTART_LIMIT`). That covers session-lost,
+transport timeouts, and Sage pagination flakes (`List index out of bounds`,
+`Query failed to run successfully` on company/opportunity — not a licence
+to retry that string against entities whose queries are sticky-broken).
+High-water only advances after a fully successful walk.
+
 ---
 
 ## 7. External company APIs for PO intake (BUILT 2026-08-06+)

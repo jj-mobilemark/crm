@@ -808,10 +808,10 @@ export class SagePullService {
 					: await this.soap.nextCompanies();
 				firstPage = false;
 				if (page.outcome !== "ok") {
-					// `next` is session-stateful — a dropped session or a
-					// mid-page timeout cannot resume. Re-logon and restart
-					// the same changed-set walk (upserts are idempotent;
-					// counters reset for this walk).
+					// `next` is session-stateful — a dropped session, a
+					// mid-page timeout, or a Sage pagination fault cannot
+					// resume. Re-logon and restart the same changed-set
+					// walk (upserts are idempotent; counters reset).
 					if (
 						isSageWalkRestartable(page.reason) &&
 						sessionRestarts < SAGE_SESSION_RESTART_LIMIT

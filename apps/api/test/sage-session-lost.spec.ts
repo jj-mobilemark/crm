@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+	isSagePaginationFault,
 	isSageSessionLost,
 	isSageTransientFailure,
 	isSageWalkRestartable,
@@ -47,15 +48,38 @@ describe("isSageTransientFailure", () => {
 	});
 });
 
+describe("isSagePaginationFault", () => {
+	test("matches the production next-fault strings", () => {
+		expect(isSagePaginationFault("List index out of bounds (75)")).toBe(
+			true,
+		);
+		expect(
+			isSagePaginationFault("Query failed to run successfully."),
+		).toBe(true);
+	});
+
+	test("ignores session and transport faults", () => {
+		expect(isSagePaginationFault("You are not logged on.")).toBe(false);
+		expect(isSagePaginationFault("Unable to connect.")).toBe(false);
+		expect(isSagePaginationFault(undefined)).toBe(false);
+	});
+});
+
 describe("isSageWalkRestartable", () => {
-	test("covers session loss and transport blips", () => {
+	test("covers session loss, transport blips, and pagination faults", () => {
 		expect(isSageWalkRestartable("You are not logged on.")).toBe(true);
 		expect(
 			isSageWalkRestartable(
 				"Unable to connect. Is the computer able to access the url?",
 			),
 		).toBe(true);
+		expect(
+			isSageWalkRestartable("List index out of bounds (75)"),
+		).toBe(true);
 		expect(isSageWalkRestartable("Query failed to run successfully")).toBe(
+			true,
+		);
+		expect(isSageWalkRestartable("Entity 'case' does not exist")).toBe(
 			false,
 		);
 	});
