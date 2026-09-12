@@ -424,8 +424,8 @@ function DealQuotes({ deal, canEdit }: { deal: Deal; canEdit: boolean }) {
 								disabled={!canEdit || setPrimary.isPending}
 								title={
 									quote.isPrimary
-										? "Primary quote for this deal"
-										: "Set as primary"
+										? "Primary deal for this quote number"
+										: "Mark this deal as the primary match"
 								}
 								onClick={() => {
 									if (!canEdit || quote.isPrimary) return;

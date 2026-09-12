@@ -54,6 +54,7 @@ import {
 	canonicalizeQuoteNumber,
 	listDealQuotes,
 	quotesFromText,
+	reconcileQuotePrimaries,
 	toDealQuoteDto,
 } from "./quote-number";
 
@@ -307,27 +308,14 @@ export class DealsService {
 			where: {
 				dealId_quoteNumber: { dealId: deal.id, quoteNumber: canonical },
 			},
-			select: { id: true, isPrimary: true },
+			select: { id: true },
 		});
 		if (!existing) {
 			throw new NotFoundException(`No quote ${canonical} on this deal.`);
 		}
 
-		await this.db.$transaction(async (tx) => {
-			await tx.dealQuote.delete({ where: { id: existing.id } });
-			if (!existing.isPrimary) return;
-			const next = await tx.dealQuote.findFirst({
-				where: { dealId: deal.id },
-				orderBy: { createdAt: "asc" },
-				select: { id: true },
-			});
-			if (next) {
-				await tx.dealQuote.update({
-					where: { id: next.id },
-					data: { isPrimary: true },
-				});
-			}
-		});
+		await this.db.dealQuote.delete({ where: { id: existing.id } });
+		await reconcileQuotePrimaries(this.db, [canonical]);
 
 		this.logger.log({
 			message: "Deal quote removed",
@@ -358,7 +346,7 @@ export class DealsService {
 
 		await this.db.$transaction([
 			this.db.dealQuote.updateMany({
-				where: { dealId: deal.id, isPrimary: true },
+				where: { quoteNumber: canonical, isPrimary: true },
 				data: { isPrimary: false },
 			}),
 			this.db.dealQuote.update({

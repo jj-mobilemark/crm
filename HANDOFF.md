@@ -23,6 +23,23 @@ it before stopping. The rules for maintaining it live in `AGENTS.md`
 
 ## Current state (keep this section up to date)
 
+- **Overview Everyone hides overdue tasks (shipping 2026-09-11)**:
+  Everyone tab no longer shows the Overdue tasks card.
+  Deals in progress is full width. Me still shows both
+  cards side by side. File: `dashboard-summary.tsx`.
+- **DealQuote `isPrimary` as disambiguator (prod data + shipping 2026-09-11)**:
+  Backfill had marked every clone primary. Prod repaired
+  via TCP proxy + `repair-deal-quote-primaries.ts`: **11**
+  colliding numbers now have **exactly one** primary
+  (`Q260413-003` 8→1). Unique numbers stay false.
+  Attached **Q260622-002** to `#Q260622-001 & 002: …`
+  (sage opp **679**). 202 rows. Do not parse
+  `opportunity_name` in Analytics. Do not store
+  `SavedQuote.id`. Orphans not in `fct_quotes` left
+  alone: `Q260116-003`, `Q260716-006`, `Q260724-006`.
+  Nightly warehouse extract `0 9 * * *` UTC re-pulls
+  `dealQuote`; no new extract needed. Script:
+  `apps/api/scripts/repair-deal-quote-primaries.ts`.
 - **Overview overdue KPI + locked/live board (DONE local 2026-09-11)**:
   Lost tile removed (win rate still names wins and losses).
   New **Overdue** tile: open deals whose `expectedCloseDate` is
@@ -48,15 +65,13 @@ it before stopping. The rules for maintaining it live in `AGENTS.md`
 - **Deal quote numbers (DONE prod 2026-09-11 / deploy `bd6e7b5`)**:
   `DealQuote` is live. Canonical `QYYMMDD-###` only; Sage
   shorthand expands on save; never stores quote-tool `quote_id`.
-  Prod migrate + `GRANT SELECT ON "dealQuote"` + backfill:
-  **201** quotes on **191 / 566** deals. Human add / remove /
-  set-primary on the deal sheet. Analytics extract table =
-  `dealQuote` (`dealId`, `quoteNumber`, `isPrimary`). Join
-  `upper(trim(quoteNumber))` = `fct_quotes.quote_number`.
-  Warehouse exact-id extract is still uncommitted on
-  MM-Analytics (`a14b906` cron/ingest image has no
-  `mm_crm_deal_quotes`). CRM pull after ship refreshed deals
-  / companies / users / history; not `raw.mm_crm_deal_quotes`.
+  Prod: **202** quotes (was 201; +`Q260622-002`). Human add /
+  remove / set-primary on the deal sheet. Analytics extract
+  is live (`raw.mm_crm_deal_quotes`). Exact-id tiers:
+  unique → `deal_quote_exact`; one primary →
+  `deal_quote_primary`; else `deal_quote_ambiguous`.
+  Join `upper(trim(quoteNumber))` = `fct_quotes.quote_number`.
+  `GRANT SELECT ON "dealQuote"` already applied.
 - **closedAt forward fix (DONE prod `bd6e7b5`)**: Pull no longer
   copies `targetclose` / `opened` into `closedAt`. Rule:
   Sage `closed` if Chicago date ≤ today; else freeze an existing
@@ -423,6 +438,69 @@ it before stopping. The rules for maintaining it live in `AGENTS.md`
 ---
 
 ## Work log
+
+### 2026-09-11 — Hide overdue tasks on Everyone overview
+
+**What was completed**
+- Everyone (`scope=everyone`) no longer renders the
+  Overdue tasks card. Deals in progress uses the full
+  row. Me still shows the two-column pair.
+- File: `apps/app/app/(app)/dashboard-summary.tsx`.
+
+**How and why**
+- Team overdue tasks are not this page. The empty
+  “your tasks” column on Everyone wasted half the
+  deals table.
+
+**Deviations**
+- None. API still returns `overdueTasks` on Everyone;
+  the card is hidden in the UI only.
+
+**What's next**
+- Confirm app deploy after push to `main`.
+
+### 2026-09-11 — DealQuote `isPrimary` is a disambiguator
+
+**What was completed**
+- Attach no longer marks the first quote on a deal as
+  primary. New rows start false. After insert,
+  `reconcileQuotePrimaries` sets exactly one true row
+  per colliding `quoteNumber`. Unique numbers stay false.
+- Tie-break (mechanical): full id in the deal name, then
+  fewest quotes on that deal, then source rank
+  (HUMAN → SAGE_NOTE → PO_TOOL → SAGE_DESCRIPTION), then
+  earliest `createdAt`.
+- `setPrimaryQuote` now clears that number on every deal,
+  then sets this row. `removeQuote` deletes and
+  re-reconciles the number.
+- Deal sheet titles: “Primary deal for this quote number”
+  / “Mark this deal as the primary match”.
+- Files: `quote-number.ts`, `deals.service.ts`,
+  `backfill-deal-quotes.ts`,
+  `repair-deal-quote-primaries.ts`, `deal-sheet.tsx`,
+  `schema.prisma` comment, `sage-crm-sync.md` §3.3,
+  `test/quote-number.spec.ts` (18 pass).
+- Prod data (TCP proxy, then deleted): 11 collisions
+  repaired (`Q260413-003` 8→1). Attached `Q260622-002`
+  to `#Q260622-001 & 002: …` (sage 679). 202 rows.
+  Unique still-primary: none.
+
+**How and why**
+- Analytics exact-id is live. All-primary clones left
+  `matched_opportunity_id` null (`deal_quote_ambiguous`).
+  `deal_quote_primary` stays unused until exactly one
+  primary per colliding number. Do not parse
+  `opportunity_name`. Do not store `SavedQuote.id`.
+
+**Deviations**
+- Optional 002 attach is a one-shot observed title
+  (`Q260622-001` + `& 002`). Parser still ignores
+  `#Q260703-001 & 002`. Orphans not in `fct_quotes`
+  left alone.
+
+**What's next**
+- Confirm api + app deploy after push to `main`.
+  Nightly warehouse cron `0 9 * * *` UTC re-pulls.
 
 ### 2026-09-11 — Overview Overdue KPI + locked/live board
 

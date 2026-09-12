@@ -775,8 +775,10 @@ enum DealQuoteSource {
 }
 
 /// Canonical quote ids on a deal (`QYYMMDD-###`). Many quotes → one deal
-/// is allowed (same-day siblings / revisions). The same number on two
-/// deals stays ambiguous unless exactly one of those rows is `isPrimary`.
+/// is allowed (same-day siblings / revisions). `isPrimary` is a
+/// cross-deal disambiguator: a unique number stays false (exact join);
+/// the same number on two+ deals needs exactly one true row. Never
+/// mark every clone primary.
 ///
 /// Never store quote-tool `SavedQuote.id` or Sage name shorthand
 /// (`#Q260622-003,4,5`). Expand shorthand before insert. Join key for

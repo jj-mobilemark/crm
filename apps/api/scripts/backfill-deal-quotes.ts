@@ -12,7 +12,13 @@ import {
 	attachDealQuotes,
 	quotesFromSageRecord,
 	quotesFromText,
+	reconcileQuotePrimaries,
 } from "../src/deals/quote-number";
+
+/** Observed title `#Q260622-001 & 002` — do not generalize `& NNN`. */
+function isNamed001And002(name: string): boolean {
+	return /Q260622-001/i.test(name) && /&\s*002\b/.test(name);
+}
 
 const dryRun = process.argv.includes("--dry-run");
 
@@ -80,6 +86,20 @@ for (const deal of deals) {
 	quotesAdded += await attachDealQuotes(db, deal.id, quotes);
 }
 
+const named001And002 = deals.find((deal) => isNamed001And002(deal.name));
+let attached002 = false;
+if (named001And002 && !dryRun) {
+	const added = await attachDealQuotes(db, named001And002.id, [
+		{ quoteNumber: "Q260622-002", source: DealQuoteSource.SAGE_DESCRIPTION },
+	]);
+	attached002 = added > 0;
+	quotesAdded += added;
+}
+
+const primaries = dryRun
+	? { uniqueCleared: 0, collisions: 0 }
+	: await reconcileQuotePrimaries(db);
+
 console.log(
 	JSON.stringify(
 		{
@@ -90,6 +110,11 @@ console.log(
 				? `${quotesAdded} would attach (max, before skipDuplicates)`
 				: quotesAdded,
 			skipped,
+			named001And002: named001And002?.name ?? null,
+			attached002: dryRun
+				? Boolean(named001And002)
+				: attached002,
+			primaries,
 			examples,
 		},
 		null,

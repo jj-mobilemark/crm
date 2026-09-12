@@ -159,11 +159,16 @@ export function DashboardSummary() {
 			</Card>
 
 			{/*
-			 * Two panels of one fixed height rather than four cards that each grew
-			 * to fit their rows: the pair always ends level, and the activity list
-			 * below them stays where a rep last saw it however many deals are open.
+			 * Me: two panels of one height so the pair ends level. Everyone:
+			 * deals only, full width — team overdue tasks are not this page.
 			 */}
-			<div className="grid gap-6 @3xl/page-content:grid-cols-2">
+			<div
+				className={
+					mine
+						? "grid gap-6 @3xl/page-content:grid-cols-2"
+						: "grid gap-6"
+				}
+			>
 				<Card className="min-w-0">
 					<CardHeader>
 						<CardTitle>Deals in progress</CardTitle>
@@ -229,63 +234,77 @@ export function DashboardSummary() {
 					</CardPanel>
 				</Card>
 
-				<Card className="min-w-0">
-					<CardHeader>
-						<CardTitle>Overdue tasks</CardTitle>
-						<CardDescription>
-							{overdueTasks.length === 0
-								? "Every task you have logged is either done or still to come"
-								: `${formatCount(overdueTasks.length, "task")} past due`}
-						</CardDescription>
-					</CardHeader>
-					<CardPanel>
-						{overdueTasks.length === 0 ? (
-							<CardPanelEmpty>Nothing overdue. Good.</CardPanelEmpty>
-						) : (
-							<SimpleTable variant="panel" surface="page" columns={taskColumns}>
-								{overdueTasks.map((task) => (
-									<SimpleTableRow key={task.id}>
-										<TableCell className={CELL}>
-											<Checkbox
-												checked={false}
-												disabled={complete.isPending}
-												aria-label="Mark as done"
-												onCheckedChange={() =>
-													complete.mutate({ id: task.id, completed: true })
-												}
-											/>
-										</TableCell>
-										<TableCell className={CELL}>
-											<span className="flex min-w-0 flex-col">
-												<span className="truncate">{task.subject}</span>
-												<span className="flex min-w-0 text-muted-foreground">
-													{task.deal ? (
-														<RecordLink kind="deal" id={task.deal.id}>
-															{task.deal.name}
-														</RecordLink>
-													) : task.company ? (
-														<RecordLink kind="company" id={task.company.id}>
-															{task.company.name}
-														</RecordLink>
-													) : null}
+				{mine ? (
+					<Card className="min-w-0">
+						<CardHeader>
+							<CardTitle>Overdue tasks</CardTitle>
+							<CardDescription>
+								{overdueTasks.length === 0
+									? "Every task you have logged is either done or still to come"
+									: `${formatCount(overdueTasks.length, "task")} past due`}
+							</CardDescription>
+						</CardHeader>
+						<CardPanel>
+							{overdueTasks.length === 0 ? (
+								<CardPanelEmpty>Nothing overdue. Good.</CardPanelEmpty>
+							) : (
+								<SimpleTable
+									variant="panel"
+									surface="page"
+									columns={taskColumns}
+								>
+									{overdueTasks.map((task) => (
+										<SimpleTableRow key={task.id}>
+											<TableCell className={CELL}>
+												<Checkbox
+													checked={false}
+													disabled={complete.isPending}
+													aria-label="Mark as done"
+													onCheckedChange={() =>
+														complete.mutate({
+															id: task.id,
+															completed: true,
+														})
+													}
+												/>
+											</TableCell>
+											<TableCell className={CELL}>
+												<span className="flex min-w-0 flex-col">
+													<span className="truncate">{task.subject}</span>
+													<span className="flex min-w-0 text-muted-foreground">
+														{task.deal ? (
+															<RecordLink kind="deal" id={task.deal.id}>
+																{task.deal.name}
+															</RecordLink>
+														) : task.company ? (
+															<RecordLink
+																kind="company"
+																id={task.company.id}
+															>
+																{task.company.name}
+															</RecordLink>
+														) : null}
+													</span>
 												</span>
-											</span>
-										</TableCell>
-										<TableCell className={`${CELL} hidden sm:table-cell`}>
-											<PriorityBadge priority={task.priority} />
-										</TableCell>
-										<TableCell className={`${CELL} text-right`}>
-											<StatusIndicator
-												tone="error"
-												label={relativeTimeFromIso(task.dueAt)}
-											/>
-										</TableCell>
-									</SimpleTableRow>
-								))}
-							</SimpleTable>
-						)}
-					</CardPanel>
-				</Card>
+											</TableCell>
+											<TableCell
+												className={`${CELL} hidden sm:table-cell`}
+											>
+												<PriorityBadge priority={task.priority} />
+											</TableCell>
+											<TableCell className={`${CELL} text-right`}>
+												<StatusIndicator
+													tone="error"
+													label={relativeTimeFromIso(task.dueAt)}
+												/>
+											</TableCell>
+										</SimpleTableRow>
+									))}
+								</SimpleTable>
+							)}
+						</CardPanel>
+					</Card>
+				) : null}
 			</div>
 
 			<Card className="min-w-0">

@@ -12,6 +12,7 @@
 		"auth:generate": "turbo run auth:generate",
 		"db:deploy": "turbo run db:deploy",
 		"db:generate": "turbo run db:generate",
+		"prisma": "cd packages/db && bunx prisma",
 		"db:migrate": "turbo run db:migrate",
 		"db:push": "turbo run db:push",
 		"db:reset": "turbo run db:reset",
