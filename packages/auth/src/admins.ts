@@ -44,6 +44,8 @@ export function isCrmAdmin(email: string | null | undefined): boolean {
  *
  * Admins can edit anything; everyone else only their own. Used for deal
  * field writes today — company/contact can adopt the same helper later.
+ *
+ * Stage is not this rule. Stage uses `canChangeDealStage` (owner only).
  */
 export function canEditOwnedRecord(args: {
 	actingUserId: string;
@@ -51,6 +53,20 @@ export function canEditOwnedRecord(args: {
 	ownerId: string | null | undefined;
 }): boolean {
 	if (isCrmAdmin(args.actingEmail)) return true;
+	if (!args.ownerId) return false;
+	return args.actingUserId === args.ownerId;
+}
+
+/**
+ * Move a deal along the pipeline.
+ *
+ * Owner only. An admin may still edit fields and reassign the owner, but
+ * they may not change someone else's stage. Sage forecast follows stage.
+ */
+export function canChangeDealStage(args: {
+	actingUserId: string;
+	ownerId: string | null | undefined;
+}): boolean {
 	if (!args.ownerId) return false;
 	return args.actingUserId === args.ownerId;
 }

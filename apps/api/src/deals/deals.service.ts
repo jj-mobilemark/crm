@@ -1,4 +1,9 @@
-import { canEditOwnedRecord, canReassignOwner, isCrmAdmin } from "@crm/auth";
+import {
+	canChangeDealStage,
+	canEditOwnedRecord,
+	canReassignOwner,
+	isCrmAdmin,
+} from "@crm/auth";
 import {
 	ActivityType,
 	type Db,
@@ -530,7 +535,7 @@ export class DealsService {
 			throw new NotFoundException(`No deal with id ${input.id}.`);
 		}
 
-		this.assertCanEdit(actor, deal.ownerId);
+		this.assertCanChangeStage(actor, deal.ownerId);
 
 		if (deal.stage === input.stage) {
 			return { id: deal.id, stage: deal.stage, changed: false };
@@ -647,6 +652,18 @@ export class DealsService {
 		throw new ForbiddenException(
 			"Only the deal's owner (or an admin) can change this deal.",
 		);
+	}
+
+	private assertCanChangeStage(actor: DealActor, ownerId: string) {
+		if (
+			canChangeDealStage({
+				actingUserId: actor.id,
+				ownerId,
+			})
+		) {
+			return;
+		}
+		throw new ForbiddenException("Only the deal's owner can change its stage.");
 	}
 
 	private searchFilter(q: string): Prisma.DealWhereInput {

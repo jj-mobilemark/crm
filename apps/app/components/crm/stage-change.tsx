@@ -91,11 +91,19 @@ export function DealStageMenu({
 
 	if (disabled) {
 		return variant === "control" ? (
-			<Button variant="outline" size="sm" disabled>
+			<Button
+				variant="outline"
+				size="sm"
+				disabled
+				title="Only the deal owner can change the stage"
+			>
 				<DealStageIndicator stage={stage} className="text-foreground" />
 			</Button>
 		) : (
-			<span className="flex min-w-0 items-center text-left">
+			<span
+				className="flex min-w-0 items-center text-left"
+				title="Only the deal owner can change the stage"
+			>
 				<DealStageIndicator stage={stage} />
 			</span>
 		);

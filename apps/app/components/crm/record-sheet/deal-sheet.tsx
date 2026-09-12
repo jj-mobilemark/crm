@@ -151,7 +151,7 @@ export function DealSheet({ dealId }: { dealId: string }) {
 						dealId={deal.id}
 						stage={deal.stage}
 						variant="control"
-						disabled={!access.canEdit}
+						disabled={!access.canChangeStage}
 					/>
 				) : null
 			}
@@ -211,7 +211,9 @@ export function DealSheet({ dealId }: { dealId: string }) {
 function DealOverview({ deal }: { deal: Deal }) {
 	const trpc = useTRPC();
 	const cache = useCrmCache();
-	const { canEdit, canReassign } = useDealEditAccess(deal.owner.id);
+	const { canEdit, canChangeStage, canReassign } = useDealEditAccess(
+		deal.owner.id,
+	);
 
 	const users = useQuery(trpc.users.list.queryOptions());
 	const companies = useQuery(trpc.companies.options.queryOptions({ q: "" }));
@@ -237,7 +239,11 @@ function DealOverview({ deal }: { deal: Deal }) {
 			 * closing it — is the control in the header; this is the one-click
 			 * nudge to the next step. */}
 			<DetailSheetSection title="Stage">
-				<StageStepper dealId={deal.id} stage={deal.stage} disabled={!canEdit} />
+				<StageStepper
+					dealId={deal.id}
+					stage={deal.stage}
+					disabled={!canChangeStage}
+				/>
 
 				{/*
 				 * Two properties under the rail rather than an alert of its own.

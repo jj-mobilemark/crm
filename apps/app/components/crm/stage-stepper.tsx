@@ -71,6 +71,11 @@ export function StageStepper({
 							type="button"
 							aria-current={current ? "step" : undefined}
 							disabled={disabled || setStage.isPending}
+							title={
+								disabled
+									? "Only the deal owner can change the stage"
+									: undefined
+							}
 							onClick={() => {
 								if (disabled) return;
 								setStage.mutate({ id: dealId, stage: option });

@@ -1,4 +1,5 @@
 export {
+	canChangeDealStage,
 	canEditOwnedRecord,
 	canReassignOwner,
 	isCrmAdmin,

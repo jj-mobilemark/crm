@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from "bun:test";
 import {
+	canChangeDealStage,
 	canEditOwnedRecord,
 	canReassignOwner,
 	isCrmAdmin,
@@ -61,6 +62,29 @@ describe("canEditOwnedRecord", () => {
 				actingUserId: "u2",
 				actingEmail: "other@mobilemark.com",
 				ownerId: "u1",
+			}),
+		).toBe(false);
+	});
+});
+
+describe("canChangeDealStage", () => {
+	it("allows only the owner, even when the actor is an admin", () => {
+		expect(
+			canChangeDealStage({
+				actingUserId: "u1",
+				ownerId: "u1",
+			}),
+		).toBe(true);
+		expect(
+			canChangeDealStage({
+				actingUserId: "admin",
+				ownerId: "u1",
+			}),
+		).toBe(false);
+		expect(
+			canChangeDealStage({
+				actingUserId: "admin",
+				ownerId: null,
 			}),
 		).toBe(false);
 	});

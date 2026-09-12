@@ -20,6 +20,9 @@ export function useDealEditAccess(ownerId: string | undefined) {
 	const isOwner = Boolean(me.data?.id && ownerId && me.data.id === ownerId);
 	const canEdit = me.isPending ? true : isAdmin || isOwner;
 	const canReassign = isAdmin;
+	// Stage is owner-only. Do not unlock while `me` is loading — an admin
+	// on someone else's deal would flash as editable, then lock.
+	const canChangeStage = isOwner;
 
 	return {
 		me: me.data,
@@ -27,6 +30,7 @@ export function useDealEditAccess(ownerId: string | undefined) {
 		isAdmin,
 		isOwner,
 		canEdit,
+		canChangeStage,
 		canReassign,
 	};
 }

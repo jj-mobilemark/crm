@@ -16,13 +16,13 @@ export function OwnedDealStageMenu({
 	ownerId: string;
 	variant?: "inline" | "control";
 }) {
-	const { canEdit } = useDealEditAccess(ownerId);
+	const { canChangeStage } = useDealEditAccess(ownerId);
 	return (
 		<DealStageMenu
 			dealId={dealId}
 			stage={stage}
 			variant={variant}
-			disabled={!canEdit}
+			disabled={!canChangeStage}
 		/>
 	);
 }
