@@ -217,13 +217,19 @@ function quarterStart(from: Date, offset: number): Date {
 	return new Date(year, quarter * 3, 1);
 }
 
+/** Mailbox-created rows. Not a CRM log; hide them on Everyone. */
+export const INBOX_FEED_SUBJECTS = [
+	"Company added from your inbox",
+	"Contact added from your inbox",
+] as const;
+
 /**
  * Recent activity on the overview.
  *
- * `"me"` is only the acting user. `"everyone"` is the team CRM log — notes,
- * calls, tasks, stage changes — plus the acting user's own mailbox. Synced
- * email threads and calendar events stay with the person whose inbox they
- * came from. Same idea as overdue tasks: nobody else's mail is theirs to read.
+ * `"me"` is only the acting user, including their mailbox.
+ * `"everyone"` is the team CRM log only — notes, calls, tasks, stage
+ * changes, enrichment. No email threads, calendar events, or inbox
+ * company/contact creates. Those stay on Me.
  */
 export function recentActivityWhere(
 	mine: boolean,
@@ -231,10 +237,10 @@ export function recentActivityWhere(
 ): Prisma.ActivityWhereInput {
 	if (mine) return { createdById: actingUserId };
 	return {
-		OR: [
-			{ createdById: actingUserId },
-			{ emailThreadId: null, calendarEventId: null },
-		],
+		type: { not: ActivityType.EMAIL },
+		emailThreadId: null,
+		calendarEventId: null,
+		NOT: { subject: { in: [...INBOX_FEED_SUBJECTS] } },
 	};
 }
 

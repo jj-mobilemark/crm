@@ -23,6 +23,20 @@ it before stopping. The rules for maintaining it live in `AGENTS.md`
 
 ## Current state (keep this section up to date)
 
+- **Won vs new-pipeline chart colors (DONE local 2026-09-11)**:
+  Closed won stays green (`--success`). New pipeline is
+  blue (`--chart-2`). `--chart-1` is also green, so both
+  series used to look the same. File: `sales-dashboard.tsx`.
+  Shipping with this push.
+- **Everyone recent activity is CRM-only (DONE local 2026-09-11)**:
+  Overview Everyone no longer shows mailbox rows: email
+  threads, calendar events, or “added from your inbox”
+  company/contact creates. Team notes, calls, tasks,
+  stage changes, and other enrichment stay. Me still
+  shows the signed-in user's mail. Files:
+  `dashboard.service.ts` `recentActivityWhere`,
+  `dashboard-summary.tsx`, `dashboard-range.spec.ts`.
+  Shipping with this push.
 - **Stage changes are owner-only (DONE local 2026-09-11)**:
   Only the assigned deal owner can move stage. Admins
   (`CRM_ADMIN_EMAILS`, e.g. jjohnson) can still edit
@@ -106,13 +120,9 @@ it before stopping. The rules for maintaining it live in `AGENTS.md`
   redeploy of `cron-sage` finished without hitting the API). Confirm:
   `SELECT currency, count(*) FROM deal GROUP BY 1` → **USD 565**, no
   `'1'`. MM-Analytics unchanged.
-- **Overview Everyone activity hides others' mail (DONE local 2026-08-21)**:
-  Recent activity on `scope=everyone` no longer dumps every synced
-  Outlook/Gmail thread and calendar event. Team notes / calls / tasks /
-  stage changes stay; mailbox rows stay with the signed-in user (same
-  rule as overdue tasks). Files: `dashboard.service.ts`
-  `recentActivityWhere`, `dashboard-summary.tsx`,
-  `test/dashboard-range.spec.ts`. **Needs api + app deploy.**
+- **Overview Everyone activity hides others' mail (SUPERSEDED 2026-09-11)**:
+  The 21 Aug rule still showed the signed-in user's inbox on
+  Everyone. Replaced by **Everyone recent activity is CRM-only**.
 - **Git**: `origin` = `jj-mobilemark/crm` (fork); `upstream` = `trycompai/crm`
   (read-only). Work on `main`. Last upstream sync is `288d41a` (2 Aug).
   **Passed on trycompai/crm v1.14.0** (18 Aug) — 150 upstream commits /
@@ -448,6 +458,46 @@ it before stopping. The rules for maintaining it live in `AGENTS.md`
 ---
 
 ## Work log
+
+### 2026-09-11 — Separate won vs new-pipeline chart colors
+
+**What was completed**
+- New pipeline on the overview area chart uses
+  `--chart-2` (blue). Closed won stays `--success`
+  (green). File: `sales-dashboard.tsx`.
+
+**How and why**
+- Both series used green (`--success` and `--chart-1`).
+  The legend and plot were hard to tell apart.
+
+**Deviations**
+- None. Used existing categorical tokens; no new hex.
+
+**What's next**
+- Hard-refresh Everyone after this push.
+
+### 2026-09-11 — Everyone recent activity is CRM-only
+
+**What was completed**
+- Everyone overview no longer includes mailbox rows:
+  `EMAIL` activities, email threads, calendar events, or
+  “Company/Contact added from your inbox”.
+- Me still shows the signed-in user's mail.
+- Copy: “Notes, tasks and stage changes across the team.
+  No mail.”
+- Files: `dashboard.service.ts` `recentActivityWhere`,
+  `dashboard-summary.tsx`, `dashboard-range.spec.ts`.
+
+**How and why**
+- The prior Everyone filter kept the viewer's own inbox
+  (`createdById = me`). That leaked team-adjacent mail
+  subjects and inbox creates onto a shared analytics tab.
+
+**Deviations**
+- None vs the ask (CRM / opportunity only; no email).
+
+**What's next**
+- Deploy api + app. Hard-refresh Everyone.
 
 ### 2026-09-11 — Owner-only deal stage changes
 

@@ -315,7 +315,7 @@ export function DashboardSummary() {
 					<CardDescription>
 						{mine
 							? "Every note, task and stage change you have logged"
-							: "Notes, tasks and stage changes across the team. Mail from your inbox only."}
+							: "Notes, tasks and stage changes across the team. No mail."}
 					</CardDescription>
 					<CardAction>
 						<Button asChild variant="contrast" size="sm">

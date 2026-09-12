@@ -69,12 +69,13 @@ const CELL = "px-3 py-2.5 align-middle";
 
 /**
  * Won is the outcome, created is the input that produces it six weeks later.
- * `--success` for the first because a rep already reads green as "closed"; the
- * chart ramp for the second because it is a leading indicator, not a verdict.
+ * Green (`--success`) for closed; blue (`--chart-2`) for new pipeline so
+ * the two series separate in the legend and on the plot. `--chart-1` is
+ * also green, so it cannot sit next to `--success`.
  */
 const TREND_CONFIG: ChartConfig = {
 	won: { label: "Closed won", color: "var(--success)" },
-	created: { label: "New pipeline", color: "var(--chart-1)" },
+	created: { label: "New pipeline", color: "var(--chart-2)" },
 };
 
 /**

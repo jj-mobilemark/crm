@@ -1,5 +1,7 @@
 import { describe, expect, it } from "bun:test";
+import { ActivityType } from "@crm/db";
 import {
+	INBOX_FEED_SUBJECTS,
 	overdueOpenWhere,
 	recentActivityWhere,
 	resolveRange,
@@ -51,12 +53,12 @@ describe("recentActivityWhere", () => {
 		});
 	});
 
-	it("keeps other people's CRM log on Everyone, not their mailbox", () => {
+	it("keeps the team CRM log on Everyone, with no mailbox rows", () => {
 		expect(recentActivityWhere(false, "user-1")).toEqual({
-			OR: [
-				{ createdById: "user-1" },
-				{ emailThreadId: null, calendarEventId: null },
-			],
+			type: { not: ActivityType.EMAIL },
+			emailThreadId: null,
+			calendarEventId: null,
+			NOT: { subject: { in: [...INBOX_FEED_SUBJECTS] } },
 		});
 	});
 });
