@@ -23,11 +23,21 @@ it before stopping. The rules for maintaining it live in `AGENTS.md`
 
 ## Current state (keep this section up to date)
 
-- **Overview Everyone hides overdue tasks (shipping 2026-09-11)**:
+- **Stage changes are owner-only (DONE local 2026-09-11)**:
+  Only the assigned deal owner can move stage. Admins
+  (`CRM_ADMIN_EMAILS`, e.g. jjohnson) can still edit
+  fields and reassign owner, but not Harry Kim's stage.
+  API `deals.setStage` returns 403 for anyone else.
+  UI locks the sheet rail, header menu, and table cell.
+  Files: `packages/auth/src/admins.ts` `canChangeDealStage`,
+  `deals.service.ts`, `use-deal-edit-access.ts`,
+  `deal-sheet.tsx`, `owned-deal-stage-menu.tsx`.
+  **Needs api + app deploy.**
+- **Overview Everyone hides overdue tasks (DONE prod `d896ec5`)**:
   Everyone tab no longer shows the Overdue tasks card.
   Deals in progress is full width. Me still shows both
   cards side by side. File: `dashboard-summary.tsx`.
-- **DealQuote `isPrimary` as disambiguator (prod data + shipping 2026-09-11)**:
+- **DealQuote `isPrimary` as disambiguator (DONE prod `d896ec5`)**:
   Backfill had marked every clone primary. Prod repaired
   via TCP proxy + `repair-deal-quote-primaries.ts`: **11**
   colliding numbers now have **exactly one** primary
@@ -439,6 +449,40 @@ it before stopping. The rules for maintaining it live in `AGENTS.md`
 
 ## Work log
 
+### 2026-09-11 — Owner-only deal stage changes
+
+**What was completed**
+- Stage moves are owner-only. An admin may still edit
+  other deal fields and reassign the owner.
+- Helper `canChangeDealStage` in
+  `packages/auth/src/admins.ts`. Tests in
+  `packages/auth/test/admins.spec.ts`.
+- API: `DealsService.setStage` uses
+  `assertCanChangeStage` (403:
+  "Only the deal's owner can change its stage.").
+- UI: `canChangeStage` from `useDealEditAccess`.
+  Sheet header menu, stage rail, deals table, company
+  and contact deal lists all lock for non-owners.
+  Tooltip: "Only the deal owner can change the stage".
+- Verified locally as jjohnson on Harry Kim's Bosch
+  India deal (`#Q260622-003…`): rail and header
+  disabled; `setStage` 403. Jordan's own test deal
+  still has an enabled stage control.
+
+**How and why**
+- Jordan is in `CRM_ADMIN_EMAILS`, so `canEdit` was
+  true on every deal. Stage used that flag. Forecast
+  follows stage, so only the assigned rep should move
+  it.
+
+**Deviations**
+- None. Other field edits stay admin-or-owner.
+
+**What's next**
+- Deploy **api** + **app**. Confirm Harry Kim's Bosch
+  India sheet shows a locked Investigation control
+  when signed in as jjohnson.
+
 ### 2026-09-11 — Hide overdue tasks on Everyone overview
 
 **What was completed**
@@ -457,7 +501,8 @@ it before stopping. The rules for maintaining it live in `AGENTS.md`
   the card is hidden in the UI only.
 
 **What's next**
-- Confirm app deploy after push to `main`.
+- Hard-refresh Everyone on prod. Deals in progress
+  should be full width.
 
 ### 2026-09-11 — DealQuote `isPrimary` is a disambiguator
 
@@ -499,8 +544,8 @@ it before stopping. The rules for maintaining it live in `AGENTS.md`
   left alone.
 
 **What's next**
-- Confirm api + app deploy after push to `main`.
-  Nightly warehouse cron `0 9 * * *` UTC re-pulls.
+- Nightly warehouse cron `0 9 * * *` UTC re-pulls.
+  `deal_quote_primary` should start filling.
 
 ### 2026-09-11 — Overview Overdue KPI + locked/live board
 
