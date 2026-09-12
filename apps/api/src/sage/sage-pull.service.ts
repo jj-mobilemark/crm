@@ -1,4 +1,4 @@
-import { type Db, DealStage, RecordSource } from "@crm/db";
+import { type Db, RecordSource } from "@crm/db";
 import { Injectable, Logger } from "@nestjs/common";
 import {
 	DEAL_CHANGE_SELECT,
@@ -10,6 +10,7 @@ import {
 	maxNumericId,
 	sageDate,
 } from "./sage-backfill.util";
+import { resolvedClosedAt } from "./sage-closed-at";
 import { withSageSession } from "./sage-session";
 import { SageSoapClient } from "./sage-soap.client";
 import {
@@ -332,6 +333,7 @@ export class SagePullService {
 			select: {
 				id: true,
 				sagePushedAt: true,
+				closedAt: true,
 				...DEAL_CHANGE_SELECT,
 			},
 		});
@@ -349,10 +351,13 @@ export class SagePullService {
 			sageStatus: mapped.sageStatus,
 			dealType: mapped.dealType,
 			expectedCloseDate: mapped.expectedCloseDate,
-			// Real Sage close date; if a closed deal has none, fall back to the
-			// forecast close then the open date rather than stamping "now"
-			// (which would bunch every dateless deal into the import month).
-			closedAt: resolvedClosedAt(mapped),
+			// Sage `closed` when real; else freeze an existing past date; else
+			// stamp now on first observe. Never copy targetclose / opened.
+			closedAt: resolvedClosedAt({
+				stage: mapped.stage,
+				sageClosedAt: mapped.closedAt,
+				existingClosedAt: existing?.closedAt ?? null,
+			}),
 			// The deal's true creation date is Sage `opened`, not our import time.
 			// `undefined` leaves the DB default (now) when Sage has neither.
 			createdAt: mapped.openedAt ?? undefined,
@@ -1539,23 +1544,6 @@ function emptyBackfill(
 
 function delay(ms: number): Promise<void> {
 	return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-function isClosedStage(stage: DealStage): boolean {
-	return (
-		stage === DealStage.CLOSED_WON || stage === DealStage.CLOSED_LOST
-	);
-}
-
-/**
- * The date a deal closed: the real Sage `closed` date, else (for a closed-stage
- * deal with no close date) the forecast close, else the open date. Open deals
- * are null. Never "now" — that would bunch dateless deals into the import month.
- */
-function resolvedClosedAt(mapped: MappedOpportunity): Date | null {
-	if (mapped.closedAt) return mapped.closedAt;
-	if (!isClosedStage(mapped.stage)) return null;
-	return mapped.expectedCloseDate ?? mapped.openedAt ?? null;
 }
 
 /**

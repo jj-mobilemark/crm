@@ -1,16 +1,11 @@
 /**
- * One-time: fix imported deal dates from Sage `opened` / `closed`.
+ * RETIRED one-shot (2026-08-02). Do not re-run.
  *
- * The first backfill left every deal's `createdAt` at the import time and
- * stamped `closedAt = now()` for closed deals with no Sage close date — which
- * flattened the dashboard trend (everything bunched into the import month).
- * This re-derives the real dates from the opportunity snapshots (no Sage calls):
- *
- *   createdAt <- Sage `opened` (else `createddate`)
- *   closedAt  <- Sage `closed`; if a closed deal has none, `targetclose` then
- *                `opened`; open deals -> null
- *
- * Idempotent. Reads only the snapshots we already stored.
+ * Encodes the OLD closedAt rule (`closed` → `targetclose` → `opened`).
+ * Live pull now uses `resolvedClosedAt` in `sage-closed-at.ts`: Sage `closed`
+ * when real, else freeze an existing past date, else stamp now on first
+ * observe. Never copy forecast/open dates. A historical rewrite of empty
+ * Sage `closed` rows is a separate, approved backfill — not this script.
  *
  *   bun run scripts/sage-backfill-deal-dates.ts
  */

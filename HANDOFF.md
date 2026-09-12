@@ -23,6 +23,17 @@ it before stopping. The rules for maintaining it live in `AGENTS.md`
 
 ## Current state (keep this section up to date)
 
+- **closedAt forward fix (DONE local 2026-09-11)**: Pull no longer
+  copies `targetclose` / `opened` into `closedAt`. Rule:
+  Sage `closed` if Chicago date ≤ today; else freeze an existing
+  past `closedAt`; else stamp now once (first observe). Future
+  dates rejected even when Sage filled `closed`. Historical past
+  fallback dates stay frozen (173 empty-`closed` Won not rewritten).
+  Next nightly after **api deploy** will fix query-C futures
+  (TALLEY 837 $256k → sync day; 525/589 future Sage `closed` →
+  now). Files: `sage-closed-at.ts`, `sage-pull.service.ts`,
+  `test/sage-closed-at.spec.ts`. Dry-run script kept. **Needs api
+  deploy.**
 - **Sage incremental pagination restart (DONE local 2026-09-11)**:
   Nightly `cron-sage` was 503 on the first curl then 200 on `--retry`
   because Sage SOAP `next` returned `List index out of bounds (75)`
@@ -382,6 +393,79 @@ it before stopping. The rules for maintaining it live in `AGENTS.md`
 ---
 
 ## Work log
+
+### 2026-09-11 — closedAt forward path (no forecast-as-actual)
+
+**What was completed**
+- New `resolvedClosedAt` in `apps/api/src/sage/sage-closed-at.ts`.
+  Pull (`sage-pull.service.ts`) and echo-repair script use it.
+  Tests: `apps/api/test/sage-closed-at.spec.ts` (9). Plan §3.3
+  mapping row updated. `sage-backfill-deal-dates.ts` marked
+  RETIRED (old `closed` → `targetclose` → `opened` rule).
+- Rules: Sage `closed` when Chicago date is today or earlier;
+  else keep a usable existing `closedAt`; else stamp `now` once.
+  Open deals → null. Never copy `targetclose` / `opened`.
+  Future `closed` rejected. Later sync is idempotent unless Sage
+  later sends a real `closed`.
+
+**How and why**
+- Forecast was landing in MM-Analytics `closed_date` / Power BI.
+  First-observed `now` is only for new closes and future-dated
+  rows (query C). Past historical fallback dates stay put so
+  nightly sync does not rewrite $7.35M of empty-`closed` wins.
+
+**Deviations**
+- Did not backfill history. Did not add a raw-Sage-`closed`
+  column (snapshot already has it).
+
+**What's next**
+- Deploy **api**. Next Sage pull fixes future `closedAt` (837
+  TALLEY, 525, 589). Confirm open deals still have `closedAt`
+  null. Leftover talk: historical empty-`closed` label,
+  `DealWon` stage name, Investigation+Won hygiene.
+
+### 2026-09-11 — closedAt dry-run (local snapshots + live Sage SOAP)
+
+**What was completed**
+- Read-only script `apps/api/scripts/sage-closedat-dry-run.ts`
+  (`--soap` for live Won/Lost + `getmetadata`). Nothing wrote.
+- Local Postgres is still the Aug 2026 525-deal pull. Prod/Sage is
+  current (292 Won / 118 Lost). `dealFieldChange` is empty locally.
+- Live Sage has **no extra close date**. Metadata date-ish fields:
+  `closed`, `createddate`, `decisiontimeframe` (0 rows), `notifytime`
+  (11), `opened`, `timestamp` (= `updateddate` on 410/410),
+  `updateddate`. `targetclose` is filled on every Won/Lost row.
+- Empty Sage `closed`: 173 Won / $7.35M (Chris Talbert $5.35M of
+  that). B (`closedAt` == `targetclose`) is the historical norm, not
+  a small bug.
+- 2026 YTD won $ by rule: current fallback **$3.11M** (matches the
+  Sep 11 $3.1M card); Sage `closed` only **$1.34M**;
+  `closed`??`updateddate` **$3.42M**. `updateddate` dumps **$3.0M**
+  into Apr 2025 — batch edits, not closes.
+- Fixtures (live): **837 TALLEY INC** $256k empty `closed` target
+  30 Sep / updated 2 Sep; **665** 200-LTM502 closed=target=9 Sep;
+  **795** B2543WN closed 30 Jul target 29 Sep. Sage also stores
+  future `closed` on 525 (14 Oct) and 589 (23 Sep).
+- Four Sage rows use stage `DealWon` (status Won — already maps).
+
+**How and why**
+- MM-Analytics copies `deal.closedAt` into `closed_date` for Power
+  BI. Need the blast radius before any transform change. SOAP was
+  required because local is stale and the named fixtures are not in
+  the August pull as closed.
+
+**Deviations**
+- Did not mutate `resolvedClosedAt` or backfill. Did not open a
+  prod Postgres proxy.
+
+**What's next**
+- Phase 1 only: stop falling back to `targetclose` / `opened`;
+  freeze `closedAt` after first close; Sage `closed` still wins;
+  reject future dates (including Sage `closed` in the future).
+- Do not rewrite the 173 historical empty-`closed` Won rows to
+  `stageChangedAt` or `updateddate`.
+- Then talk through leftover items (Analytics month restatement,
+  DealWon label, Investigation+Won hygiene).
 
 ### 2026-09-11 — Restart Sage incremental walk on pagination `next` faults
 

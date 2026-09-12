@@ -238,7 +238,7 @@ to be exposed later, add `sage100ContactCode` then.
 | `currency` | `currency` | Sage lookup id `1` → `USD` (confirmed 2026-09-09; SOAP often returns the id). Keep a 3-letter ISO code. Default `USD` if blank or unknown. Never persist the Sage id. No FX. |
 | `stage` | `stage` + `status` | map to `DealStage` (see below) |
 | `expectedCloseDate` | `targetclose` | |
-| `closedAt` | `closed` → `targetclose` → `opened` | **CORRECTED** — real `closed` date; for a closed-stage deal with no close date, fall back to `targetclose` then `opened`. Never "now" (that bunched every dateless deal into the import month). Open deals: null. |
+| `closedAt` | Sage `closed` (usable) else freeze existing else first-observed `now` | **CORRECTED 2026-09-11** — actuals only. Sage `closed` wins when the Chicago date is today or earlier. Future `closed` is rejected. Never copy `targetclose` / `opened`. A later sync must not move a frozen past `closedAt` unless Sage later sends a usable `closed`. New closes with no Sage `closed` stamp sync time once. Open deals: null. Historical empty-`closed` rows that already have a past `closedAt` stay frozen (do not rewrite to `now`). |
 | `createdAt` | `opened` (else `createddate`) | **CORRECTED** — the deal's real creation date, so the pipeline trend is by when deals actually opened, not by import time. |
 | `ownerId` | `assigneduserid` | REQUIRED locally. Resolve via `SAGE_USER_EMAILS`; unmapped → `ken@mobilemark.com`, else earliest User. Never null. |
 

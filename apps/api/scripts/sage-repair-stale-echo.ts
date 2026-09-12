@@ -6,28 +6,12 @@
  *   bun run scripts/sage-repair-stale-echo.ts --apply
  */
 import "@crm/env/load";
-import { DealStage, db } from "@crm/db";
+import { db } from "@crm/db";
+import { resolvedClosedAt } from "../src/sage/sage-closed-at";
 import { mapOpportunity } from "../src/sage/sage.mappings";
 import type { SageRecord } from "../src/sage/sage-xml";
 
 const apply = process.argv.includes("--apply");
-
-function isClosedStage(stage: DealStage): boolean {
-	return (
-		stage === DealStage.CLOSED_WON || stage === DealStage.CLOSED_LOST
-	);
-}
-
-function resolvedClosedAt(mapped: {
-	closedAt: Date | null;
-	stage: DealStage;
-	expectedCloseDate: Date | null;
-	openedAt: Date | null;
-}): Date | null {
-	if (mapped.closedAt) return mapped.closedAt;
-	if (!isClosedStage(mapped.stage)) return null;
-	return mapped.expectedCloseDate ?? mapped.openedAt ?? null;
-}
 
 async function main() {
 	const [deals, snapshots] = await Promise.all([
@@ -99,7 +83,11 @@ async function main() {
 				amount: mapped.amount,
 				weightedAmount: mapped.weightedAmount,
 				expectedCloseDate: mapped.expectedCloseDate,
-				closedAt: resolvedClosedAt(mapped),
+				closedAt: resolvedClosedAt({
+					stage: mapped.stage,
+					sageClosedAt: mapped.closedAt,
+					existingClosedAt: deal.closedAt,
+				}),
 				sageUpdatedAt: mapped.sageUpdatedAt,
 				...(stageChanged ? { stageChangedAt: new Date() } : {}),
 			},
