@@ -1,15 +1,26 @@
 "use client";
 
+import Close from "@carbon/icons-react/es/Close";
 import UserMultiple from "@carbon/icons-react/es/UserMultiple";
+import { Button } from "@crm/ui/components/button";
+import { ButtonGroup } from "@crm/ui/components/button-group";
 import { EmptyCellValue } from "@crm/ui/components/empty-cell";
 import {
 	EntityLogo,
 	type EntityLogoTone,
 } from "@crm/ui/components/entity-logo";
+import { Icon } from "@crm/ui/components/icon";
+import {
+	InputGroup,
+	InputGroupAddon,
+	InputGroupButton,
+	InputGroupInput,
+} from "@crm/ui/components/input-group";
 import { SimpleTable, SimpleTableRow } from "@crm/ui/components/simple-table";
 import { TableCell } from "@crm/ui/components/table";
 import { formatDay, formatMoney, formatPercent } from "@crm/ui/lib/format";
 import { useMutation, useQuery } from "@tanstack/react-query";
+import { useState } from "react";
 import { toast } from "sonner";
 import { AgentPanel } from "@/components/crm/agent-panel";
 import {
@@ -347,6 +358,8 @@ function DealOverview({ deal }: { deal: Deal }) {
 				</DetailSheetProperties>
 			</DetailSheetSection>
 
+			<DealQuotes deal={deal} canEdit={canEdit} />
+
 			{deal.sageCrmOpportunityId ? (
 				<DetailSheetSection title="Sage">
 					<DetailSheetProperties columns={1}>
@@ -360,6 +373,125 @@ function DealOverview({ deal }: { deal: Deal }) {
 				</DetailSheetSection>
 			) : null}
 		</DetailSheetBody>
+	);
+}
+
+function DealQuotes({ deal, canEdit }: { deal: Deal; canEdit: boolean }) {
+	const trpc = useTRPC();
+	const cache = useCrmCache();
+	const [draft, setDraft] = useState("");
+
+	const refresh = () => cache.deal(deal.id, { settle: "record" });
+
+	const add = useMutation(
+		trpc.deals.addQuotes.mutationOptions({
+			onSuccess: () => {
+				setDraft("");
+				refresh();
+			},
+			onError: (error) => toast.error(error.message),
+		}),
+	);
+	const remove = useMutation(
+		trpc.deals.removeQuote.mutationOptions({
+			onSuccess: refresh,
+			onError: (error) => toast.error(error.message),
+		}),
+	);
+	const setPrimary = useMutation(
+		trpc.deals.setPrimaryQuote.mutationOptions({
+			onSuccess: refresh,
+			onError: (error) => toast.error(error.message),
+		}),
+	);
+
+	const submit = () => {
+		const text = draft.trim();
+		if (!text) return;
+		add.mutate({ id: deal.id, text });
+	};
+
+	return (
+		<DetailSheetSection title="Quotes">
+			{deal.quotes.length > 0 ? (
+				<div className="flex flex-wrap gap-2">
+					{deal.quotes.map((quote) => (
+						<ButtonGroup key={quote.quoteNumber}>
+							<Button
+								type="button"
+								size="sm"
+								variant={quote.isPrimary ? "secondary" : "outline"}
+								disabled={!canEdit || setPrimary.isPending}
+								title={
+									quote.isPrimary
+										? "Primary quote for this deal"
+										: "Set as primary"
+								}
+								onClick={() => {
+									if (!canEdit || quote.isPrimary) return;
+									setPrimary.mutate({
+										id: deal.id,
+										quoteNumber: quote.quoteNumber,
+									});
+								}}
+							>
+								{quote.quoteNumber}
+								{quote.isPrimary ? " · Primary" : ""}
+							</Button>
+							{canEdit ? (
+								<Button
+									type="button"
+									size="icon-sm"
+									variant="outline"
+									aria-label={`Remove ${quote.quoteNumber}`}
+									disabled={remove.isPending}
+									onClick={() =>
+										remove.mutate({
+											id: deal.id,
+											quoteNumber: quote.quoteNumber,
+										})
+									}
+								>
+									<Icon icon={Close} />
+								</Button>
+							) : null}
+						</ButtonGroup>
+					))}
+				</div>
+			) : (
+				<p className="text-muted-foreground text-xs">
+					No quotes on this deal yet.
+				</p>
+			)}
+			{canEdit ? (
+				<form
+					className="flex flex-col gap-1.5"
+					onSubmit={(event) => {
+						event.preventDefault();
+						submit();
+					}}
+				>
+					<InputGroup>
+						<InputGroupInput
+							value={draft}
+							placeholder="Q260622-003 or Q260622-003,4,5"
+							autoComplete="off"
+							spellCheck={false}
+							disabled={add.isPending}
+							onChange={(event) => setDraft(event.target.value)}
+						/>
+						<InputGroupAddon align="inline-end">
+							<InputGroupButton type="submit" disabled={add.isPending}>
+								Add
+							</InputGroupButton>
+						</InputGroupAddon>
+					</InputGroup>
+					<p className="text-muted-foreground text-xs">
+						Full QYYMMDD-### values only. Comma shorthand expands before save.
+					</p>
+				</form>
+			) : null}
+		</DetailSheetSection>
 	);
 }
 

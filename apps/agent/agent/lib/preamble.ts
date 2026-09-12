@@ -305,6 +305,10 @@ export async function dealPreamble(
 					},
 				},
 			},
+			quotes: {
+				select: { quoteNumber: true, isPrimary: true },
+				orderBy: [{ isPrimary: "desc" }, { createdAt: "asc" }],
+			},
 		},
 	});
 
@@ -342,6 +346,15 @@ export async function dealPreamble(
 			? `Last touched ${deal.lastActivityAt.toDateString()}.`
 			: "Nothing has happened on it yet.",
 		people ? `People on it: ${people}` : "Nobody is attached to it yet.",
+		deal.quotes.length > 0
+			? `Quotes: ${deal.quotes
+					.map((quote) =>
+						quote.isPrimary
+							? `${quote.quoteNumber} (primary)`
+							: quote.quoteNumber,
+					)
+					.join(", ")}.`
+			: "No quote numbers are attached yet.",
 		"",
 		opening(
 			opened,

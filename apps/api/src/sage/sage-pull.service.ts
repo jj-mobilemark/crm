@@ -5,6 +5,7 @@ import {
 	DealChangeRecorder,
 } from "../crm/deal-change.service";
 import { InjectDatabase } from "../database/database.constants";
+import { attachDealQuotes, quotesFromSageRecord } from "../deals/quote-number";
 import {
 	countMappableContacts,
 	maxNumericId,
@@ -37,7 +38,7 @@ import {
 	SAGE_USER_EMAILS,
 } from "./sage.mappings";
 import { ensureSageUsers } from "./sage-users";
-import type { SageCompanyTree } from "./sage-xml";
+import type { SageCompanyTree, SageRecord } from "./sage-xml";
 
 /** Fallback owner when Sage assigneduserid is unmapped (Ken — Sage id 27). */
 const FALLBACK_OWNER_EMAIL = "ken@mobilemark.com";
@@ -304,6 +305,7 @@ export class SagePullService {
 				continue;
 			}
 			dealsUpserted += 1;
+			await this.attachQuotesFromRecord(dealId, record);
 
 			if (mapped.sageCrmPrimaryPersonId) {
 				const linked = await this.linkPrimaryDealContact(
@@ -408,6 +410,15 @@ export class SagePullService {
 			select: { id: true },
 		});
 		return created.id;
+	}
+
+	private async attachQuotesFromRecord(
+		dealId: string,
+		record: SageRecord,
+	): Promise<void> {
+		const parsed = quotesFromSageRecord(record);
+		if (parsed.length === 0) return;
+		await attachDealQuotes(this.db, dealId, parsed);
 	}
 
 	private async linkPrimaryDealContact(
@@ -707,6 +718,7 @@ export class SagePullService {
 				continue;
 			}
 			summary.dealsUpserted += 1;
+			await this.attachQuotesFromRecord(dealId, record);
 
 			if (mapped.sageCrmPrimaryPersonId) {
 				const linked = await this.linkPrimaryDealContact(
@@ -1003,6 +1015,7 @@ export class SagePullService {
 				continue;
 			}
 			summary.dealsUpserted += 1;
+			await this.attachQuotesFromRecord(dealId, record);
 			if (mapped.sageCrmPrimaryPersonId) {
 				const linked = await this.linkPrimaryDealContact(
 					dealId,

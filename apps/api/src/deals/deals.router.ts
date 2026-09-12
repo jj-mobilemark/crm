@@ -14,6 +14,8 @@ import {
 	dealCreateInput,
 	dealIdInput,
 	dealListInput,
+	dealQuoteNumberInput,
+	dealQuotesTextInput,
 	dealUpdateArgs,
 	setStageInput,
 } from "./deals.contracts";
@@ -51,6 +53,39 @@ export class DealsRouter {
 		@Input() input: z.infer<typeof dealUpdateArgs>,
 	) {
 		return this.deals.update(input.id, input.data, {
+			id: ctx.user.id,
+			email: ctx.user.email,
+		});
+	}
+
+	@Mutation({ input: dealQuotesTextInput })
+	async addQuotes(
+		@Ctx() ctx: AuthedTrpcContext,
+		@Input() input: z.infer<typeof dealQuotesTextInput>,
+	) {
+		return this.deals.addQuotes(input.id, input.text, {
+			id: ctx.user.id,
+			email: ctx.user.email,
+		});
+	}
+
+	@Mutation({ input: dealQuoteNumberInput })
+	async removeQuote(
+		@Ctx() ctx: AuthedTrpcContext,
+		@Input() input: z.infer<typeof dealQuoteNumberInput>,
+	) {
+		return this.deals.removeQuote(input.id, input.quoteNumber, {
+			id: ctx.user.id,
+			email: ctx.user.email,
+		});
+	}
+
+	@Mutation({ input: dealQuoteNumberInput })
+	async setPrimaryQuote(
+		@Ctx() ctx: AuthedTrpcContext,
+		@Input() input: z.infer<typeof dealQuoteNumberInput>,
+	) {
+		return this.deals.setPrimaryQuote(input.id, input.quoteNumber, {
 			id: ctx.user.id,
 			email: ctx.user.email,
 		});

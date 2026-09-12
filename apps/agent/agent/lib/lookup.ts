@@ -218,6 +218,11 @@ async function searchDeals(
 					name: { contains: word, mode: "insensitive" as const },
 				})),
 				{ company: { name: { contains: term, mode: "insensitive" } } },
+				{
+					quotes: {
+						some: { quoteNumber: { contains: term, mode: "insensitive" } },
+					},
+				},
 			],
 		},
 		orderBy: [{ lastActivityAt: "desc" }, { createdAt: "desc" }],
@@ -229,12 +234,17 @@ async function searchDeals(
 			amount: true,
 			currency: true,
 			company: { select: { id: true, name: true } },
+			quotes: { select: { quoteNumber: true } },
 		},
 	});
 
 	return rows
 		.map((row) => ({
-			score: score(term, [row.name, row.company.name]),
+			score: score(term, [
+				row.name,
+				row.company.name,
+				...row.quotes.map((quote) => quote.quoteNumber),
+			]),
 			hit: {
 				kind: "deal" as const,
 				id: row.id,

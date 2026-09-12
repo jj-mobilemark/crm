@@ -707,6 +707,7 @@ model Deal {
   lastActivityAt DateTime?
 
   contacts     DealContact[]
+  quotes       DealQuote[]
   activities   Activity[]
   fieldChanges DealFieldChange[]
   createdAt    DateTime          @default(now())
@@ -762,6 +763,38 @@ model DealContact {
   @@id([dealId, contactId])
   @@index([contactId])
   @@map("dealContact")
+}
+
+/// Where a `DealQuote` row came from. Analytics joins on `quoteNumber`
+/// only; this is CRM provenance, not a warehouse key.
+enum DealQuoteSource {
+  SAGE_NOTE
+  SAGE_DESCRIPTION
+  HUMAN
+  PO_TOOL
+}
+
+/// Canonical quote ids on a deal (`QYYMMDD-###`). Many quotes → one deal
+/// is allowed (same-day siblings / revisions). The same number on two
+/// deals stays ambiguous unless exactly one of those rows is `isPrimary`.
+///
+/// Never store quote-tool `SavedQuote.id` or Sage name shorthand
+/// (`#Q260622-003,4,5`). Expand shorthand before insert. Join key for
+/// MM-Analytics: `upper(trim(quoteNumber))` = `fct_quotes.quote_number`.
+model DealQuote {
+  id          String          @id @default(cuid())
+  dealId      String
+  deal        Deal            @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  quoteNumber String          @db.VarChar(11)
+  isPrimary   Boolean         @default(false)
+  source      DealQuoteSource
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  @@unique([dealId, quoteNumber])
+  @@index([quoteNumber])
+  @@index([dealId, isPrimary])
+  @@map("dealQuote")
 }
 
 model Activity {

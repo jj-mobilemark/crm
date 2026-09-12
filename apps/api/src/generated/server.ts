@@ -18,7 +18,7 @@ import { companyListInput, companyMapListInput, companyIdInput, companyByIdsInpu
 import { contactListInput, contactIdInput, contactOptionsInput, contactCreateInput, contactUpdateArgs, factDecisionInput } from "../contacts/contacts.contracts";
 import { conversationListInput, conversationEventsInput, conversationSaveInput, conversationIdInput } from "../conversations/conversations.contracts";
 import { dashboardSummaryInput, dashboardRepSummaryInput, dashboardCertaintyByRepInput } from "../dashboard/dashboard.contracts";
-import { dealListInput, dealIdInput, dealCreateInput, dealUpdateArgs, setStageInput } from "../deals/deals.contracts";
+import { dealListInput, dealIdInput, dealCreateInput, dealUpdateArgs, dealQuotesTextInput, dealQuoteNumberInput, setStageInput } from "../deals/deals.contracts";
 import { followupPrefsInput, followupDecideInput } from "../followups/followups.contracts";
 import { setAutoCreateInput, suppressDomainInput, threadInput, calendarEventInput } from "../google/google.contracts";
 import { msSetAutoCreateInput, msSetDailyTaskPushInput, msSuppressDomainInput, msThreadInput, msCalendarEventInput } from "../microsoft/microsoft.contracts";
@@ -157,6 +157,15 @@ const appRouter = t.router({
     update: publicProcedure
       .input(dealUpdateArgs)
       .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<DealsRouter["update"]>>),
+    addQuotes: publicProcedure
+      .input(dealQuotesTextInput)
+      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<DealsRouter["addQuotes"]>>),
+    removeQuote: publicProcedure
+      .input(dealQuoteNumberInput)
+      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<DealsRouter["removeQuote"]>>),
+    setPrimaryQuote: publicProcedure
+      .input(dealQuoteNumberInput)
+      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<DealsRouter["setPrimaryQuote"]>>),
     setStage: publicProcedure
       .input(setStageInput)
       .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as unknown as Awaited<ReturnType<DealsRouter["setStage"]>>)

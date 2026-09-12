@@ -23,6 +23,18 @@ it before stopping. The rules for maintaining it live in `AGENTS.md`
 
 ## Current state (keep this section up to date)
 
+- **Deal quote numbers (DONE local 2026-09-11)**: `DealQuote`
+  junction is live locally. Canonical `QYYMMDD-###` only; Sage
+  shorthand expands on save; never stores quote-tool `quote_id`.
+  Pull + snapshot backfill are additive. Human add / remove /
+  set-primary on the deal sheet. Local backfill: **166** rows on
+  **158 / 525** deals (48 `SAGE_NOTE`, 118 `SAGE_DESCRIPTION`).
+  Opp **663** expanded to `Q260622-003`…`007` plus two quoting-
+  tool notes. Analytics extract = `dealQuote` (`dealId`,
+  `quoteNumber`, `isPrimary`). Join
+  `upper(trim(quoteNumber))` = `fct_quotes.quote_number`.
+  **Needs db migrate + `backfill-deal-quotes.ts` on prod**, then
+  api/app deploy. Warehouse exact-id tier still theirs.
 - **closedAt forward fix (DONE local 2026-09-11)**: Pull no longer
   copies `targetclose` / `opened` into `closedAt`. Rule:
   Sage `closed` if Chicago date ≤ today; else freeze an existing
@@ -393,6 +405,65 @@ it before stopping. The rules for maintaining it live in `AGENTS.md`
 ---
 
 ## Work log
+
+### 2026-09-11 — DealQuote junction + Sage parse + deal UI
+
+**What was completed**
+- Prisma `DealQuote` + enum `DealQuoteSource`
+  (`packages/db/prisma/schema.prisma`,
+  `migrations/20260912040000_add_deal_quote`).
+- Parse/expand in `apps/api/src/deals/quote-number.ts`; 13 tests
+  in `test/quote-number.spec.ts`.
+- Sage pull attaches quotes after every opportunity upsert
+  (`sage-pull.service.ts`). Additive; no Sage push on quote edits.
+- tRPC `deals.addQuotes` / `removeQuote` / `setPrimaryQuote`.
+- Deal sheet Quotes section + deals-table Quotes column.
+- Agent preamble + deal search include quote numbers.
+- One-shot `apps/api/scripts/backfill-deal-quotes.ts`. Ran on
+  local: 166 rows / 158 deals. Plan §3.3 updated.
+
+**How and why**
+- Junction (not `text[]`) so `quoteNumber` is indexed and
+  `isPrimary` is a real column. Expand `#Q260622-003,4,5,6,7`
+  before insert so Analytics can exact-join. Note-like Sage
+  fields win over `description`; quoting-tool stamp in the name
+  counts as `SAGE_NOTE`.
+
+**Deviations**
+- First attached row becomes primary when none exists (note
+  order first). On opp 663 that made `Q260526-001` primary, not
+  `Q260622-003`. Human can change it. Extra quoting-tool ids on
+  that deal were kept (observed, not guessed).
+
+**What's next**
+- Prod: migrate `dealQuote`, run
+  `bun run scripts/backfill-deal-quotes.ts` (TCP proxy if needed),
+  deploy api + app. Tell Analytics the extract table is
+  `dealQuote`. They add the exact-id tier. Do not parse names in
+  the warehouse.
+
+### 2026-09-11 — Deal quote-number contract locked with Analytics
+
+**What was completed**
+- Locked CRM shape from the 2026-09-11 warehouse answers
+  (746 quotes, 566 deals). Not built. No schema yet.
+
+**How and why**
+- Fuzzy quote↔opp match is 120 high / 598 none. Bosch 663 is
+  unmatched because $50–72M quotes ≠ $2.99M deal. Typed
+  `quote_number` list is the hard link. Scalar column would drop
+  siblings. `text[]` is weaker than a junction for primary +
+  reverse lookup. Do not store `SavedQuote.id`.
+
+**Deviations**
+- None vs Analytics ask-back: list + optional primary. Chose
+  junction over `text[]` so `quoteNumber` can be indexed and
+  `isPrimary` is a real column.
+
+**What's next**
+- When asked: Prisma `DealQuote` + Sage parse/expand + deal UI
+  + extract column for Analytics. Until then do not add a
+  name-parse tier in either repo.
 
 ### 2026-09-11 — closedAt forward path (no forecast-as-actual)
 

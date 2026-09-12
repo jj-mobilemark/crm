@@ -2,6 +2,7 @@ import { canEditOwnedRecord, canReassignOwner, isCrmAdmin } from "@crm/auth";
 import {
 	ActivityType,
 	type Db,
+	DealQuoteSource,
 	type DealStage,
 	type Priority,
 	type Prisma,
@@ -17,8 +18,8 @@ import {
 import { ActivityStampService } from "../crm/activity-stamp.service";
 import {
 	DEAL_CHANGE_SELECT,
-	type DealChangeSnapshot,
 	DealChangeRecorder,
+	type DealChangeSnapshot,
 } from "../crm/deal-change.service";
 import { fromCents, toCents } from "../crm/values";
 import { InjectDatabase } from "../database/database.constants";
@@ -48,6 +49,13 @@ import type {
 	SetStageInput,
 } from "./deals.contracts";
 import { CLOSING_WINDOWS } from "./deals.contracts";
+import {
+	attachDealQuotes,
+	canonicalizeQuoteNumber,
+	listDealQuotes,
+	quotesFromText,
+	toDealQuoteDto,
+} from "./quote-number";
 
 const ALL_STAGES = new Set<string>([
 	...OPEN_DEAL_STAGES,
@@ -140,6 +148,14 @@ export class DealsService {
 					sageStatus: true,
 					company: { select: COMPANY_SELECT },
 					owner: { select: OWNER_SELECT },
+					quotes: {
+						select: {
+							quoteNumber: true,
+							isPrimary: true,
+							source: true,
+						},
+						orderBy: [{ isPrimary: "desc" }, { createdAt: "asc" }],
+					},
 					lastActivityAt: true,
 					createdAt: true,
 				},
@@ -164,9 +180,11 @@ export class DealsService {
 					closedAt,
 					lastActivityAt,
 					createdAt,
+					quotes,
 					...row
 				}) => ({
 					...row,
+					quotes: quotes.map(toDealQuoteDto),
 					amountCents: toCents(amount),
 					weightedAmountCents: toCents(weightedAmount),
 					expectedCloseDate: expectedCloseDate?.toISOString() ?? null,
@@ -224,6 +242,14 @@ export class DealsService {
 						},
 					},
 				},
+				quotes: {
+					select: {
+						quoteNumber: true,
+						isPrimary: true,
+						source: true,
+					},
+					orderBy: [{ isPrimary: "desc" }, { createdAt: "asc" }],
+				},
 			},
 		});
 
@@ -231,7 +257,7 @@ export class DealsService {
 			throw new NotFoundException(`No deal with id ${id}.`);
 		}
 
-		const { contacts, amount, weightedAmount, ...rest } = deal;
+		const { contacts, quotes, amount, weightedAmount, ...rest } = deal;
 
 		return {
 			...rest,
@@ -242,7 +268,111 @@ export class DealsService {
 			closedAt: deal.closedAt?.toISOString() ?? null,
 			createdAt: deal.createdAt.toISOString(),
 			contacts: contacts.map(({ role, contact }) => ({ ...contact, role })),
+			quotes: quotes.map(toDealQuoteDto),
 		};
+	}
+
+	async addQuotes(id: string, text: string, actor: DealActor) {
+		const deal = await this.requireEditableDeal(id, actor);
+		const parsed = quotesFromText(text, DealQuoteSource.HUMAN);
+		if (parsed.length === 0) {
+			throw new BadRequestException(
+				"Use a full quote number like Q260622-003, or shorthand Q260622-003,4,5.",
+			);
+		}
+
+		const added = await attachDealQuotes(this.db, deal.id, parsed);
+		this.logger.log({
+			message: "Deal quotes added",
+			dealId: deal.id,
+			added,
+		});
+		return {
+			id: deal.id,
+			added,
+			quotes: await listDealQuotes(this.db, deal.id),
+		};
+	}
+
+	async removeQuote(id: string, quoteNumber: string, actor: DealActor) {
+		const deal = await this.requireEditableDeal(id, actor);
+		const canonical = canonicalizeQuoteNumber(quoteNumber);
+		if (!canonical) {
+			throw new BadRequestException(
+				"That is not a full quote number (QYYMMDD-###).",
+			);
+		}
+
+		const existing = await this.db.dealQuote.findUnique({
+			where: {
+				dealId_quoteNumber: { dealId: deal.id, quoteNumber: canonical },
+			},
+			select: { id: true, isPrimary: true },
+		});
+		if (!existing) {
+			throw new NotFoundException(`No quote ${canonical} on this deal.`);
+		}
+
+		await this.db.$transaction(async (tx) => {
+			await tx.dealQuote.delete({ where: { id: existing.id } });
+			if (!existing.isPrimary) return;
+			const next = await tx.dealQuote.findFirst({
+				where: { dealId: deal.id },
+				orderBy: { createdAt: "asc" },
+				select: { id: true },
+			});
+			if (next) {
+				await tx.dealQuote.update({
+					where: { id: next.id },
+					data: { isPrimary: true },
+				});
+			}
+		});
+
+		this.logger.log({
+			message: "Deal quote removed",
+			dealId: deal.id,
+			quoteNumber: canonical,
+		});
+		return { id: deal.id, quotes: await listDealQuotes(this.db, deal.id) };
+	}
+
+	async setPrimaryQuote(id: string, quoteNumber: string, actor: DealActor) {
+		const deal = await this.requireEditableDeal(id, actor);
+		const canonical = canonicalizeQuoteNumber(quoteNumber);
+		if (!canonical) {
+			throw new BadRequestException(
+				"That is not a full quote number (QYYMMDD-###).",
+			);
+		}
+
+		const existing = await this.db.dealQuote.findUnique({
+			where: {
+				dealId_quoteNumber: { dealId: deal.id, quoteNumber: canonical },
+			},
+			select: { id: true },
+		});
+		if (!existing) {
+			throw new NotFoundException(`No quote ${canonical} on this deal.`);
+		}
+
+		await this.db.$transaction([
+			this.db.dealQuote.updateMany({
+				where: { dealId: deal.id, isPrimary: true },
+				data: { isPrimary: false },
+			}),
+			this.db.dealQuote.update({
+				where: { id: existing.id },
+				data: { isPrimary: true },
+			}),
+		]);
+
+		this.logger.log({
+			message: "Deal primary quote set",
+			dealId: deal.id,
+			quoteNumber: canonical,
+		});
+		return { id: deal.id, quotes: await listDealQuotes(this.db, deal.id) };
 	}
 
 	async create(input: DealCreateInput, actor: DealActor) {
@@ -504,6 +634,18 @@ export class DealsService {
 		return { ...updated, changed: true };
 	}
 
+	private async requireEditableDeal(id: string, actor: DealActor) {
+		const deal = await this.db.deal.findUnique({
+			where: { id },
+			select: { id: true, ownerId: true },
+		});
+		if (!deal) {
+			throw new NotFoundException(`No deal with id ${id}.`);
+		}
+		this.assertCanEdit(actor, deal.ownerId);
+		return deal;
+	}
+
 	private assertCanEdit(actor: DealActor, ownerId: string) {
 		if (
 			canEditOwnedRecord({
@@ -527,6 +669,11 @@ export class DealsService {
 			OR: [
 				{ name: { contains: term, mode: "insensitive" } },
 				{ company: { name: { contains: term, mode: "insensitive" } } },
+				{
+					quotes: {
+						some: { quoteNumber: { contains: term, mode: "insensitive" } },
+					},
+				},
 			],
 		};
 	}

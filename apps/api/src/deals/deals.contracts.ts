@@ -89,6 +89,17 @@ export const dealUpdateArgs = z.object({
 
 export const dealIdInput = z.object({ id: z.string() });
 
+/** Paste one or more quote ids (canonical or Sage comma shorthand). */
+export const dealQuotesTextInput = z.object({
+	id: z.string(),
+	text: z.string().trim().min(1, "Paste a quote number."),
+});
+
+export const dealQuoteNumberInput = z.object({
+	id: z.string(),
+	quoteNumber: z.string().trim().min(1),
+});
+
 export const setStageInput = z.object({
 	id: z.string(),
 	stage: stageEnum,

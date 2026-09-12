@@ -55,6 +55,24 @@ const COLUMNS: DataTableColumn<DealRow>[] = [
 		cell: (row) => <CompanyCell company={row.company} />,
 	},
 	{
+		id: "quotes",
+		header: "Quotes",
+		width: "w-[14%]",
+		hideBelow: "lg",
+		cell: (row) => {
+			const primary =
+				row.quotes.find((quote) => quote.isPrimary) ?? row.quotes[0];
+			if (!primary) return <EmptyCellValue />;
+			const extra = row.quotes.length - 1;
+			return (
+				<span className="truncate tabular-nums">
+					{primary.quoteNumber}
+					{extra > 0 ? ` +${extra}` : ""}
+				</span>
+			);
+		},
+	},
+	{
 		id: "stage",
 		header: "Stage",
 		sortable: true,
