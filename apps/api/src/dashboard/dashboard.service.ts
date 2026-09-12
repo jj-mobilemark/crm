@@ -3,17 +3,16 @@ import {
 	type Db,
 	DealStage,
 	loadPipelinePulse,
+	loadPipelinePulseRecent,
 	type Prisma,
 } from "@crm/db";
 import { Injectable } from "@nestjs/common";
 import { toCents } from "../crm/values";
 import { InjectDatabase } from "../database/database.constants";
-import {
-	OPEN_DEAL_STAGES,
-	STAGE_CERTAINTY,
-} from "../deals/deal-stage";
+import { OPEN_DEAL_STAGES, STAGE_CERTAINTY } from "../deals/deal-stage";
 import type {
 	DashboardCertaintyByRepInput,
+	DashboardPulseRecentInput,
 	DashboardRepSummaryInput,
 	DashboardSummaryInput,
 } from "./dashboard.contracts";
@@ -239,6 +238,19 @@ export function recentActivityWhere(
 	};
 }
 
+/**
+ * Open deals whose scheduled close is already behind now.
+ *
+ * Same rule as Deals → Closing → Overdue. Not the pulse "Stuck" list
+ * (14 days with no stage move).
+ */
+export function overdueOpenWhere(now: Date): Prisma.DealWhereInput {
+	return {
+		stage: { in: [...OPEN_DEAL_STAGES] },
+		expectedCloseDate: { lt: now },
+	};
+}
+
 type ResolvedRange = {
 	preset: DashboardSummaryInput["range"];
 	label: string;
@@ -403,6 +415,7 @@ export class DashboardService {
 			openByStage,
 			recentDeals,
 			closingThisMonthTotals,
+			overdueOpenTotals,
 			openForecastDeals,
 			biggestOpen,
 			overdueTasks,
@@ -440,6 +453,16 @@ export class DashboardService {
 					...owned,
 					stage: { in: [...OPEN_DEAL_STAGES] },
 					expectedCloseDate: { gte: startOfMonth, lt: startOfNextMonth },
+				},
+				_count: { _all: true },
+				_sum: { amount: true, weightedAmount: true },
+			}),
+			// Open, close date already passed. Same rule as Deals → Closing →
+			// Overdue. Ignores the overview date range.
+			this.db.deal.aggregate({
+				where: {
+					...owned,
+					...overdueOpenWhere(now),
 				},
 				_count: { _all: true },
 				_sum: { amount: true, weightedAmount: true },
@@ -630,6 +653,11 @@ export class DashboardService {
 				valueCents: toCents(closingThisMonthTotals._sum.amount) ?? 0,
 				weightedCents: toCents(closingThisMonthTotals._sum.weightedAmount) ?? 0,
 			},
+			overdueOpenTotal: {
+				count: overdueOpenTotals._count._all,
+				valueCents: toCents(overdueOpenTotals._sum.amount) ?? 0,
+				weightedCents: toCents(overdueOpenTotals._sum.weightedAmount) ?? 0,
+			},
 			/**
 			 * Sage-style forecast: open deals by expected-close month, with
 			 * unweighted (`amount`) and weighted (`weightedAmount`) totals.
@@ -665,6 +693,25 @@ export class DashboardService {
 				meta: meta as Record<string, unknown> | null,
 			})),
 		};
+	}
+
+	/**
+	 * Recent deal-move rows for the overview feed, with optional rep and
+	 * change-reason filters. Same date range as `summary.pulse`.
+	 */
+	async pulseRecent(actingUserId: string, input: DashboardPulseRecentInput) {
+		const now = new Date();
+		const range = resolveRange(input, now);
+		const recent = await loadPipelinePulseRecent(this.db, {
+			scope: input.scope,
+			userId: actingUserId,
+			now,
+			since: range.start,
+			until: range.end,
+			ownerId: input.ownerId,
+			change: input.change,
+		});
+		return { recent };
 	}
 
 	/**
@@ -859,7 +906,9 @@ export class DashboardService {
 
 		const closingThisMonth = openDeals.filter((deal) => {
 			const close = deal.expectedCloseDate;
-			return close !== null && close >= startOfMonth && close < startOfNextMonth;
+			return (
+				close !== null && close >= startOfMonth && close < startOfNextMonth
+			);
 		});
 
 		return {
@@ -982,8 +1031,7 @@ export class DashboardService {
 			.filter((row): row is NonNullable<typeof row> => row !== null)
 			.filter((row) => row.total > 0)
 			.sort(
-				(a, b) =>
-					b.total - a.total || a.owner.name.localeCompare(b.owner.name),
+				(a, b) => b.total - a.total || a.owner.name.localeCompare(b.owner.name),
 			);
 
 		return {

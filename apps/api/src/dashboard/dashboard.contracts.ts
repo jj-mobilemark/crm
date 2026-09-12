@@ -1,3 +1,4 @@
+import { PULSE_CHANGE_FILTERS } from "@crm/db";
 import { z } from "zod";
 
 /**
@@ -50,6 +51,19 @@ export const dashboardSummaryInput = z.object({
 });
 
 export type DashboardSummaryInput = z.infer<typeof dashboardSummaryInput>;
+
+/**
+ * Filtered recent-feed rows. Same window as `dashboard.summary.pulse`.
+ * `change` stays in step with `PULSE_CHANGE_FILTERS` in `@crm/db`.
+ */
+export const dashboardPulseRecentInput = dashboardSummaryInput.extend({
+	ownerId: z.string().min(1).optional(),
+	change: z.enum(PULSE_CHANGE_FILTERS).default("all"),
+});
+
+export type DashboardPulseRecentInput = z.infer<
+	typeof dashboardPulseRecentInput
+>;
 
 /**
  * Manager view of one rep — same date range as the overview, fixed to that

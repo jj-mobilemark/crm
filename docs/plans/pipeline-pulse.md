@@ -11,6 +11,7 @@ Mechanical data only in Nest/DB. Intelligence stays in the agent.
 | --- | --- |
 | `DealFieldChange` schema + writers (app + Sage pull) | **DONE** (2026-08-03) |
 | Overview pulse UI (strip + movers + feed + stuck) | **DONE** (2026-08-03) |
+| Recent-feed filters (rep + change reason) | **DONE** (2026-09-11) |
 | Pipeline agent session on overview | **DONE** (2026-08-03) |
 | Advanced reports (`read_pipeline_report`) | **DONE** (2026-08-03) |
 | 8-KPI strip; pulse counts follow overview date range | **DONE** (2026-08-03) |
@@ -53,6 +54,7 @@ Mechanical data only in Nest/DB. Intelligence stays in the agent.
 | `loadPipelinePulse` (`@crm/db`) | Shared query for Nest summary + agent tool |
 | `loadPipelineReport` (`@crm/db`) | Shared month/stage reports for the agent |
 | `dashboard.summary.pulse` | Counts, movers, recent feed, stuck — overview date range for changes, 14d stuck, Me/Everyone |
+| `dashboard.pulseRecent` | Same recent feed with optional `ownerId` + change-reason filter (URL `pulseRep` / `pulseChange`) |
 | `pipeline` AgentRecordKind | Overview chat; id = `me` \| `everyone`; filing `pipelineScope` |
 | `read_pipeline_pulse` | Agent tool — same shape as dashboard pulse |
 | `read_pipeline_report` | Agent tool — open by stage, forecast by close month, closing / closed in month |
@@ -78,7 +80,7 @@ days** (fallback `stageChangedAt` when no change-log row exists yet).
 - `apps/api/src/sage/sage-pull.service.ts` — Sage diffs
 - `apps/api/src/dashboard/dashboard.service.ts` — `pulse` on summary (passes range)
 - `apps/app/app/(app)/sales-dashboard.tsx` — eight-KPI strip (sales + pulse)
-- `apps/app/app/(app)/pipeline-pulse.tsx` — movers / feed / stuck tables
+- `apps/app/app/(app)/pipeline-pulse.tsx` — movers / feed / stuck tables; feed filters (rep + change)
 - `apps/app/app/(app)/dashboard-summary.tsx` — mounts sales + pulse + agent panel
 - `packages/ui/src/components/stat-card.tsx` — `tone="static"` / `animate`
 - `apps/app/lib/agent-record.ts` — `pipeline` kind

@@ -3,6 +3,7 @@
 import type { DealStage } from "@crm/db/enums";
 import {
 	Card,
+	CardAction,
 	CardDescription,
 	CardHeader,
 	CardPanel,
@@ -12,10 +13,19 @@ import {
 import { CardTableEmpty } from "@crm/ui/components/card-table";
 import { EmptyCellValue } from "@crm/ui/components/empty-cell";
 import {
+	Select,
+	SelectContent,
+	SelectGroup,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from "@crm/ui/components/select";
+import {
 	SimpleTable,
 	type SimpleTableColumn,
 	SimpleTableRow,
 } from "@crm/ui/components/simple-table";
+import { Spinner } from "@crm/ui/components/spinner";
 import { StatusIndicator } from "@crm/ui/components/status-indicator";
 import { TableCell } from "@crm/ui/components/table";
 import {
@@ -23,10 +33,20 @@ import {
 	formatPercent,
 	relativeTimeFromIso,
 } from "@crm/ui/lib/format";
+import { useQuery } from "@tanstack/react-query";
+import { useQueryStates } from "nuqs";
 import { dealStageLabel } from "@/components/crm/deal-stage";
 import { OwnerCell } from "@/components/crm/owner-cell";
 import { useOpenRecord } from "@/components/crm/record-sheet/record-stack";
+import { useTRPC } from "@/lib/trpc/client";
 import type { RouterOutputs } from "@/lib/trpc/types";
+import {
+	overviewParsers,
+	PULSE_CHANGE_FILTERS,
+	PULSE_REP_ALL,
+	type PulseChangeFilter,
+	pulseFeedParsers,
+} from "./overview-search-params";
 
 type Summary = RouterOutputs["dashboard"]["summary"];
 type Pulse = NonNullable<Summary["pulse"]>;
@@ -69,15 +89,6 @@ export function PipelinePulse({ pulse }: { pulse: Pulse | undefined }) {
 	const moverColumns: SimpleTableColumn[] = [
 		{ header: "Deal" },
 		{ header: "Change", width: "w-44" },
-		{ header: "Source", width: "w-20", className: "hidden sm:table-cell" },
-		{ header: "When", width: "w-20", align: "right" },
-	];
-
-	const feedColumns: SimpleTableColumn[] = [
-		{ header: "Deal" },
-		{ header: "Amount", width: "w-24", align: "right" },
-		{ header: "Change", width: "w-48" },
-		{ header: "Rep", width: "w-32", className: "hidden md:table-cell" },
 		{ header: "Source", width: "w-20", className: "hidden sm:table-cell" },
 		{ header: "When", width: "w-20", align: "right" },
 	];
@@ -150,8 +161,8 @@ export function PipelinePulse({ pulse }: { pulse: Pulse | undefined }) {
 					<CardHeader>
 						<CardTitle>Stuck deals</CardTitle>
 						<CardDescription>
-							Open deals with no stage or deal maturity move in {data.stuckDays}+
-							days
+							Open deals with no stage or deal maturity move in {data.stuckDays}
+							+ days
 						</CardDescription>
 					</CardHeader>
 					<CardPanel>
@@ -208,70 +219,171 @@ export function PipelinePulse({ pulse }: { pulse: Pulse | undefined }) {
 				</Card>
 			</div>
 
-			<Card className="min-w-0">
-				<CardHeader>
-					<CardTitle>Recent deal moves</CardTitle>
-					<CardDescription>
-						Deal maturity, stage, amount, close date, owner, and priority — app
-						and Sage, last {data.windowDays} days
-					</CardDescription>
-				</CardHeader>
-				{recent.length === 0 ? (
-					<CardTableEmpty>
-						The change log starts when deals are edited here or updated from
-						Sage. Older history is not backfilled.
-					</CardTableEmpty>
-				) : (
-					<SimpleTable columns={feedColumns}>
-						{recent.map((change) => (
-							<SimpleTableRow
-								key={change.id}
-								clickable
-								onClick={() =>
-									openRecord({ kind: "deal", id: change.deal.id })
-								}
-							>
-								<TableCell className={CELL}>
-									<DealLines
-										name={change.deal.name}
-										company={change.deal.company.name}
-									/>
-								</TableCell>
-								<TableCell
-									className={`${CELL} text-right tabular-nums`}
-								>
-									{change.deal.amountCents === null ||
-									change.deal.amountCents === 0 ? (
-										<EmptyCellValue />
-									) : (
-										formatMoneyCompact(
-											change.deal.amountCents,
-											change.deal.currency,
-										)
-									)}
-								</TableCell>
-								<TableCell className={CELL}>
-									<ChangeLines change={change} />
-								</TableCell>
-								<TableCell className={`${CELL} hidden md:table-cell`}>
-									<OwnerCell owner={change.deal.owner} />
-								</TableCell>
-								<TableCell className={`${CELL} hidden sm:table-cell`}>
-									<SourceBadge source={change.source} />
-								</TableCell>
-								<TableCell
-									className={`${CELL} text-right text-muted-foreground`}
-								>
-									<span suppressHydrationWarning>
-										{relativeTimeFromIso(change.createdAt)}
-									</span>
-								</TableCell>
-							</SimpleTableRow>
-						))}
-					</SimpleTable>
-				)}
-			</Card>
+			<RecentDealMoves windowDays={data.windowDays} unfiltered={recent} />
 		</div>
+	);
+}
+
+const FEED_COLUMNS: SimpleTableColumn[] = [
+	{ header: "Deal" },
+	{ header: "Amount", width: "w-24", align: "right" },
+	{ header: "Change", width: "w-48" },
+	{ header: "Rep", width: "w-32", className: "hidden md:table-cell" },
+	{ header: "Source", width: "w-20", className: "hidden sm:table-cell" },
+	{ header: "When", width: "w-20", align: "right" },
+];
+
+/**
+ * Full-width change feed. Filters live in the URL and hit the change log
+ * when they are not "all", so a year-long range can still fill the table
+ * with one rep or one change reason.
+ */
+function RecentDealMoves({
+	windowDays,
+	unfiltered,
+}: {
+	windowDays: number;
+	unfiltered: PulseChange[];
+}) {
+	const openRecord = useOpenRecord();
+	const trpc = useTRPC();
+	const [overview] = useQueryStates(overviewParsers);
+	const [filters, setFilters] = useQueryStates(pulseFeedParsers);
+	const users = useQuery(trpc.users.list.queryOptions());
+
+	const { scope, range, from, to } = overview;
+	const effectiveRep = scope === "me" ? PULSE_REP_ALL : filters.pulseRep;
+	const filtersOn =
+		effectiveRep !== PULSE_REP_ALL || filters.pulseChange !== "all";
+
+	const summaryInput = {
+		scope,
+		range,
+		...(range === "custom" && from && to ? { from, to } : {}),
+	};
+
+	const filtered = useQuery({
+		...trpc.dashboard.pulseRecent.queryOptions({
+			...summaryInput,
+			...(effectiveRep !== PULSE_REP_ALL ? { ownerId: effectiveRep } : {}),
+			change: filters.pulseChange,
+		}),
+		enabled: filtersOn,
+		placeholderData: (previous) => previous,
+	});
+
+	const recent = filtersOn ? (filtered.data?.recent ?? []) : unfiltered;
+	const waiting = filtersOn && filtered.isPending && !filtered.data;
+	const showEveryoneReps = scope === "everyone";
+
+	return (
+		<Card className="min-w-0">
+			<CardHeader>
+				<CardTitle>Recent deal moves</CardTitle>
+				<CardDescription>
+					Deal maturity, stage, amount, close date, owner, and priority — app
+					and Sage, last {windowDays} days
+				</CardDescription>
+				<CardAction>
+					{showEveryoneReps ? (
+						<Select
+							value={effectiveRep}
+							onValueChange={(next) => {
+								void setFilters({ pulseRep: next });
+							}}
+						>
+							<SelectTrigger size="sm" aria-label="Filter by rep">
+								<SelectValue placeholder="All reps" />
+							</SelectTrigger>
+							<SelectContent align="end">
+								<SelectGroup>
+									<SelectItem value={PULSE_REP_ALL}>All reps</SelectItem>
+									{(users.data ?? []).map((user) => (
+										<SelectItem key={user.id} value={user.id}>
+											{user.name}
+										</SelectItem>
+									))}
+								</SelectGroup>
+							</SelectContent>
+						</Select>
+					) : null}
+					<Select
+						value={filters.pulseChange}
+						onValueChange={(next) => {
+							if (isPulseChangeFilter(next)) {
+								void setFilters({ pulseChange: next });
+							}
+						}}
+					>
+						<SelectTrigger size="sm" aria-label="Filter by change">
+							<SelectValue placeholder="All changes" />
+						</SelectTrigger>
+						<SelectContent align="end">
+							<SelectGroup>
+								{PULSE_CHANGE_FILTERS.map((value) => (
+									<SelectItem key={value} value={value}>
+										{changeFilterLabel(value)}
+									</SelectItem>
+								))}
+							</SelectGroup>
+						</SelectContent>
+					</Select>
+				</CardAction>
+			</CardHeader>
+			{waiting ? (
+				<div className="flex justify-center border-t py-10">
+					<Spinner />
+				</div>
+			) : recent.length === 0 ? (
+				<CardTableEmpty>
+					{filtersOn
+						? "No deal moves match these filters in this window."
+						: "The change log starts when deals are edited here or updated from Sage. Older history is not backfilled."}
+				</CardTableEmpty>
+			) : (
+				<SimpleTable columns={FEED_COLUMNS}>
+					{recent.map((change) => (
+						<SimpleTableRow
+							key={change.id}
+							clickable
+							onClick={() => openRecord({ kind: "deal", id: change.deal.id })}
+						>
+							<TableCell className={CELL}>
+								<DealLines
+									name={change.deal.name}
+									company={change.deal.company.name}
+								/>
+							</TableCell>
+							<TableCell className={`${CELL} text-right tabular-nums`}>
+								{change.deal.amountCents === null ||
+								change.deal.amountCents === 0 ? (
+									<EmptyCellValue />
+								) : (
+									formatMoneyCompact(
+										change.deal.amountCents,
+										change.deal.currency,
+									)
+								)}
+							</TableCell>
+							<TableCell className={CELL}>
+								<ChangeLines change={change} />
+							</TableCell>
+							<TableCell className={`${CELL} hidden md:table-cell`}>
+								<OwnerCell owner={change.deal.owner} />
+							</TableCell>
+							<TableCell className={`${CELL} hidden sm:table-cell`}>
+								<SourceBadge source={change.source} />
+							</TableCell>
+							<TableCell className={`${CELL} text-right text-muted-foreground`}>
+								<span suppressHydrationWarning>
+									{relativeTimeFromIso(change.createdAt)}
+								</span>
+							</TableCell>
+						</SimpleTableRow>
+					))}
+				</SimpleTable>
+			)}
+		</Card>
 	);
 }
 
@@ -297,7 +409,9 @@ function DealLines({
 function ChangeLines({ change }: { change: PulseChange }) {
 	return (
 		<span className="flex min-w-0 flex-col">
-			<span className="truncate">{fieldLabel(change.field, change.toValue)}</span>
+			<span className="truncate">
+				{fieldLabel(change.field, change.toValue)}
+			</span>
 			<span className="truncate text-muted-foreground">
 				{formatTransition(change)}
 			</span>
@@ -312,6 +426,35 @@ function SourceBadge({ source }: { source: "app" | "sage" }) {
 			label={source === "sage" ? "Sage" : "App"}
 		/>
 	);
+}
+
+function isPulseChangeFilter(value: string): value is PulseChangeFilter {
+	return (PULSE_CHANGE_FILTERS as readonly string[]).includes(value);
+}
+
+function changeFilterLabel(filter: PulseChangeFilter): string {
+	switch (filter) {
+		case "all":
+			return "All changes";
+		case "won":
+			return "Won";
+		case "lost":
+			return "Lost";
+		case "stage":
+			return "Stage";
+		case "probability":
+			return "Deal Maturity";
+		case "amount":
+			return "Amount";
+		case "expectedCloseDate":
+			return "Close date";
+		case "ownerId":
+			return "Owner";
+		case "priority":
+			return "Priority";
+		case "sageStage":
+			return "Sage stage";
+	}
 }
 
 function fieldLabel(field: string, toValue: string | null): string {

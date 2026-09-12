@@ -24,7 +24,7 @@ export default async function OverviewPage({
 
 	// Parsed with the same parsers the header controls use, so the first paint
 	// already matches the URL rather than the defaults.
-	const { scope, range, from, to } =
+	const { scope, range, from, to, pulseRep, pulseChange } =
 		await loadOverviewSearchParams(searchParams);
 
 	const trpc = getServerTrpc();
@@ -35,15 +35,27 @@ export default async function OverviewPage({
 		range,
 		...(range === "custom" && from && to ? { from, to } : {}),
 	};
+	const effectiveRep = scope === "me" ? "all" : pulseRep;
+	const pulseFiltersOn = effectiveRep !== "all" || pulseChange !== "all";
 
 	// Both awaited: the greeting is one line of text and the dashboard is the
 	// whole page, so a skeleton that flashes for the length of one API call is
 	// worse than rendering a beat later.
 	await Promise.all([
 		queryClient.prefetchQuery(trpc.users.me.queryOptions()),
+		queryClient.prefetchQuery(trpc.users.list.queryOptions()),
 		queryClient.prefetchQuery(
 			trpc.dashboard.summary.queryOptions(summaryInput),
 		),
+		pulseFiltersOn
+			? queryClient.prefetchQuery(
+					trpc.dashboard.pulseRecent.queryOptions({
+						...summaryInput,
+						...(effectiveRep !== "all" ? { ownerId: effectiveRep } : {}),
+						change: pulseChange,
+					}),
+				)
+			: Promise.resolve(),
 	]);
 
 	return (

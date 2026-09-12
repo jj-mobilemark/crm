@@ -7,7 +7,11 @@ import {
 	CardTitle,
 } from "@crm/ui/components/card";
 import type { ChartConfig } from "@crm/ui/components/chart";
-import { DashboardRow, StatGroup } from "@crm/ui/components/dashboard";
+import {
+	DashboardRow,
+	StatBoard,
+	StatGroup,
+} from "@crm/ui/components/dashboard";
 import { EmptyCellValue } from "@crm/ui/components/empty-cell";
 import {
 	SimpleTable,
@@ -94,12 +98,12 @@ function changeDelta(
 }
 
 /**
- * The KPI strip (eight cells) and the charts behind it: closed-won against new
- * pipeline, and where the open pipeline currently sits.
+ * KPI board and the charts behind it: closed-won against new pipeline, and
+ * where the open pipeline currently sits.
  *
- * Cells that ignore the date range (due this month, open pipeline, stuck) use
- * `tone="static"`. Cells that follow the range animate on change. Won/Lost are
- * deal outcome counts (same window as Closed won); Certainty is change-log.
+ * Locked cells ignore the date range (due this month, open pipeline,
+ * overdue, stuck). Live cells follow the range and animate on change.
+ * Lost is not its own tile — win rate already names wins and losses.
  */
 export function SalesDashboard({ summary }: { summary: Summary }) {
 	const {
@@ -118,10 +122,19 @@ export function SalesDashboard({ summary }: { summary: Summary }) {
 	// Unweighted close-this-month total. Fall back to weighted only when amount
 	// is empty — same idea as dealMoneyCents, so a Sage deal that only has
 	// forecast still shows up while certainty is still noisy as a KPI.
+	const overdueOpenTotal = summary.overdueOpenTotal ?? {
+		count: 0,
+		valueCents: 0,
+		weightedCents: 0,
+	};
 	const dueThisMonthCents =
 		closingThisMonthTotal.valueCents !== 0
 			? closingThisMonthTotal.valueCents
 			: (closingThisMonthTotal.weightedCents ?? 0);
+	const overdueOpenCents =
+		overdueOpenTotal.valueCents !== 0
+			? overdueOpenTotal.valueCents
+			: (overdueOpenTotal.weightedCents ?? 0);
 
 	const hasTrend = trend.some((point) => point.won > 0 || point.created > 0);
 
@@ -156,69 +169,73 @@ export function SalesDashboard({ summary }: { summary: Summary }) {
 
 	return (
 		<div className="flex flex-col gap-6">
-			<StatGroup>
-				<StatCard
-					label="Closed won"
-					value={formatMoneyCompact(wonThisMonth.valueCents)}
-					animate
-					delta={changeDelta(
-						wonThisMonth.valueCents,
-						wonPrevMonth.valueCents,
-						"vs. prior period",
-					)}
-					description={`${rangeLabel} · ${formatCount(wonThisMonth.count, "deal")} · ${formatMoneyCompact(wonPrevMonth.valueCents)} prior`}
-				/>
-				<StatCard
-					label="Due this month"
-					tone="static"
-					value={formatMoneyCompact(dueThisMonthCents)}
-					description={`${formatCount(closingThisMonthTotal.count, "open deal")} with a close date this month`}
-				/>
-				<StatCard
-					label="Open pipeline"
-					tone="static"
-					value={formatMoneyCompact(pipeline.totalCents)}
-					description={`${formatCount(pipeline.totalDeals, "deal")} in progress · ${formatMoneyCompact(forecast.totals.weightedCents)} weighted`}
-				/>
-				<StatCard
-					label={`Win rate (${performance.windowDays}d)`}
-					value={
-						performance.winRate === null
-							? "—"
-							: formatPercent(performance.winRate)
-					}
-					animate
-					description={
-						performance.wins + performance.losses === 0
-							? "Nothing has closed yet"
-							: `${performance.wins} won · ${performance.losses} lost`
-					}
-				/>
-				<StatCard
-					label="Won"
-					value={wonThisMonth.count}
-					animate
-					description={`${rangeLabel} · deals closed won`}
-				/>
-				<StatCard
-					label="Lost"
-					value={performance.losses}
-					animate
-					description={`${rangeLabel} · deals closed lost`}
-				/>
-				<StatCard
-					label="Deal Maturity moves"
-					value={counts.certainty}
-					animate
-					description={`${formatCount(counts.stage, "stage move")} · ${formatCount(counts.amount, "amount move")}`}
-				/>
-				<StatCard
-					label="Stuck"
-					tone="static"
-					value={stuck.length}
-					description={`Open, no stage/deal maturity move in ${pulse.stuckDays}d+`}
-				/>
-			</StatGroup>
+			<StatBoard>
+				<StatGroup columns="pair" tone="locked">
+					<StatCard
+						label="Due this month"
+						tone="locked"
+						value={formatMoneyCompact(dueThisMonthCents)}
+						description={`${formatCount(closingThisMonthTotal.count, "open deal")} with a close date this month`}
+					/>
+					<StatCard
+						label="Open pipeline"
+						tone="locked"
+						value={formatMoneyCompact(pipeline.totalCents)}
+						description={`${formatCount(pipeline.totalDeals, "deal")} in progress · ${formatMoneyCompact(forecast.totals.weightedCents)} weighted`}
+					/>
+					<StatCard
+						label="Overdue"
+						tone="locked"
+						value={formatMoneyCompact(overdueOpenCents)}
+						description={`${formatCount(overdueOpenTotal.count, "open deal")} past the scheduled close`}
+					/>
+					<StatCard
+						label="Stuck"
+						tone="locked"
+						value={stuck.length}
+						description={`Open, no stage/deal maturity move in ${pulse.stuckDays}d+`}
+					/>
+				</StatGroup>
+				<StatGroup columns="pair">
+					<StatCard
+						label="Closed won"
+						value={formatMoneyCompact(wonThisMonth.valueCents)}
+						animate
+						delta={changeDelta(
+							wonThisMonth.valueCents,
+							wonPrevMonth.valueCents,
+							"vs. prior period",
+						)}
+						description={`${rangeLabel} · ${formatCount(wonThisMonth.count, "deal")} · ${formatMoneyCompact(wonPrevMonth.valueCents)} prior`}
+					/>
+					<StatCard
+						label={`Win rate (${performance.windowDays}d)`}
+						value={
+							performance.winRate === null
+								? "—"
+								: formatPercent(performance.winRate)
+						}
+						animate
+						description={
+							performance.wins + performance.losses === 0
+								? "Nothing has closed yet"
+								: `${performance.wins} won · ${performance.losses} lost`
+						}
+					/>
+					<StatCard
+						label="Won"
+						value={wonThisMonth.count}
+						animate
+						description={`${rangeLabel} · deals closed won`}
+					/>
+					<StatCard
+						label="Deal Maturity moves"
+						value={counts.certainty}
+						animate
+						description={`${formatCount(counts.stage, "stage move")} · ${formatCount(counts.amount, "amount move")}`}
+					/>
+				</StatGroup>
+			</StatBoard>
 
 			<DashboardRow split="hero">
 				<ChartPanel

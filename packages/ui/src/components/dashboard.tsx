@@ -15,30 +15,71 @@ import type * as React from "react";
  */
 
 /**
- * An elevated KPI strip: one bordered surface holding several {@link StatCard}s
- * separated by hairline dividers (2-up on narrow, 4-up on wide — wraps to a
- * second row for eight KPIs). The premium alternative to a row of standalone
- * boxes — see the surfaces guideline.
+ * Two KPI clusters side by side (locked book on the left, range-driven
+ * numbers on the right). Stacks on a narrow container.
  */
-function StatGroup({
+function StatBoard({
 	className,
 	children,
 	...props
 }: React.ComponentProps<"div">) {
 	return (
+		<div className="@container/board">
+			<div
+				data-slot="stat-board"
+				className={cn(
+					"grid grid-cols-1 gap-4 @xl/board:grid-cols-2",
+					className,
+				)}
+				{...props}
+			>
+				{children}
+			</div>
+		</div>
+	);
+}
+
+/**
+ * An elevated KPI strip: one bordered surface holding several {@link StatCard}s
+ * separated by hairline dividers. `columns="auto"` is 2-up on narrow and 4-up
+ * on wide. `columns="pair"` stays 2×2 so a {@link StatBoard} can put a locked
+ * cluster beside a live one. `tone="locked"` inverts the surface.
+ */
+function StatGroup({
+	className,
+	children,
+	columns = "auto",
+	tone = "default",
+	...props
+}: React.ComponentProps<"div"> & {
+	columns?: "auto" | "pair";
+	tone?: "default" | "locked";
+}) {
+	const locked = tone === "locked";
+	const paired = columns === "pair";
+
+	return (
 		<div
 			data-slot="stat-group"
-			className={cn("@container/stats overflow-hidden border", className)}
+			data-tone={tone}
+			data-columns={columns}
+			className={cn(
+				"@container/stats overflow-hidden border",
+				locked && "border-background/20 bg-foreground",
+				className,
+			)}
 			{...props}
 		>
 			<div
 				className={cn(
-					"grid grid-cols-2 @2xl/stats:grid-cols-4",
-					// Narrow: vertical rule on even cells, horizontal on row 2+.
+					"grid grid-cols-2",
+					!paired && "@2xl/stats:grid-cols-4",
+					// Narrow / pair: vertical rule on even cells, horizontal on row 2+.
 					"[&>*:nth-child(2n)]:border-l [&>*:nth-child(n+3)]:border-t",
-					// Wide: vertical rules between columns; horizontal between rows.
-					"@2xl/stats:[&>*]:border-l @2xl/stats:[&>*:nth-child(4n+1)]:border-l-0",
-					"@2xl/stats:[&>*:nth-child(n+5)]:border-t",
+					// Wide auto: vertical rules between columns; horizontal between rows.
+					!paired &&
+						"@2xl/stats:[&>*]:border-l @2xl/stats:[&>*:nth-child(4n+1)]:border-l-0 @2xl/stats:[&>*:nth-child(n+5)]:border-t",
+					locked && "[&>*]:border-background/15",
 				)}
 			>
 				{children}
@@ -226,15 +267,26 @@ function DashboardSkeleton({
 			className={cn("flex flex-col gap-6", className)}
 			aria-hidden
 		>
-			<StatGroup>
-				{Array.from({ length: stats }).map((_, i) => (
-					<div key={i} className="flex flex-col gap-3 p-4 md:p-6">
-						<Skeleton className="h-4 w-24" />
-						<Skeleton className="h-8 w-16" />
-						<Skeleton className="h-3 w-28" />
-					</div>
-				))}
-			</StatGroup>
+			<StatBoard>
+				<StatGroup columns="pair" tone="locked">
+					{Array.from({ length: Math.min(4, stats) }).map((_, i) => (
+						<div key={`locked-${i}`} className="flex flex-col gap-3 p-4 md:p-6">
+							<Skeleton className="h-4 w-24" />
+							<Skeleton className="h-8 w-16" />
+							<Skeleton className="h-3 w-28" />
+						</div>
+					))}
+				</StatGroup>
+				<StatGroup columns="pair">
+					{Array.from({ length: Math.max(0, stats - 4) }).map((_, i) => (
+						<div key={`live-${i}`} className="flex flex-col gap-3 p-4 md:p-6">
+							<Skeleton className="h-4 w-24" />
+							<Skeleton className="h-8 w-16" />
+							<Skeleton className="h-3 w-28" />
+						</div>
+					))}
+				</StatGroup>
+			</StatBoard>
 			<DashboardRow>
 				<div className="flex flex-col gap-4 border p-5 md:p-6">
 					<Skeleton className="h-4 w-40" />
@@ -256,5 +308,6 @@ export {
 	DashboardSection,
 	DashboardSkeleton,
 	KpiCard,
+	StatBoard,
 	StatGroup,
 };

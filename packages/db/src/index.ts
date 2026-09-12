@@ -24,9 +24,14 @@ export type * from "./generated/prisma/models";
 export type { ContactBriefSections, FactEvidence } from "./json";
 export {
 	loadPipelinePulse,
+	loadPipelinePulseRecent,
 	type PipelinePulse,
 	type PipelinePulseScope,
+	PULSE_CHANGE_FILTERS,
 	PULSE_WINDOW_DAYS,
+	type PulseChangeFilter,
+	pulseChangeWhere,
+	pulseOwnerWhere,
 	STUCK_DAYS,
 } from "./pipeline-pulse";
 export {

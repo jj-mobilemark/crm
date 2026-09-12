@@ -1,8 +1,4 @@
-import {
-	createLoader,
-	parseAsString,
-	parseAsStringLiteral,
-} from "nuqs/server";
+import { createLoader, parseAsString, parseAsStringLiteral } from "nuqs/server";
 
 /**
  * The overview URL. Shared by the page's server-side prefetch and the client
@@ -49,6 +45,33 @@ export const CERTAINTY_BY_REP_WINDOWS = [
 
 export type CertaintyByRepWindow = (typeof CERTAINTY_BY_REP_WINDOWS)[number];
 
+/**
+ * Recent deal-move filters. Kept in step with `PULSE_CHANGE_FILTERS` in
+ * `@crm/db` / `dashboardPulseRecentInput`. Own parser map so the rest of
+ * the overview does not re-render when only the feed filters change.
+ */
+export const PULSE_CHANGE_FILTERS = [
+	"all",
+	"won",
+	"lost",
+	"stage",
+	"probability",
+	"amount",
+	"expectedCloseDate",
+	"ownerId",
+	"priority",
+	"sageStage",
+] as const;
+
+export type PulseChangeFilter = (typeof PULSE_CHANGE_FILTERS)[number];
+
+export const PULSE_REP_ALL = "all";
+
+export const pulseFeedParsers = {
+	pulseRep: parseAsString.withDefault(PULSE_REP_ALL),
+	pulseChange: parseAsStringLiteral(PULSE_CHANGE_FILTERS).withDefault("all"),
+};
+
 export const overviewParsers = {
 	// A literal parser, not a plain string: `?scope=nonsense` then falls back to
 	// the default rather than reaching the API as an unhandled value.
@@ -66,4 +89,7 @@ export const overviewParsers = {
 	certTo: parseAsString,
 };
 
-export const loadOverviewSearchParams = createLoader(overviewParsers);
+export const loadOverviewSearchParams = createLoader({
+	...overviewParsers,
+	...pulseFeedParsers,
+});

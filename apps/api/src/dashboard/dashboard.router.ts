@@ -5,6 +5,7 @@ import type { AuthedTrpcContext } from "../trpc/context.types";
 import { AuthMiddleware } from "../trpc/middlewares/auth.middleware";
 import {
 	dashboardCertaintyByRepInput,
+	dashboardPulseRecentInput,
 	dashboardRepSummaryInput,
 	dashboardSummaryInput,
 } from "./dashboard.contracts";
@@ -31,13 +32,23 @@ export class DashboardRouter {
 	}
 
 	/**
+	 * Recent deal moves with optional rep and change-reason filters.
+	 * Same window as `summary.pulse`; used when the feed filters are on.
+	 */
+	@Query({ input: dashboardPulseRecentInput })
+	async pulseRecent(
+		@Ctx() ctx: AuthedTrpcContext,
+		@Input() input: z.infer<typeof dashboardPulseRecentInput>,
+	) {
+		return this.dashboard.pulseRecent(ctx.user.id, input);
+	}
+
+	/**
 	 * One sales rep for the manager sheet: KPIs, certainty × month grid, open
 	 * deals, owned companies, and recent field changes on their deals.
 	 */
 	@Query({ input: dashboardRepSummaryInput })
-	async repSummary(
-		@Input() input: z.infer<typeof dashboardRepSummaryInput>,
-	) {
+	async repSummary(@Input() input: z.infer<typeof dashboardRepSummaryInput>) {
 		return this.dashboard.repSummary(input);
 	}
 

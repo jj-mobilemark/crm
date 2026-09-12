@@ -1,8 +1,10 @@
 import { describe, expect, it } from "bun:test";
 import {
+	overdueOpenWhere,
 	recentActivityWhere,
 	resolveRange,
 } from "../src/dashboard/dashboard.service";
+import { OPEN_DEAL_STAGES } from "../src/deals/deal-stage";
 
 describe("resolveRange this_month", () => {
 	it("spans the full calendar month, not month-to-date", () => {
@@ -29,6 +31,16 @@ describe("resolveRange this_month", () => {
 
 		expect(laterThisMonth >= range.start).toBe(true);
 		expect(laterThisMonth < range.end).toBe(true);
+	});
+});
+
+describe("overdueOpenWhere", () => {
+	it("is open deals with a close date before now", () => {
+		const now = new Date(2026, 8, 11, 22);
+		expect(overdueOpenWhere(now)).toEqual({
+			stage: { in: [...OPEN_DEAL_STAGES] },
+			expectedCloseDate: { lt: now },
+		});
 	});
 });
 

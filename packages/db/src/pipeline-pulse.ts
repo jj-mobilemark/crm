@@ -1,4 +1,8 @@
-import { DealStage, type Prisma, type PrismaClient } from "./generated/prisma/client";
+import {
+	DealStage,
+	type Prisma,
+	type PrismaClient,
+} from "./generated/prisma/client";
 
 /**
  * Shared pipeline pulse query — used by Nest `dashboard.summary.pulse` and the
@@ -33,6 +37,46 @@ const OWNER_SELECT = {
 } as const;
 
 export type PipelinePulseScope = "me" | "everyone";
+
+/**
+ * Recent-feed filter. `won` / `lost` are stage rows with that outcome;
+ * `stage` is every other stage move. Kept in step with the overview URL
+ * and `dashboardPulseRecentInput`.
+ */
+export const PULSE_CHANGE_FILTERS = [
+	"all",
+	"won",
+	"lost",
+	"stage",
+	"probability",
+	"amount",
+	"expectedCloseDate",
+	"ownerId",
+	"priority",
+	"sageStage",
+] as const;
+
+export type PulseChangeFilter = (typeof PULSE_CHANGE_FILTERS)[number];
+
+const CHANGE_SELECT = {
+	id: true,
+	field: true,
+	fromValue: true,
+	toValue: true,
+	source: true,
+	createdAt: true,
+	actor: { select: OWNER_SELECT },
+	deal: {
+		select: {
+			id: true,
+			name: true,
+			currency: true,
+			amount: true,
+			company: { select: { id: true, name: true } },
+			owner: { select: OWNER_SELECT },
+		},
+	},
+} as const;
 
 export type PipelinePulse = {
 	windowDays: number;
@@ -110,6 +154,52 @@ function toCents(amount: Prisma.Decimal | null): number | null {
 }
 
 /**
+ * Field clause for the recent-feed filter. Empty when the filter is `all`.
+ */
+export function pulseChangeWhere(
+	change: PulseChangeFilter | undefined,
+): Prisma.DealFieldChangeWhereInput {
+	if (!change || change === "all") return {};
+	switch (change) {
+		case "won":
+			return { field: "stage", toValue: DealStage.CLOSED_WON };
+		case "lost":
+			return { field: "stage", toValue: DealStage.CLOSED_LOST };
+		case "stage":
+			return {
+				field: "stage",
+				NOT: {
+					toValue: { in: [DealStage.CLOSED_WON, DealStage.CLOSED_LOST] },
+				},
+			};
+		default:
+			return { field: change };
+	}
+}
+
+/**
+ * Deal-owner clause for pulse reads.
+ *
+ * Me always uses `userId`. Everyone uses `ownerId` when a rep filter is set.
+ */
+export function pulseOwnerWhere(
+	scope: PipelinePulseScope,
+	userId?: string | null,
+	ownerId?: string | null,
+): Prisma.DealWhereInput {
+	if (scope === "me") {
+		if (!userId) {
+			throw new Error(
+				'pulseOwnerWhere: userId is required when scope is "me".',
+			);
+		}
+		return { ownerId: userId };
+	}
+	if (ownerId) return { ownerId };
+	return {};
+}
+
+/**
  * Deal-field moves inside a time window + stuck open deals (fixed 14d+).
  *
  * Defaults to the last 7 days when `since` / `until` are omitted (agent tool).
@@ -132,7 +222,9 @@ export async function loadPipelinePulse(
 	const now = input.now ?? new Date();
 	const mine = input.scope === "me";
 	if (mine && !input.userId) {
-		throw new Error('loadPipelinePulse: userId is required when scope is "me".');
+		throw new Error(
+			'loadPipelinePulse: userId is required when scope is "me".',
+		);
 	}
 
 	const owned = mine && input.userId ? { ownerId: input.userId } : {};
@@ -161,25 +253,7 @@ export async function loadPipelinePulse(
 			where: changeWhere,
 			orderBy: [{ createdAt: "desc" }],
 			take: PULSE_CHANGE_SCAN,
-			select: {
-				id: true,
-				field: true,
-				fromValue: true,
-				toValue: true,
-				source: true,
-				createdAt: true,
-				actor: { select: OWNER_SELECT },
-				deal: {
-					select: {
-						id: true,
-						name: true,
-						currency: true,
-						amount: true,
-						company: { select: { id: true, name: true } },
-						owner: { select: OWNER_SELECT },
-					},
-				},
-			},
+			select: CHANGE_SELECT,
 		}),
 		db.deal.findMany({
 			where: {
@@ -332,6 +406,51 @@ export async function loadPipelinePulse(
 		recent,
 		stuck,
 	};
+}
+
+/**
+ * Recent feed only, with optional rep + change-reason filters.
+ *
+ * The overview summary still returns an unfiltered slice. This query is for
+ * the feed when a filter is on, so a year-long range can still fill 24 rows
+ * of one rep or one field.
+ */
+export async function loadPipelinePulseRecent(
+	db: PrismaClient,
+	input: {
+		scope: PipelinePulseScope;
+		userId?: string | null;
+		now?: Date;
+		since?: Date;
+		until?: Date;
+		ownerId?: string | null;
+		change?: PulseChangeFilter;
+	},
+): Promise<PulseChange[]> {
+	const now = input.now ?? new Date();
+	if (input.scope === "me" && !input.userId) {
+		throw new Error(
+			'loadPipelinePulseRecent: userId is required when scope is "me".',
+		);
+	}
+
+	const pulseSince =
+		input.since ?? new Date(now.getTime() - PULSE_WINDOW_DAYS * DAY_MS);
+	const pulseUntil = input.until ?? now;
+	const dealWhere = pulseOwnerWhere(input.scope, input.userId, input.ownerId);
+
+	const changes = await db.dealFieldChange.findMany({
+		where: {
+			createdAt: { gte: pulseSince, lt: pulseUntil },
+			...pulseChangeWhere(input.change),
+			...(Object.keys(dealWhere).length > 0 ? { deal: dealWhere } : {}),
+		},
+		orderBy: [{ createdAt: "desc" }],
+		take: PULSE_FEED_LIMIT,
+		select: CHANGE_SELECT,
+	});
+
+	return changes.map((change) => serializeChange(change));
 }
 
 function serializeChange(

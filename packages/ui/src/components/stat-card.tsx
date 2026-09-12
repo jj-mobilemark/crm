@@ -105,9 +105,9 @@ function StatCount({
  * a {@link StatGroup} so they read as one divider-separated strip rather than a
  * row of competing boxes. Per the dashboard guidelines, KPIs carry no icons.
  *
- * `tone="static"` soft-mutes the cell for metrics that ignore the overview date
- * range (open pipeline, stuck, due-this-month). `animate` eases integers via
- * {@link StatCount} or ticks formatted strings via {@link StatTick}.
+ * `tone="static"` soft-mutes the cell. `tone="locked"` inverts it (dark fill,
+ * light type) for metrics that ignore the overview date range. `animate` eases
+ * integers via {@link StatCount} or ticks formatted strings via {@link StatTick}.
  */
 function StatCard({
 	label,
@@ -124,9 +124,10 @@ function StatCard({
 	value: React.ReactNode;
 	delta?: StatDelta;
 	description?: React.ReactNode;
-	tone?: "default" | "static";
+	tone?: "default" | "static" | "locked";
 	animate?: boolean;
 }) {
+	const locked = tone === "locked";
 	const rendered =
 		animate && typeof value === "number" ? (
 			<StatCount value={value} />
@@ -141,30 +142,46 @@ function StatCard({
 			data-slot="stat-card"
 			data-tone={tone}
 			title={
-				tone === "static"
+				tone === "static" || locked
 					? "Does not change with the date range"
 					: undefined
 			}
 			className={cn(
 				"flex flex-col gap-2.5 p-4 md:p-6",
 				tone === "static" && "bg-muted/45",
+				locked && "bg-foreground text-background",
 				className,
 			)}
 			{...props}
 		>
 			{label != null ? (
-				<span className="truncate text-sm font-medium text-muted-foreground">
+				<span
+					className={cn(
+						"truncate text-sm font-medium",
+						locked ? "text-background/70" : "text-muted-foreground",
+					)}
+				>
 					{label}
 				</span>
 			) : null}
 			<div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-1">
-				<span className="font-medium text-3xl tracking-tight tabular-nums">
+				<span
+					className={cn(
+						"font-medium text-3xl tracking-tight tabular-nums",
+						locked && "text-background",
+					)}
+				>
 					{rendered}
 				</span>
 				{delta ? <StatDeltaText delta={delta} /> : null}
 			</div>
 			{description ? (
-				<p className="text-pretty text-muted-foreground text-xs/relaxed">
+				<p
+					className={cn(
+						"text-pretty text-xs/relaxed",
+						locked ? "text-background/60" : "text-muted-foreground",
+					)}
+				>
 					{description}
 				</p>
 			) : null}

@@ -23,30 +23,49 @@ it before stopping. The rules for maintaining it live in `AGENTS.md`
 
 ## Current state (keep this section up to date)
 
-- **Deal quote numbers (DONE local 2026-09-11)**: `DealQuote`
-  junction is live locally. Canonical `QYYMMDD-###` only; Sage
+- **Overview overdue KPI + locked/live board (DONE local 2026-09-11)**:
+  Lost tile removed (win rate still names wins and losses).
+  New **Overdue** tile: open deals whose `expectedCloseDate` is
+  before now (same rule as Deals → Closing → Overdue). Not the
+  pulse **Stuck** list (14d no stage move). Locked cluster
+  (inverted, ignores date range): Due this month, Open pipeline,
+  Overdue, Stuck. Live cluster (follows range): Closed won, Win
+  rate, Won, Deal Maturity moves. Files: `stat-card.tsx`
+  `tone="locked"`, `dashboard.tsx` `StatBoard` + `StatGroup`
+  `columns="pair"`, `dashboard.service.ts` `overdueOpenWhere`,
+  `sales-dashboard.tsx`. **Needs api + app deploy.**
+- **Overview recent-feed filters (DONE local 2026-09-11)**: Recent
+  deal moves on `/` filter by rep (`pulseRep`) and change reason
+  (`pulseChange`). Filters live in the URL. Unfiltered rows still
+  come from `dashboard.summary.pulse`. A filter on queries
+  `dashboard.pulseRecent` so a year-long range can still fill 24
+  matching rows. Rep select is Everyone only. Files:
+  `packages/db/src/pipeline-pulse.ts`, `dashboard.contracts.ts`,
+  `dashboard.service.ts`, `dashboard.router.ts`,
+  `overview-search-params.ts`, `pipeline-pulse.tsx`,
+  `apps/app/app/(app)/page.tsx`. Plan:
+  `docs/plans/pipeline-pulse.md`. **Needs api + app deploy.**
+- **Deal quote numbers (DONE prod 2026-09-11 / deploy `bd6e7b5`)**:
+  `DealQuote` is live. Canonical `QYYMMDD-###` only; Sage
   shorthand expands on save; never stores quote-tool `quote_id`.
-  Pull + snapshot backfill are additive. Human add / remove /
-  set-primary on the deal sheet. Local backfill: **166** rows on
-  **158 / 525** deals (48 `SAGE_NOTE`, 118 `SAGE_DESCRIPTION`).
-  Opp **663** expanded to `Q260622-003`…`007` plus two quoting-
-  tool notes. Analytics extract = `dealQuote` (`dealId`,
-  `quoteNumber`, `isPrimary`). Join
+  Prod migrate + `GRANT SELECT ON "dealQuote"` + backfill:
+  **201** quotes on **191 / 566** deals. Human add / remove /
+  set-primary on the deal sheet. Analytics extract table =
+  `dealQuote` (`dealId`, `quoteNumber`, `isPrimary`). Join
   `upper(trim(quoteNumber))` = `fct_quotes.quote_number`.
-  **Needs db migrate + `backfill-deal-quotes.ts` on prod**, then
-  api/app deploy. Warehouse exact-id tier still theirs.
-- **closedAt forward fix (DONE local 2026-09-11)**: Pull no longer
+  Warehouse exact-id extract is still uncommitted on
+  MM-Analytics (`a14b906` cron/ingest image has no
+  `mm_crm_deal_quotes`). CRM pull after ship refreshed deals
+  / companies / users / history; not `raw.mm_crm_deal_quotes`.
+- **closedAt forward fix (DONE prod `bd6e7b5`)**: Pull no longer
   copies `targetclose` / `opened` into `closedAt`. Rule:
   Sage `closed` if Chicago date ≤ today; else freeze an existing
   past `closedAt`; else stamp now once (first observe). Future
   dates rejected even when Sage filled `closed`. Historical past
   fallback dates stay frozen (173 empty-`closed` Won not rewritten).
-  Next nightly after **api deploy** will fix query-C futures
-  (TALLEY 837 $256k → sync day; 525/589 future Sage `closed` →
-  now). Files: `sage-closed-at.ts`, `sage-pull.service.ts`,
-  `test/sage-closed-at.spec.ts`. Dry-run script kept. **Needs api
-  deploy.**
-- **Sage incremental pagination restart (DONE local 2026-09-11)**:
+  Next nightly Sage pull will fix query-C futures (TALLEY 837
+  $256k → sync day; 525/589 future Sage `closed` → now).
+- **Sage incremental pagination restart (DONE prod `bd6e7b5`)**:
   Nightly `cron-sage` was 503 on the first curl then 200 on `--retry`
   because Sage SOAP `next` returned `List index out of bounds (75)`
   (Sep 10) / `Query failed to run successfully.` (Sep 11). In-process
@@ -54,8 +73,7 @@ it before stopping. The rules for maintaining it live in `AGENTS.md`
   restart the changed-set walk (`isSagePaginationFault`, same cap
   `SAGE_SESSION_RESTART_LIMIT`). Files: `sage.constants.ts`,
   `sage-pull.service.ts` comments, `test/sage-session-lost.spec.ts`,
-  `docs/plans/sage-crm-sync.md` §6.8. **Needs api deploy** so tonight's
-  cron does not wait 90s on curl.
+  `docs/plans/sage-crm-sync.md` §6.8.
 - **Sage Deal.currency id leak (DONE prod 2026-09-09)**: Mapper writes
   Sage lookup id `1` → `"USD"`. Incremental sync rematerializes leaked
   ids. **api** `b2761aa` is live. Manual Sage sync ran (SSH into `api`,
@@ -405,6 +423,113 @@ it before stopping. The rules for maintaining it live in `AGENTS.md`
 ---
 
 ## Work log
+
+### 2026-09-11 — Overview Overdue KPI + locked/live board
+
+**What was completed**
+- Dropped the Lost tile. Win rate still shows won · lost.
+- Added **Overdue**: open, `expectedCloseDate` before now.
+  Same rule as Deals → Closing → Overdue. Not Stuck
+  (14d no stage move). API: `overdueOpenWhere` +
+  `overdueOpenTotal` on `dashboard.summary`.
+- KPI board is two 2×2 clusters. Left locked (inverted,
+  ignores the date range): Due this month, Open pipeline,
+  Overdue, Stuck. Right live (follows the range): Closed
+  won, Win rate, Won, Deal Maturity moves.
+- UI primitives: `StatBoard`, `StatGroup` `columns="pair"`
+  / `tone="locked"`, `StatCard` `tone="locked"`.
+
+**How and why**
+- User asked for a locked tile for open deals past
+  scheduled close, and to group four locked vs four live.
+  Stuck was already the inactivity name, so the new tile
+  is Overdue.
+
+**Deviations**
+- None vs the ask. Locked fill uses `foreground` /
+  `background` tokens (design invert), not a new grey.
+
+**What's next**
+- Sign in locally and flip the date range: locked four
+  stay put; live four move. Deploy api + app.
+
+
+### 2026-09-11 — Filter recent deal moves by rep and change
+
+**What was completed**
+- Recent deal moves on the overview now filter by rep and by
+  change reason (Won, Lost, Stage, Deal Maturity, Amount, Close
+  date, Owner, Priority, Sage stage).
+- URL keys: `pulseRep`, `pulseChange`. Shared parsers in
+  `apps/app/app/(app)/overview-search-params.ts` (`pulseFeedParsers`)
+  so the rest of the dashboard does not re-render on filter change.
+- New mechanical query `dashboard.pulseRecent` →
+  `loadPipelinePulseRecent` in `packages/db/src/pipeline-pulse.ts`.
+  Same date range as the pulse strip. Used only when a filter is
+  on, so the unfiltered 24-row slice stays on `summary.pulse`.
+- UI: two `Select`s in the card header (`pipeline-pulse.tsx`).
+  Rep filter hides on Me. Empty copy changes when filters hide
+  every row.
+- Tests: `packages/db/test/pipeline-pulse.spec.ts` for
+  `pulseChangeWhere` / `pulseOwnerWhere`.
+- tRPC types regenerated (`apps/api/src/generated/server.ts`).
+
+**How and why**
+- Client-only filter of the latest 24 rows would hide most Amount /
+  Owner / Priority moves on a year-long range. The extra query
+  fills the table with matching rows from the same window.
+- Me already scopes to the signed-in owner; a leftover `pulseRep`
+  is ignored (`pulseOwnerWhere`).
+
+**Deviations**
+- None vs the ask (filter by rep + change reason). Sort was not
+  added — the feed stays newest-first.
+
+**What's next**
+- Sign in locally and click the two selects on Everyone. Local
+  `dealFieldChange` is empty, so the table stays empty until a
+  Sage pull or a deal edit writes rows. Query filters were
+  checked with a rolled-back insert (amount / won / rep).
+  Deploy api + app when ready.
+
+### 2026-09-11 — Ship DealQuote `bd6e7b5` + warehouse CRM pull
+
+**What was completed**
+- Commit `bd6e7b5` on `main` (`origin/jj-mobilemark/crm`).
+  api / app / agent deployed SUCCESS.
+- Prod: migrate `dealQuote`, `GRANT SELECT` to
+  `mm_analytics_reader`, `backfill-deal-quotes.ts` via
+  `railway ssh -s api` — **201** quotes on **191 / 566** deals.
+- Warehouse CRM pull (cron redeploy only ran migrations;
+  cron SSH is idle). Ran extract + dbt on
+  `mm-analytics-ingest` with cron `EXTRACT_MODE=mm_crm`:
+  deals **566**, companies **14,335**, users **17**, field
+  changes **353**, activities **963**, deal contacts **542**.
+  dbt snapshot PASS=3, freshness 11/11, build
+  **PASS=174 WARN=0 ERROR=0**. Marts:
+  `fct_sales_pipeline` 566, `dim_company` 14,335,
+  `fct_quotes` 751.
+
+**How and why**
+- User asked to commit, push, wait, then pull CRM with the
+  Railway CLI. Same-project ingest can reach private CRM +
+  warehouse DNS. Did not run open-orders or Blue Folder
+  (cron has no `BLUE_FOLDER_MODE`; fixture would wipe live
+  raw). Live Analytics image is still `a14b906` — no
+  `extract.mm_crm_deal_quotes` yet (local Analytics work is
+  uncommitted).
+
+**Deviations**
+- Cron redeploy `69b5a1f5` did not run `run_pipeline.sh`
+  (known: pre-deploy migrations only). Pull was SSH ingest,
+  not a cron tick.
+
+**What's next**
+- Commit and deploy MM-Analytics DealQuote extract
+  (`raw.mm_crm_deal_quotes` + exact-id bridge), then pull
+  again. Spot-check deal sheet quotes (Sage opp **663**).
+  Optional: uncomment GRANT in Analytics
+  `docs/mm_crm_reader_role.sql` once that extract ships.
 
 ### 2026-09-11 — DealQuote junction + Sage parse + deal UI
 
