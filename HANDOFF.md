@@ -497,7 +497,7 @@ it before stopping. The rules for maintaining it live in `AGENTS.md`
 - None vs the ask (CRM / opportunity only; no email).
 
 **What's next**
-- Deploy api + app. Hard-refresh Everyone.
+- Hard-refresh Everyone after this push.
 
 ### 2026-09-11 — Owner-only deal stage changes
 
