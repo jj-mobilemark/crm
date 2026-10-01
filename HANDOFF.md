@@ -23,6 +23,39 @@ it before stopping. The rules for maintaining it live in `AGENTS.md`
 
 ## Current state (keep this section up to date)
 
+- **Sage cursor time zone fix (DONE prod `5b37dce` + `dff0909`,
+  2026-10-01)**: Sage datetimes are `America/Chicago` wall time.
+  The nightly cursor was written in UTC, so every Sage save
+  between the 1:00 AM CDT run and ~5:00 AM was skipped forever.
+  Now `toSageClock` / `fromSageClock` (`sage-clock.ts`) format
+  the cursor and parse `updateddate` in Central. Catch-up ran in
+  prod: all 271 Sage opportunities saved since 2 Aug match the
+  CRM (0 stale). Only opp **807** is absent (no company in Sage).
+  Re-pull tool: `scripts/sage-backfill.ts --opportunities-since=`.
+  Companies in that window were already current (11 rows).
+- **2:35am CDT cron crashes (checked prod 2026-09-30)**:
+  `cron-sequences`, `cron-microsoft`, and `cron-webform`
+  showed CRASHED between 07:35 and 07:54 UTC. The web
+  app, api, and agent processes stayed up. Cause: those
+  crons curl the public API and exit on any non-200.
+  At 07:35 UTC Cloudflare returned 404 and Railway never
+  saw the requests. At 07:43 UTC the API returned 500
+  because `prisma.account.findMany()` failed with
+  `getaddrinfo ETIMEOUT`. Postgres was checkpointing
+  normally. At 07:54 UTC `/internal/sequences/tick` hung
+  until Cloudflare returned 524 and the client closed
+  (edge 499). By 07:55 UTC the same routes were 200
+  again. Separate ongoing issue: webform ingest still
+  logs `Access is denied` for `info@` and returns 200.
+- **Sage cron health (re-checked prod 2026-09-15)**: Nightly
+  pull is healthy. Sep 15 06:02 UTC finished **clean on
+  the first try** (no 503): 226 companies / 585 contacts /
+  **0 deals** / 811 snapshots. That is yesterday’s Sage
+  company edits landing as expected. Deals stay at 0
+  because Sage still is not changing opportunities (last
+  opp **848** on Sep 9). Sep 10/11/14 still had a 503 +
+  curl retry; Sep 12/13/15 were first-try OK. Outbox
+  failures (opp **821**, one contact create) are push-only.
 - **Won vs new-pipeline chart colors (DONE local 2026-09-11)**:
   Closed won stays green (`--success`). New pipeline is
   blue (`--chart-2`). `--chart-1` is also green, so both
@@ -164,20 +197,9 @@ it before stopping. The rules for maintaining it live in `AGENTS.md`
   3× with backoff on transport failure only — never on `auth-failed`.
   Pagination faults (`List index out of bounds` / company-opportunity
   `Query failed…`) are the 2026-09-11 local follow-up above.
-- **Sage cron health (re-checked prod 2026-09-03)**: Nightly
-  `cron-sage` is healthy (`0 6 * * *` UTC = 1:00 AM CDT). Aug 28–Sep 3:
-  6 clean nights, **1 hard failure (Aug 30, HTTP 503)** that never hit
-  the Nest app (no `api` log line at all that window) — reads as a
-  private-network blip, not a Sage session/auth problem; harmless
-  because the incremental cursor is idempotent (didn't advance, next
-  night re-covered it). `SageSyncState` confirms `status=IDLE`,
-  `lastError=null`, `highWaterUpdatedAt` = this morning 06:02 UTC;
-  `SageOutbox` has 0 `failed`. Start command uses internal
-  `http://api.railway.internal:3001/internal/sync/sage` (900s timeout,
-  3 retries). Always-on `api` / `app` / `agent` / Postgres RUNNING.
-  **Note:** `api`'s current deploy is from **2026-08-21** — several
-  "needs api deploy" items logged after that date (see entries below)
-  are still sitting undeployed on prod.
+- **Sage cron health (2026-09-03 check; superseded 2026-09-14)**:
+  See the 2026-09-14 Sage cron health bullet at the top of
+  this section.
 - **Webform lead Screening (DONE prod wiring 2026-08-05)**: Customer
   Question emails from shared mailbox → `PendingWebLead`,
   territory-routed into the same Screening list as mail (Web/Mail badge
@@ -458,6 +480,302 @@ it before stopping. The rules for maintaining it live in `AGENTS.md`
 ---
 
 ## Work log
+
+### 2026-10-01 — Sage cursor time zone fix shipped + catch-up
+
+Plan: `docs/plans/sage-crm-sync.md` §6 (incremental), corrected note
+added there.
+
+**What was completed**
+- `apps/api/src/sage/sage-clock.ts` (new): `toSageClock` formats
+  an instant as `America/Chicago` wall time; `fromSageClock`
+  parses a Sage string to the real instant (DST-safe; repeated
+  fall-back hour resolves to the earlier instant).
+- `sage.constants.ts`: `SAGE_SERVER_TIME_ZONE`.
+- `sage-pull.service.ts`: incremental company + opportunity
+  predicates use `toSageClock`. New public
+  `repullOpportunitiesSince(since, { dryRun })` (session lock,
+  does not move the high-water).
+- `sage.mappings.ts`: company / contact / opportunity
+  `sageUpdatedAt` use `fromSageClock` (echo guard now compares
+  real instants; it used to see Sage edits as 5h earlier).
+  `targetclose` / `closed` / `opened` parsing is unchanged.
+- `sage-backfill.util.ts`: old UTC `sageDate` removed.
+- `scripts/sage-backfill.ts`: `--opportunities-since=<Sage time>`;
+  imports `CrmModule` (script could not start on `main` —
+  `DealChangeRecorder` missing).
+- Tests: `test/sage-clock.spec.ts` (11), backfill spec updated.
+  Sage specs 59/59. Full api suite: same 6 pre-existing fails
+  as `main` (Auth e2e, CompanyResolveService).
+- Deployed api `5b37dce`, then `dff0909`. Commits rebuilt with
+  `git commit-tree` to drop the Cursor co-author trailer.
+- Prod catch-up inside the api container:
+  `bun run scripts/sage-backfill.ts --opportunities-since=2026-08-02T00:00:00`
+  → 271 fetched, 270 upserted, 1 skipped (807, no company).
+- Real changes recorded (source `sage`): 12 close dates (361,
+  467, 502, 509, 584, 587, 605, 663, 694, 703, 713, 788); 502
+  Closed Won $56,466 (closed 7 Sep); 206 Won; 568, 643 Lost;
+  314 Sage stage Lost. New deals 803 (Lost) and 849.
+- Deleted 35 `dealFieldChange` rows from that run that moved
+  `expectedCloseDate` back exactly one day. Cause: the 3 Aug
+  backfill ran on a Mac (Central) and parsed `targetclose` as
+  Central; the api container parses it as UTC. Same Sage
+  value; Central display unchanged.
+- Verify: live SOAP vs prod snapshot for all 271 opportunities
+  saved since 2 Aug → 0 stale.
+
+**How and why**
+- User asked that Sage changes never be skipped again. Proof of
+  zone: the misses were exactly 01:00–05:00 Sage time, and
+  `targetclose` shows 22:00 in summer, 21:00 in winter (DST).
+
+**Deviations**
+- `targetclose` parse left as host-local (UTC in prod). Changing
+  it would shift every stored close date and log a change row
+  per deal. `sageDateForPush` also left as is.
+- `railway ssh … psql` hangs when stdin is open on long output;
+  append `< /dev/null`.
+
+**What's next**
+- Watch the 2 Oct 06:00 UTC `cron-sage`. The cursor is
+  `2026-10-01 14:52 UTC`; the predicate should read `08:52`
+  Central. Opp 807 needs a company set in Sage.
+- Optional: a one-time normalise of Aug-backfill
+  `expectedCloseDate` values to the UTC parse, so the next
+  Sage edit on those deals does not log a one-day move.
+
+### 2026-10-01 — Sage 1am–5am cursor gap count
+
+**What was completed**
+- Read-only compare of live Sage opportunities with
+  `updateddate > 2026-08-04` (254 rows, 3 SOAP pages)
+  against prod `sageRecordSnapshot` (579 rows).
+- 52 opportunities are still older in the CRM than in
+  Sage. Every one of those Sage save times is between
+  01:00 and 05:00. Zero stale rows sit outside that
+  window. Nights: 31 Aug (7), 1 Sep (1), 28 Sep (44).
+- 9 of the 52 have a different `targetclose`. The other
+  43 have the same Close By.
+- Never imported: 803 (28 Sep 01:47), 849 (15 Sep 05:01,
+  edge of the same window), 807 (5 Aug 09:02, outside
+  this window).
+- Cause: `sageDate()` in `sage-backfill.util.ts` formats
+  the cursor in UTC. The API container is UTC. Sage
+  `updateddate` is Central wall time. The 1:00 AM CDT
+  pull then asks next time for saves after ~5:00 AM.
+
+**How and why**
+- User asked how often the close-date miss can happen
+  and how many rows are still wrong.
+
+**Deviations**
+- Temporary `apps/api/scripts/sage-stale-audit.ts` was
+  used for the SOAP read and then deleted.
+
+**What's next**
+- Format `sageDate()` in `America/Chicago`.
+- One opportunity catch-up for
+  `oppo_updateddate > '2026-08-31T00:00:00'` so the 52
+  (and 803 / 849) land. Do not rely on tonight's cron;
+  the cursor is already past those saves.
+
+### 2026-10-01 — Manual Sage sync for missed close dates
+
+**What was completed**
+- Rewound prod `sageSyncState.highWaterUpdatedAt` for
+  company and opportunity to `2026-09-30 00:00:00+00`,
+  then ran `GET /internal/sync/sage` on the api container.
+- Pull outcome ok in ~70s: 217 companies, 619 contacts,
+  11 deals. Push processed 0 (no pending outbox).
+- Close dates now match live Sage `targetclose`:
+  opp **664** and **832** are `2026-11-29 21:00:00`.
+  Also updated **642**, **787**, **813** (same 1:00 AM
+  CDT window on 30 Sep). Cursor is `2026-10-01 14:52 UTC`.
+
+**How and why**
+- A plain incremental run would skip these. Their Sage
+  `updateddate` values sit after the 1:00 AM CDT query
+  and before the next cursor (`updateddate` string
+  compared to a UTC `sageDate()`). User asked to sync
+  production now so the deals table gets the dates.
+
+**Deviations**
+- Cursor was moved back on purpose so this run could
+  see the missed rows. It is advanced again to the
+  run start.
+
+**What's next**
+- The 1:00–5:00 AM CDT gap can miss saves every night
+  because `sageDate()` formats the cursor in UTC and
+  Sage `updateddate` is Central wall time. Fix
+  `sageDate()` / the incremental predicate so the next
+  nightly pull does not skip that window.
+
+### 2026-10-01 — Opp 664 Close By is November in Sage
+
+**What was completed**
+- Deal `cmscp7f151p14ob8ogiaujn33` / Sage opportunity **664**
+  / quote `Q260608-001` (Harry Kim, Westermo).
+- CRM `expectedCloseDate` is `2026-07-31 03:00:00`. Snapshot
+  from `2026-08-03` has `targetclose` `2026-07-30T22:00:00`
+  and `updateddate` `2026-06-30`.
+- Live SOAP read: `targetclose` `2026-11-29T21:00:00`,
+  `updateddate` `2026-10-01T03:49:10`. Same field we map.
+  Amount `32385` is unchanged.
+- Last `cron-sage` (1:07 AM CDT) did not include 664.
+
+**How and why**
+- Ken sees Close By in November. The CRM shows 31 Jul.
+  Close By is Sage `targetclose`. The CRM copy is from the
+  3 Aug import. Sage saved the row at 03:49, after the
+  1:07 AM CDT pull. API container timezone is UTC.
+
+**Deviations**
+- None.
+
+**What's next**
+- Wait for the 2 Oct 06:00 UTC pull, then confirm deal
+  664 `expectedCloseDate` is 29 Nov 2026. If it is still
+  31 Jul, the incremental `oppo_updateddate` predicate
+  missed this row and needs a one-id re-pull.
+
+### 2026-10-01 — Harry Kim opportunities, last 7 days
+
+**What was completed**
+- Read-only prod count for owner `sage-user-1` (Harry Kim,
+  `hkim@mobilemark.com`).
+- 5 of 72 Sage-linked deals have `sageUpdatedAt` in the
+  last 7 days: 685, 860, 641, 854, 704.
+- Opportunity 832 is his. Its `sageUpdatedAt` is
+  `2026-08-27`, outside the window.
+
+**How and why**
+- Follow-up to the opp 832 close-date check.
+
+**Deviations**
+- None.
+
+**What's next**
+- Same as the opp 832 entry: wait for the 2 Oct pull, or
+  check live Sage `updateddate` on opportunity 832.
+
+### 2026-10-01 — Sage opp 832 close date
+
+**What was completed**
+- Read-only prod query via `railway ssh -s Postgres`.
+- Deal `cmtcjy84707pp01rrmw6r180i` (Sage opportunity 832,
+  quote `Q260827-002`): `expectedCloseDate` is
+  `2026-09-29 22:00:00`. Snapshot `targetclose` matches.
+  Snapshot `updateddate` is `2026-08-27T19:54:21`.
+  Snapshot row `updatedAt` is `2026-08-28 06:10 UTC`.
+  No `dealFieldChange` rows on this deal.
+- Last `cron-sage` at `2026-10-01T06:07:41Z` was ok after
+  one 503 retry. It upserted 5 deals: Sage ids 685, 857,
+  858, 859, 860. Opportunity 832 was not in that set.
+
+**How and why**
+- A user changed the Sage close date to about 30 Nov 2026
+  and still sees 29 Sep 2026 in the CRM. The stored Sage
+  copy has not changed since 28 Aug.
+
+**Deviations**
+- None.
+
+**What's next**
+- If the Sage edit was after 06:07 UTC on 1 Oct, wait for
+  the 06:00 UTC pull on 2 Oct. If the edit was earlier,
+  check live Sage `oppo_updateddate` on opportunity 832.
+  The incremental pull only fetches rows newer than the
+  high-water mark.
+
+### 2026-09-30 — 2am Railway crash check
+
+**What was completed**
+- Read-only Railway check of production MM-CRM
+  (`406256f8-aff6-422c-a980-9607e66a870b`).
+- Crash events, cron logs, api logs, Postgres logs,
+  and HTTP edge logs for 07:25–08:05 UTC.
+
+**How and why**
+- User asked why the app crashed many times around 2am.
+  The CRASHED events are the five-minute curl crons,
+  not the app, api, or agent containers. They failed
+  because the public API returned 404, then 500
+  (`getaddrinfo ETIMEOUT` on `account.findMany`), then
+  a 524/499 hang on the sequence tick. Postgres stayed up.
+
+**Deviations**
+- None.
+
+**What's next**
+- No deploy. If this repeats, check API DNS to Postgres
+  and the Cloudflare path in front of
+  `api.mobilemarksalestool.com`. Webform mailbox
+  `Access is denied` is a separate Graph permission issue.
+
+### 2026-09-15 — Sage cron follow-up (clean night)
+
+**What was completed**
+- Read-only `cron-sage` + api logs for last night.
+- Sep 15 06:02 UTC: first-try HTTP 200, no walk restart.
+  Pull 226 companies / 585 contacts / 0 deals / 811
+  snapshots. Push idle (`processed=0`).
+
+**How and why**
+- User asked if we were all good after the Sep 14 check.
+  Last night was the first run after that review and it
+  picked up the extra company/person volume from Sep 14
+  daytime Sage edits.
+
+**Deviations**
+- None.
+
+**What's next**
+- No pull action. Quiet deals remain a Sage-side fact
+  until opportunities change again. Failed outbox 821
+  is still a separate push item.
+
+### 2026-09-14 — Sage prod sync health check
+
+**What was completed**
+- Read-only check: Railway `cron-sage` + `api` logs,
+  prod `SageSyncState` / snapshots / outbox (temporary
+  TCP proxy, deleted after), and a live Sage SOAP count
+  of recent opportunities.
+- Last five nights (Sep 10–14) all finished
+  `pull.outcome=ok`. 503 on first curl Sep 10, 11, 14;
+  retry succeeded. This morning: 188 companies, 264
+  contacts, 0 deals, 452 snapshots.
+- Cursor is current: both entities `IDLE` /
+  `incremental`, `highWaterUpdatedAt` 2026-09-14T06:04:53Z,
+  `lastError=null`. Last 7 days: 1364 company / 2612
+  person snapshots, **5** opportunity snapshots (opps
+  845–848, 665). Last Sage deal field change 2026-09-09.
+- Live SOAP: 0 opportunities with `oppo_updateddate`
+  after 2026-09-10. Sage itself has not changed deals
+  since opp 848 on Sep 9. Company updates from today
+  afternoon wait for tonight's cron (last pull 1:05 AM
+  CDT).
+- `SageOutbox`: 2 failed (opp 821 UnexpectedEvent;
+  contact create, parent not in Sage). One-shot scripts
+  deleted; proxy list empty.
+
+**How and why**
+- User was not seeing many new/updated records and
+  asked whether Railway Sage sync was broken. Cron JSON
+  + DB + SOAP agree: company/person incremental is
+  moving; opportunity volume is genuinely ~0 since
+  Sep 9.
+
+**Deviations**
+- None. Investigation only; no code or schema change.
+
+**What's next**
+- No pull fix required. Optional: tonight's 06:00 UTC
+  cron will pick up today's Sage company edits. Failed
+  outbox opp 821 is a push issue, not pull. Quiet
+  pipeline pulse is expected until Sage opportunities
+  change again.
 
 ### 2026-09-11 — Separate won vs new-pipeline chart colors
 
