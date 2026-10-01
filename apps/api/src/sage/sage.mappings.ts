@@ -5,6 +5,7 @@ import {
 	SAGE_ECHO_TTL_MS,
 	type SageWriteField,
 } from "./sage.constants";
+import { fromSageClock } from "./sage-clock";
 import type { SageCompanyTree, SageRecord } from "./sage-xml";
 
 /**
@@ -129,7 +130,7 @@ export function mapCompany(record: SageRecord): MappedCompany | null {
 		countryCode,
 		primaryPersonId: clean(record.primarypersonid),
 		accountManagerName: clean(record.acctmgr),
-		sageUpdatedAt: parseSageDate(record.updateddate),
+		sageUpdatedAt: fromSageClock(record.updateddate),
 	};
 }
 
@@ -150,7 +151,7 @@ export function mapContact(
 		email: normaliseEmail(record.emailaddress),
 		phone: joinPhone(record.areacode, record.number),
 		title: clean(record.title),
-		sageUpdatedAt: parseSageDate(record.updateddate),
+		sageUpdatedAt: fromSageClock(record.updateddate),
 	};
 }
 
@@ -221,7 +222,7 @@ export function mapOpportunity(record: SageRecord): MappedOpportunity | null {
 		closedAt: parseSageDate(record.closed),
 		openedAt: parseSageDate(record.opened) ?? parseSageDate(record.createddate),
 		sageAssignedUserId: clean(record.assigneduserid),
-		sageUpdatedAt: parseSageDate(record.updateddate),
+		sageUpdatedAt: fromSageClock(record.updateddate),
 	};
 }
 

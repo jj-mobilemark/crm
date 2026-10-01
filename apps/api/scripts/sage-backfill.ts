@@ -10,6 +10,8 @@
  *   bun run scripts/sage-backfill.ts                       # full run (off-peak)
  *   bun run scripts/sage-backfill.ts --incremental --dry-run  # preview a nightly pull
  *   bun run scripts/sage-backfill.ts --incremental            # run a nightly pull
+ *   bun run scripts/sage-backfill.ts --opportunities-since=2026-08-02T00:00:00
+ *     # re-pull opportunities Sage saved after that Sage (Central) time
  *
  * Run it off-peak. It holds one Sage session and pages slowly on purpose so the
  * sales team never sees Sage slow down.
@@ -20,6 +22,7 @@ import { ConfigModule } from "@nestjs/config";
 import { NestFactory } from "@nestjs/core";
 import { validateEnv } from "../src/config/env.validation";
 import { DatabaseModule } from "../src/database/database.module";
+import { fromSageClock } from "../src/sage/sage-clock";
 import { SagePullService } from "../src/sage/sage-pull.service";
 import { SageModule } from "../src/sage/sage.module";
 
@@ -36,21 +39,32 @@ function parseArgs(argv: string[]): {
 	dryRun: boolean;
 	incremental: boolean;
 	maxCompanies?: number;
+	opportunitiesSince?: Date;
 } {
 	const dryRun = argv.includes("--dry-run");
 	const incremental = argv.includes("--incremental");
 	const maxArg = argv.find((a) => a.startsWith("--max="));
 	const max = maxArg ? Number.parseInt(maxArg.slice("--max=".length), 10) : NaN;
+	const sinceArg = argv.find((a) => a.startsWith("--opportunities-since="));
+	const opportunitiesSince = sinceArg
+		? fromSageClock(sinceArg.slice("--opportunities-since=".length))
+		: undefined;
+	if (opportunitiesSince === null) {
+		throw new Error(
+			"--opportunities-since must look like 2026-08-02T00:00:00 (Sage Central time)",
+		);
+	}
 	return {
 		dryRun,
 		incremental,
 		maxCompanies: Number.isFinite(max) && max > 0 ? max : undefined,
+		opportunitiesSince,
 	};
 }
 
 async function main(): Promise<void> {
 	const logger = new Logger("SageBackfillScript");
-	const { dryRun, incremental, maxCompanies } = parseArgs(
+	const { dryRun, incremental, maxCompanies, opportunitiesSince } = parseArgs(
 		process.argv.slice(2),
 	);
 
@@ -61,18 +75,25 @@ async function main(): Promise<void> {
 
 	const pull = app.get(SagePullService);
 
-	const mode = incremental ? "incremental" : "backfill";
+	const mode = opportunitiesSince
+		? "opportunities-since"
+		: incremental
+			? "incremental"
+			: "backfill";
 	logger.log({
 		message: "Sage sync starting",
 		mode,
 		dryRun,
 		maxCompanies,
+		opportunitiesSince,
 	});
 	const startedAt = Date.now();
 
-	const summary = incremental
-		? await pull.runIncremental({ dryRun })
-		: await pull.runBackfill({ dryRun, maxCompanies });
+	const summary = opportunitiesSince
+		? await pull.repullOpportunitiesSince(opportunitiesSince, { dryRun })
+		: incremental
+			? await pull.runIncremental({ dryRun })
+			: await pull.runBackfill({ dryRun, maxCompanies });
 
 	const durationMs = Date.now() - startedAt;
 	logger.log({ message: "Sage sync done", mode, durationMs, ...summary });

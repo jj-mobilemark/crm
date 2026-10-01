@@ -601,6 +601,14 @@ the runtime. `next` cannot resume in a later process, so there are two shapes:
   matches Sage's design and avoids a session being repeatedly kicked.
 - **Incremental = nightly cron** (`/internal/sync/sage`, `CRON_SECRET`): the
   changed set is small, so one session per night finishes inside a normal run.
+  **CORRECTED 2026-10-01:** Sage datetimes (`updateddate` and predicate
+  dates) are `America/Chicago` wall time with no offset. The cursor string
+  must be formatted in that zone (`toSageClock` in `sage-clock.ts`). It was
+  formatted in the host's UTC, so every Sage save between the 1:00 AM CDT run
+  and ~5:00 AM was skipped forever. `updateddate` is also parsed as Central
+  (`fromSageClock`) so the push echo guard compares real instants.
+  Catch-up for skipped opportunities without moving the cursor:
+  `bun run scripts/sage-backfill.ts --opportunities-since=<Sage time>`.
 - **Resume-across-ticks (only if we ever chunk the backfill into a serverless
   cron instead of a worker):** don't use `next`; page by `comp_companyid >
   :lastId` with a fresh `logon` per tick, persisting `backfillId` each page. It

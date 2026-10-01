@@ -6,11 +6,8 @@ import {
 } from "../crm/deal-change.service";
 import { InjectDatabase } from "../database/database.constants";
 import { attachDealQuotes, quotesFromSageRecord } from "../deals/quote-number";
-import {
-	countMappableContacts,
-	maxNumericId,
-	sageDate,
-} from "./sage-backfill.util";
+import { countMappableContacts, maxNumericId } from "./sage-backfill.util";
+import { toSageClock } from "./sage-clock";
 import { resolvedClosedAt } from "./sage-closed-at";
 import { withSageSession } from "./sage-session";
 import { SageSoapClient } from "./sage-soap.client";
@@ -788,6 +785,46 @@ export class SagePullService {
 		return ran.value;
 	}
 
+	/**
+	 * Re-pull every opportunity Sage saved after `since`. Catch-up for rows a
+	 * pull skipped; leaves the incremental high-water where it is.
+	 */
+	async repullOpportunitiesSince(
+		since: Date,
+		options: { dryRun?: boolean } = {},
+	): Promise<SageBackfillSummary> {
+		const dryRun = options.dryRun ?? false;
+		if (!this.soap.isConfigured()) {
+			return emptyBackfill(
+				"not-configured",
+				dryRun,
+				"Sage SOAP is not configured.",
+			);
+		}
+
+		const predicate = `${SAGE_UPDATED_COLUMN.opportunity} > '${toSageClock(since)}' AND oppo_deleted IS NULL`;
+		const ran = await withSageSession(this.db, this.soap, async () => {
+			const summary = emptyBackfill("ok", dryRun);
+			const result = await this.backfillOpportunitiesPredicate(
+				summary,
+				predicate,
+				dryRun,
+			);
+			summary.outcome = result.outcome;
+			if (result.reason) summary.reason = result.reason;
+			return summary;
+		});
+		if (ran.outcome === "busy") {
+			return emptyBackfill("busy", dryRun, "A Sage sync is already running.");
+		}
+		this.logger.log({
+			message: "Sage opportunity re-pull finished",
+			since: toSageClock(since),
+			...ran.value,
+		});
+		return ran.value;
+	}
+
 	private async runIncrementalLocked(
 		dryRun: boolean,
 	): Promise<SageBackfillSummary> {
@@ -812,7 +849,7 @@ export class SagePullService {
 			const ownerByEmail = await this.loadOwnerCache();
 
 			const changedPredicate = since
-				? `${SAGE_UPDATED_COLUMN.company} > '${sageDate(since)}' AND comp_deleted IS NULL`
+				? `${SAGE_UPDATED_COLUMN.company} > '${toSageClock(since)}' AND comp_deleted IS NULL`
 				: "comp_deleted IS NULL";
 
 			let more = true;
@@ -883,7 +920,7 @@ export class SagePullService {
 			}
 
 			const oppPredicate = since
-				? `${SAGE_UPDATED_COLUMN.opportunity} > '${sageDate(since)}' AND oppo_deleted IS NULL`
+				? `${SAGE_UPDATED_COLUMN.opportunity} > '${toSageClock(since)}' AND oppo_deleted IS NULL`
 				: "oppo_deleted IS NULL";
 			let oppRestarts = 0;
 			for (;;) {
@@ -1537,7 +1574,7 @@ function emptySummary(
 function emptyBackfill(
 	outcome: SageOutcome,
 	dryRun: boolean,
-	reason: string,
+	reason?: string,
 ): SageBackfillSummary {
 	return {
 		outcome,

@@ -48,6 +48,13 @@ export const SAGE_UPDATED_COLUMN: Record<SageEntity, string> = {
 	opportunity: "oppo_updateddate",
 };
 
+/**
+ * The zone of Sage's datetime strings. eware returns `updateddate` and
+ * compares predicate dates as this zone's wall time, with no offset. A UTC
+ * string in a predicate is read as Central and skips rows.
+ */
+export const SAGE_SERVER_TIME_ZONE = "America/Chicago";
+
 // --- Mobile Mark test slice (docs/plans/sage-crm-sync.md section 2) ----------
 
 /** The first import is bounded to a handful of our own test companies. */

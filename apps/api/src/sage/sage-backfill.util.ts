@@ -28,12 +28,3 @@ export function maxNumericId(
 	if (current === null) return candidate;
 	return Number(candidate) > Number(current) ? candidate : current;
 }
-
-/** Sage's local ISO datetime shape (`2026-07-30T16:50:58`), no timezone. */
-export function sageDate(date: Date): string {
-	const pad = (n: number) => String(n).padStart(2, "0");
-	return (
-		`${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}` +
-		`T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
-	);
-}

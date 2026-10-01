@@ -1,10 +1,9 @@
 import { describe, expect, it } from "bun:test";
+import { SAGE_USER_EMAILS, SAGE_USERS } from "../src/sage/sage.mappings";
 import {
 	countMappableContacts,
 	maxNumericId,
-	sageDate,
 } from "../src/sage/sage-backfill.util";
-import { SAGE_USER_EMAILS, SAGE_USERS } from "../src/sage/sage.mappings";
 
 describe("SAGE_USERS", () => {
 	it("has the 11 team members and derives SAGE_USER_EMAILS from them", () => {
@@ -31,19 +30,6 @@ describe("maxNumericId", () => {
 		expect(maxNumericId("24", "")).toBe("24");
 		expect(maxNumericId("24", "abc")).toBe("24");
 		expect(maxNumericId(null, undefined)).toBeNull();
-	});
-});
-
-describe("sageDate", () => {
-	it("formats a Date as Sage's local ISO shape without a timezone", () => {
-		// Constructed from local components so the assertion is timezone-stable.
-		const date = new Date(2026, 6, 30, 16, 50, 58);
-		expect(sageDate(date)).toBe("2026-07-30T16:50:58");
-	});
-
-	it("zero-pads month, day, and time parts", () => {
-		const date = new Date(2026, 0, 5, 3, 4, 9);
-		expect(sageDate(date)).toBe("2026-01-05T03:04:09");
 	});
 });
 
