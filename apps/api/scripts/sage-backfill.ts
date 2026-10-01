@@ -21,6 +21,7 @@ import { Logger, Module } from "@nestjs/common";
 import { ConfigModule } from "@nestjs/config";
 import { NestFactory } from "@nestjs/core";
 import { validateEnv } from "../src/config/env.validation";
+import { CrmModule } from "../src/crm/crm.module";
 import { DatabaseModule } from "../src/database/database.module";
 import { fromSageClock } from "../src/sage/sage-clock";
 import { SagePullService } from "../src/sage/sage-pull.service";
@@ -30,6 +31,7 @@ import { SageModule } from "../src/sage/sage.module";
 	imports: [
 		ConfigModule.forRoot({ isGlobal: true, cache: true, validate: validateEnv }),
 		DatabaseModule,
+		CrmModule,
 		SageModule,
 	],
 })
